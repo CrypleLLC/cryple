@@ -9,6 +9,14 @@ import { sha256 } from '@noble/hashes/sha256';
  */
 export function getBaseApiUrl(): string {
   const apiUrl = process.env.NEXT_PUBLIC_BASE_API_URL || 'http://localhost:8080';
+  const env = process.env.NODE_ENV || 'development';
+  
+  // Log environment for debugging (only in development)
+  // if (env === 'development') {
+    console.log(`🌍 Environment: ${env}`);
+    console.log(`🔗 API URL: ${apiUrl}`);
+  // }
+  
   return apiUrl;
 }
 
