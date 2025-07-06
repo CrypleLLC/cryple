@@ -12,10 +12,10 @@ export function getBaseApiUrl(): string {
   const env = process.env.NODE_ENV || 'development';
   
   // Log environment for debugging (only in development)
-  if (env === 'development') {
+  // if (env === 'development') {
     console.log(`🌍 Environment: ${env}`);
     console.log(`🔗 API URL: ${apiUrl}`);
-  }
+  // }
   
   return apiUrl;
 }
