@@ -10,6 +10,7 @@ Two sets of documents govern this client. They answer different questions and ne
 | --- | --- |
 | [front-end-guide.md](./front-end-guide.md) | Base URL, auth model, signatures, JWT, retry safety, 28 client caveats. **§5 is mandatory.** |
 | [front-end-endpoints.md](./front-end-endpoints.md) | Every route, payload, response and error code. |
+| [tasks.md](./tasks.md) | The integration task list — numbered, milestone-ordered, with acceptance criteria. Work from it. |
 
 These two describe the API **as implemented** — the wire contract. They win over the current source, over `README.md`, and over anything you remember about this project. Cite the `§` you relied on when a change hinges on API behaviour.
 
