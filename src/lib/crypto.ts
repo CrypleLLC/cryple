@@ -2,7 +2,7 @@
 // Uses BIP39 for proper seed phrase generation and Noble crypto for scrypt key derivation
 import * as bip39 from 'bip39';
 import { scrypt } from '@noble/hashes/scrypt';
-import { sha256 } from '@noble/hashes/sha256';
+import { sha256 } from '@noble/hashes/sha2';
 
 /**
  * Gets the base API URL from environment variables
@@ -349,7 +349,7 @@ export async function authenticateWithBackend(
   try {
     const hashedPassword = await getHash(password);
     
-    const response = await fetch(`${getBaseApiUrl()}/users`, {
+    const response = await fetch(`${getBaseApiUrl()}/sign-in`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
