@@ -65,6 +65,10 @@ export function bytesToUtf8(bytes: Uint8Array): string {
   return new TextDecoder().decode(bytes);
 }
 
+export async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  return bytesToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)));
+}
+
 export function concatBytes(...chunks: Uint8Array[]): Uint8Array {
   let total = 0;
   for (const chunk of chunks) {
