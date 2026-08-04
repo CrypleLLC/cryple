@@ -51,6 +51,12 @@ export function base64ToBytes(base64: string): Uint8Array {
   return bytes;
 }
 
+export function base64UrlToBytes(base64Url: string): Uint8Array {
+  const padded = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+  const remainder = padded.length % 4;
+  return base64ToBytes(remainder === 0 ? padded : padded + '='.repeat(4 - remainder));
+}
+
 export function utf8ToBytes(text: string): Uint8Array {
   return new TextEncoder().encode(text);
 }
