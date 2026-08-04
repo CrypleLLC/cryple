@@ -36,7 +36,7 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
 
 ## Milestone 1 — HTTP and authentication
 
-- [ ] **Task 7: HTTP layer** (`src/lib/api/`). One place that owns:
+- [x] **Task 7: HTTP layer** (`src/lib/api/`). One place that owns:
   - `NEXT_PUBLIC_BASE_API_URL` (includes `/v1`; default `http://localhost:8080/v1`) — `v1` appears nowhere else.
   - Success envelope `{message, data}`; error envelope `{"code": "…"}` only — all user-facing copy is built client-side from `code` + endpoint.
   - Status handling by response, never by verb (`DELETE` can return `200` with a body; `204` exists).
@@ -47,7 +47,7 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
   - Pagination helper: follow `next_cursor` until `has_more === false`; cursors opaque, never built or persisted.
   - **No automatic retry of signed requests** — retry policy lives with the signer (Task 8), because every retry needs a fresh challenge triple.
 
-- [ ] **Task 8: Signed-request helper — the single hardest piece; build it once, not per call site.** Per [auth/challenge.md](../api-general/.docs/auth/challenge.md) and [auth/signed-actions.md](../api-general/.docs/auth/signed-actions.md):
+- [x] **Task 8: Signed-request helper — the single hardest piece; build it once, not per call site.** Per [auth/challenge.md](../api-general/.docs/auth/challenge.md) and [auth/signed-actions.md](../api-general/.docs/auth/signed-actions.md):
   - Fresh 32-byte challenge (64 lowercase hex) + unix-seconds timestamp per request, including every retry.
   - Payload `challenge:timestamp` (auth) or `challenge:timestamp:action:arg…` (actions), colon-joined; pass the payload to `crypto.subtle.sign` — **never pre-hash** (double-hash = every signature rejected).
   - Output: IEEE P1363, 64 raw bytes, base64.
@@ -55,9 +55,9 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
   - Encode the action table from [signed-actions.md § Actions](../api-general/.docs/auth/signed-actions.md#actions) as data (action label → arg order → second-factor flag), so a new action is one row, not new code.
   - Acceptance: unit tests mirroring the backend's `service_test.go` cases — signature bound to timestamp, action, and arguments; sign-in payload never valid as an action payload; `secret-delete` ids sorted ascending and de-duplicated before signing.
 
-- [ ] **Task 9: JWT lifecycle.** Store the token from `/sign-up` | `/sign-in` (both `201` and `200` carry one), attach as `Authorization: Bearer`, treat its 24h `exp` as the session, drop on logout (deleting our copy *is* logout — no revocation exists). `401 UNAUTHORIZED` anywhere → session over.
+- [x] **Task 9: JWT lifecycle.** Store the token from `/sign-up` | `/sign-in` (both `201` and `200` carry one), attach as `Authorization: Bearer`, treat its 24h `exp` as the session, drop on logout (deleting our copy *is* logout — no revocation exists). `401 UNAUTHORIZED` anywhere → session over.
 
-- [ ] **Task 10: Sign-up / sign-in / restore flows.**
+- [x] **Task 10: Sign-up / sign-in / restore flows.**
   - Sign-up enrolls all three public keys (SPKI base64, X25519 base64, ML-KEM base64). **Enrollment is immutable** — no re-derivation drift is survivable, which is what Task 3's fixture protects.
   - Re-running `POST /sign-up` is the documented restore-on-new-device path; the server refuses (generic `404`) if either encryption key differs from what is stored. Surface that case as "derivation mismatch — check this build against the test vectors", not "user not found".
   - Any `404` from `/sign-up`, `/sign-in`, `/auth/verify` renders one generic "could not sign in" — the ambiguity is deliberate anti-enumeration.
