@@ -73,6 +73,13 @@ export class SessionKeystore {
     return tree.userAddress;
   }
 
+  async rekeySecondFactor(pin: string): Promise<void> {
+    const state = this.require();
+    const replacement = await deriveServerAuthTokenBytes(pin, state.tree.userAddress);
+    zeroBytes(state.serverAuthToken);
+    state.serverAuthToken = replacement;
+  }
+
   lock(): void {
     if (this.idleTimer !== undefined) {
       clearTimeout(this.idleTimer);

@@ -65,9 +65,9 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
 
 ## Milestone 2 — Users and secrets
 
-- [ ] **Task 11: Users domain.** `GET /users/me` (source of truth for `has_password`), `GET /users/lookup`, `GET /users/{uuid}/public-keys`, `POST /users/second-factor` (action `enable-second-factor`, signs the new token; its ambiguous `401` on retry is resolved via `GET /users/me`), `PUT /users/password` (rotate — needs the current token), `DELETE /users` (action `account-delete`). **No "disable PIN" affordance exists or ever will** — Paranoid → Standard is not a supported transition.
+- [x] **Task 11: Users domain.** `GET /users/me` (source of truth for `has_password`), `GET /users/lookup`, `GET /users/{uuid}/public-keys`, `POST /users/second-factor` (action `enable-second-factor`, signs the new token; its ambiguous `401` on retry is resolved via `GET /users/me`), `PUT /users/password` (rotate — needs the current token), `DELETE /users` (action `account-delete`). **No "disable PIN" affordance exists or ever will** — Paranoid → Standard is not a supported transition.
 
-- [ ] **Task 12: DEK wrap seam.** Define `wrapDek(dek): string` / `unwrapDek(wrapped): dek` as the *only* interface the secrets domain sees. ⚠️ **The owner-side KEK derivation is the one unresolved spec gap** (AGENTS.md § Resolved questions): `storage-plan.md` forbids inventing a KEK path and defers the derivation to `crypto/ECDSA.md`, where nothing has landed. The seam ships with a stub that throws; the real derivation is a backend-spec addition plus regenerated test vectors. **Do not pick a label or construction in this repo under any circumstances** — the server treats `wrapped_dek` as opaque, so a divergent choice fails silently, per item, forever. *Blocks Task 13 only.*
+- [x] **Task 12: DEK wrap seam.** Define `wrapDek(dek): string` / `unwrapDek(wrapped): dek` as the *only* interface the secrets domain sees. ⚠️ **The owner-side KEK derivation is the one unresolved spec gap** (AGENTS.md § Resolved questions): `storage-plan.md` forbids inventing a KEK path and defers the derivation to `crypto/ECDSA.md`, where nothing has landed. The seam ships with a stub that throws; the real derivation is a backend-spec addition plus regenerated test vectors. **Do not pick a label or construction in this repo under any circumstances** — the server treats `wrapped_dek` as opaque, so a divergent choice fails silently, per item, forever. *Blocks Task 13 only.*
 
 - [ ] **Task 13: Secrets domain** *(blocked on Task 12's spec resolution)*. Per-item flow: random 256-bit DEK → AES-256-GCM the payload → `wrapDek` → `POST /secrets {id, ciphertext, wrapped_dek, version}` with a **client-generated `id`** (that is what makes the POST retry-safe). Vault index from `GET /secrets?fields=meta` (unpaginated); hash the ciphertext you received rather than trusting `ciphertext_sha256`; single and batch delete via action `secret-delete` (batch = sorted de-duplicated ids; single = the one-element case; both need a JSON body). Budget ~700 KiB plaintext per item against the 1 MiB cap.
 
@@ -127,3 +127,18 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
 ```
 
 Milestone 2's Task 13 is the only externally blocked item (KEK spec, backend). Milestones 3 and 4 do not depend on it except Task 22's unwrap step — sequence around it rather than waiting.
+
+## Open items for the backend spec
+
+Both are cross-client byte contracts that this repo must not decide unilaterally. Neither is a
+question for the user — they are backend spec changes plus regenerated test vectors.
+
+1. **The owner-side KEK** that produces `wrapped_dek` (blocks Task 13). Confirmed unspecified;
+   `storage-plan.md` §3.1.1 forbids inventing it here and defers to `crypto/ECDSA.md`.
+2. **The item `ciphertext` byte layout.** `storage-plan.md` describes separate
+   `encrypted_payload` / `nonce` / `auth_tag` fields, but the API takes **one opaque
+   `ciphertext` string** — where the 12-byte IV sits inside it is specified nowhere. This is
+   cross-client because an heir parses the blob after a PQXDH `succession-dek` unwrap.
+   `src/lib/secrets/codec.ts` ships a provisional versioned layout (`0x01 ‖ iv(12) ‖ ct+tag`)
+   that rejects unknown version bytes, so a later ratified layout is detectable rather than
+   silently misparsed. It needs ratifying alongside the KEK.
