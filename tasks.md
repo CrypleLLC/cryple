@@ -12,11 +12,11 @@ Conventions for this file: check a task only when its listed acceptance criteria
 
 Nothing ships, and no other milestone starts, until Task 3's fixture is green. A wrong derivation here produces a valid-looking but different account, and the failure surfaces at inheritance release — years too late.
 
-- [ ] **Task 1: Test runner.** Add Vitest (proposed in AGENTS.md as the conventional choice for Next 15 + TS strict; confirm with the user before installing). Wire `npm test`. Acceptance: a trivial test runs in CI-able form. *Blocks: every task below — the crypto layer cannot be written without its fixtures.*
+- [x] **Task 1: Test runner.** Add Vitest (proposed in AGENTS.md as the conventional choice for Next 15 + TS strict; confirm with the user before installing). Wire `npm test`. Acceptance: a trivial test runs in CI-able form. *Blocks: every task below — the crypto layer cannot be written without its fixtures.*
 
-- [ ] **Task 2: Dependencies.** Add `@noble/curves` (SLIP-0010 P-256 signing, X25519 — WebCrypto cannot import a raw EC private scalar) and `@noble/post-quantum` (ML-KEM-768). `@noble/hashes` and `bip39` are already installed. Copy `../api-general/.docs/crypto/test-vectors.json` into the test fixtures verbatim — this client only ever *reads* that file; regenerating it is a backend operation.
+- [x] **Task 2: Dependencies.** Add `@noble/curves` (SLIP-0010 P-256 signing, X25519 — WebCrypto cannot import a raw EC private scalar) and `@noble/post-quantum` (ML-KEM-768). `@noble/hashes` and `bip39` are already installed. Copy `../api-general/.docs/crypto/test-vectors.json` into the test fixtures verbatim — this client only ever *reads* that file; regenerating it is a backend operation.
 
-- [ ] **Task 3: The frozen key tree** (`src/lib/keys/` or equivalent — naming is the implementer's, the constants are not). Implement exactly [crypto/ECDSA.md](../api-general/.docs/crypto/ECDSA.md):
+- [x] **Task 3: The frozen key tree** (`src/lib/keys/` or equivalent — naming is the implementer's, the constants are not). Implement exactly [crypto/ECDSA.md](../api-general/.docs/crypto/ECDSA.md):
   - BIP39 mnemonic → 64-byte seed (validate checksum before use; NFKD; passphrase supported, default empty).
   - `user_address = SHA-256(raw seed bytes)` → 64-char lowercase hex. **Not** the hex string of the seed — that is the current `src/` bug.
   - ECDSA P-256 via **SLIP-0010** (HMAC key `"Nist256p1 seed"`, P-256 order in the retry rules), path `m/9027'/0'/0'`, all levels hardened.
@@ -24,15 +24,15 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
   - ML-KEM-768 via `HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|mlkem768", L=64)` → FIPS 203 `(d‖z)` keygen.
   - Acceptance: **every value in `test-vectors.json` reproduced** — seed, `user_address`, P-256 private/chain-code/public in all three encodings, both encryption key pairs. This fixture is the only cross-client check of the derivations that exists anywhere; no Go test consumes the vectors.
 
-- [ ] **Task 4: Encoding helpers.** hex ↔ bytes, base64 ↔ bytes, P-256 public key → SPKI DER base64 (must come out 124 chars), uncompressed point, raw `(X, Y)`. Acceptance: round-trips against the vector file's three encodings of the same key.
+- [x] **Task 4: Encoding helpers.** hex ↔ bytes, base64 ↔ bytes, P-256 public key → SPKI DER base64 (must come out 124 chars), uncompressed point, raw `(X, Y)`. Acceptance: round-trips against the vector file's three encodings of the same key.
 
-- [ ] **Task 5: PIN layer** per [auth/two-factor-PIN.md](../api-general/.docs/auth/two-factor-PIN.md). Two distinct PBKDF2 usages — do not share code paths that could conflate their salts:
+- [x] **Task 5: PIN layer** per [auth/two-factor-PIN.md](../api-general/.docs/auth/two-factor-PIN.md). Two distinct PBKDF2 usages — do not share code paths that could conflate their salts:
   - `Server_Auth_Token = hex(PBKDF2-HMAC-SHA256(PIN, salt=utf8(user_address hex string) /* 64 bytes, not 32 */, 600_000, 32))`. Acceptance: matches the vector (`pin 428193` → recorded token).
   - Local seed vault: random 32-byte salt per device, PBKDF2 same parameters, AES-256-GCM with fresh 12-byte IV, stored as `{v: 1, salt, iv, ct}` in `localStorage`. Keep the `v` marker.
   - PIN format rules at creation: exactly 6 ASCII digits, no ascending/descending sequence, no all-repeating digit.
   - **3 failed unlock attempts wipes the local vault copy** — product policy from `recovery-flow.md`, not optional.
 
-- [ ] **Task 6: Session key custody.** In-memory keystore holding the derived P-256 key, X25519/ML-KEM private keys, and `Server_Auth_Token` after one PIN unlock per session. Zero on lock/timeout. Nothing here ever touches `localStorage`/`sessionStorage`, is logged, or is sent to the server except the token in the `password` field. Design target: "unlock once per session", never "prompt per action".
+- [x] **Task 6: Session key custody.** In-memory keystore holding the derived P-256 key, X25519/ML-KEM private keys, and `Server_Auth_Token` after one PIN unlock per session. Zero on lock/timeout. Nothing here ever touches `localStorage`/`sessionStorage`, is logged, or is sent to the server except the token in the `password` field. Design target: "unlock once per session", never "prompt per action".
 
 ## Milestone 1 — HTTP and authentication
 
