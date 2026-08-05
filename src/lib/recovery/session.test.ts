@@ -36,6 +36,9 @@ function fakeSessionCryptoForTestsOnly(): RecoverySessionCrypto {
         mlkemSecretKey: new Uint8Array(64).fill(2),
       };
     },
+    async rewrapToSession(share) {
+      return bytesToBase64(share);
+    },
     async unwrapShare(reEncryptedShare) {
       return Uint8Array.from(atob(reEncryptedShare), (c) => c.charCodeAt(0));
     },

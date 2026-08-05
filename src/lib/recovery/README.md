@@ -275,9 +275,84 @@ since the server-stored share 0 is wrapped to keys the user no longer has.
 After reconstruction the flow rejoins the normal restore path (Task 10): set a new local PIN,
 re-wrap the seed, then `POST /sign-up` to restore.
 
-## What is not here
+## The recovery session — guardian side
 
-The guardian side of the session is Task 19; PIN reset is Task 20.
+| Function | Endpoint | Notes |
+| --- | --- | --- |
+| `listPendingSessions` | `GET /recovery/sessions/pending` 🔒 | poll ~once a minute |
+| `getStoredShare` | `GET /recovery/share/{session_id}` 🔒 | the guardian's own share |
+| `unwrapOwnShare` | — | **fully specified**, real PQXDH |
+| `submitReEncryptedShare` | `POST /recovery/submit` 🔒 | `recovery-share-submit` |
+| `contributeShare` | — | the four steps in order |
+
+**Only the re-wrap is blocked.** `unwrapOwnShare` is fully implementable and tested against
+real PQXDH: the owner wrapped the share with `usage=recovery-share`, sender = owner, recipient =
+guardian, and the guardian knows both addresses (their own, and the owner's from
+`owner_user_address` on their `active` guardianship row). A test wraps with `pqxdhWrap` and
+opens it, and another confirms it fails under a substituted owner address.
+
+`submitReEncryptedShare` binds **both** `session_id` and the share bytes: binding the share
+stops a proxy swapping in a corrupt one, binding the session stops the signature being replayed
+into a different recovery. A test asserts the signature fails to verify against a substituted
+share. This is the call that hands over a piece of someone's seed, so it needs the seed key —
+and the **guardian's own** second factor.
+
+## PIN reset
+
+Recovers a forgotten PIN while the seed is still available:
+**request → guardians vote to quorum → 48h contest period → `authorized` → owner confirms.**
+
+| Function | Endpoint | Action | Second factor |
+| --- | --- | --- | --- |
+| `requestPinReset` | `POST /auth/pin-reset/request` | `pin-reset-request` | **none** |
+| `voteOnPinReset` | `POST /auth/pin-reset/vote` | `pin-reset-vote` | **guardian's** |
+| `revokePinReset` | `PATCH /auth/pin-reset/revoke` | `pin-reset-revoke` | **none** |
+| `confirmPinReset` | `PATCH /auth/pin-reset/confirm` | `pin-reset-confirm` | **none** |
+| `getPinResetStatus` | `GET /auth/pin-reset/{id}` | — | public |
+| `listPendingPinResets` | `GET /recovery/pin-reset/pending` 🔒 | — | guardian inbox |
+| `listPinResetVotes` | `GET /auth/pin-reset/{id}/votes` 🔒 | — | owner-only audit |
+
+**Four of the five are public**, because an owner who lost their PIN cannot mint a JWT. They are
+authenticated by action signature alone.
+
+**The owner's three actions carry no `password`, and cannot** — the flow exists precisely
+because the PIN is lost. That is structural; `ownerEnvelope` hard-codes `paranoid: false` so it
+cannot regress. The vote is the exception: it is cast by a guardian who has lost nothing, so
+*their* mode applies.
+
+`confirmPinReset` **signs the new token**, not just the intent — otherwise anything in the
+middle could keep the owner's signature and install a token of its own. It calls
+`session.rekeySecondFactor` on success so the new PIN is live in-session.
+
+`requestPinReset` returns `created` from the status code: `201` opened a new request, `200`
+returned one already open. Read `votes` before claiming the tally starts at zero.
+
+### The guardian inbox is not only "awaiting your vote"
+
+Rows appear with `status` of `pending_quorum` **or** `contest_period`, so a guardian can see the
+outcome of their own vote. **Only `pending_quorum` accepts a vote** — voting on a
+`contest_period` row is `409 CONFLICT`. `canVoteOn` gates on
+`status === 'pending_quorum' && !voted`; `voted` is independent of `status`.
+
+### Auditing votes — rebuild, never trust
+
+`verifyPinResetVotes` reconstructs `challenge:timestamp:pin-reset-vote:request_id` from the
+**semantic fields** and verifies each signature against the guardian's SPKI public key.
+
+The endpoint deliberately returns those fields rather than a rendered payload string: *a
+verifier that trusts the server's rendering of what was signed has verified nothing*, since a
+malicious backend could supply a matching string/signature pair whose meaning is not the vote it
+is presented as. Tests cover a vote re-attributed to a different `request_id`, a tampered
+timestamp, a tampered challenge, and a fabricated signature — all report `valid: false`, and a
+malformed key reports invalid rather than throwing.
+
+`GET /auth/pin-reset/{id}/votes` is the one **protected** route in the flow: it carries guardian
+usernames and public keys, so leaving it public would turn a request id into a guardian-set
+disclosure. Read it after the reset completes, once you can authenticate again.
+
+`contestPeriodRemainingMs` clamps at zero and returns `undefined` before quorum. Note that
+polling `GET /auth/pin-reset/{id}` is what **settles** the period — the
+`contest_period → authorized` transition happens on that read.
 
 ## Tests
 

@@ -10,7 +10,17 @@ export interface SessionShareContext {
 }
 
 export interface RecoverySessionCrypto {
+  /** Recovering device: fresh keys for one session. */
   generateEphemeralKeys(): Promise<EphemeralSessionKeys>;
+
+  /** Guardian device: re-wrap a plaintext share to the session's ephemeral key. */
+  rewrapToSession(
+    share: Uint8Array,
+    ephemeralPublicKeyField: string,
+    context: SessionShareContext,
+  ): Promise<string>;
+
+  /** Recovering device: open a share submitted by a guardian. */
   unwrapShare(
     reEncryptedShare: string,
     keys: EphemeralSessionKeys,
@@ -39,6 +49,9 @@ export class RecoverySessionCryptoUnspecifiedError extends Error {
 export const unspecifiedRecoverySessionCrypto: RecoverySessionCrypto = {
   generateEphemeralKeys() {
     return Promise.reject(new RecoverySessionCryptoUnspecifiedError('generateEphemeralKeys'));
+  },
+  rewrapToSession() {
+    return Promise.reject(new RecoverySessionCryptoUnspecifiedError('rewrapToSession'));
   },
   unwrapShare() {
     return Promise.reject(new RecoverySessionCryptoUnspecifiedError('unwrapShare'));
