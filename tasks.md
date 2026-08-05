@@ -73,7 +73,7 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
 
 ## Milestone 3 — Recovery
 
-- [ ] **Task 14: PQXDH module** per [crypto/pqxdh.md](../api-general/.docs/crypto/pqxdh.md). Fresh ephemeral X25519 per wrap; `IKM = 0xFF×32 ‖ ecdhSecret ‖ kemSecret`; `HKDF-SHA256`, zero salt, `info = "Cryple-PQXDH-v1|{usage}|{sender}|{recipient}"`; AES-256-GCM, no AAD; wire blob `0x01 ‖ kem_ct(1088) ‖ eph_pub(32) ‖ iv(12) ‖ ct+tag`. Reject unknown versions and length-inconsistent blobs before decrypting. Zero all intermediates after use. Acceptance: reproduce the vector file's `session_key_hex` and decrypt its `wire_blob_base64` (encapsulation randomness makes wrap non-deterministic; unwrap of the recorded blob is the test).
+- [x] **Task 14: PQXDH module** per [crypto/pqxdh.md](../api-general/.docs/crypto/pqxdh.md). Fresh ephemeral X25519 per wrap; `IKM = 0xFF×32 ‖ ecdhSecret ‖ kemSecret`; `HKDF-SHA256`, zero salt, `info = "Cryple-PQXDH-v1|{usage}|{sender}|{recipient}"`; AES-256-GCM, no AAD; wire blob `0x01 ‖ kem_ct(1088) ‖ eph_pub(32) ‖ iv(12) ‖ ct+tag`. Reject unknown versions and length-inconsistent blobs before decrypting. Zero all intermediates after use. Acceptance: reproduce the vector file's `session_key_hex` and decrypt its `wire_blob_base64` (encapsulation randomness makes wrap non-deterministic; unwrap of the recorded blob is the test).
 
 - [ ] **Task 15: REK + Shamir.** Generate a random Recovery Encryption Key, AES-256-GCM the seed phrase under it, split the REK k-of-n (n = guardians + 1; share 0 is the user's own Recovery Kit copy). Pick and pin an SSS library in the same change (audited, GF(256), deterministic share format) — the share format is as durable as any protocol constant once shares are distributed. UI validation is the API's only rule: `1 ≤ k ≤ n`. **k=1 with one guardian requires the explicit warning**: "This person can recover your vault on their own."
 
@@ -133,6 +133,10 @@ Milestone 2's Task 13 is the only externally blocked item (KEK spec, backend). M
 Both are cross-client byte contracts that this repo must not decide unilaterally. Neither is a
 question for the user — they are backend spec changes plus regenerated test vectors.
 
+A drafted proposal covering all three is in
+[proposals/opaque-blob-layouts.md](./proposals/opaque-blob-layouts.md) — a concrete option to
+review, not a decision taken here.
+
 1. **The owner-side KEK** that produces `wrapped_dek` (blocks Task 13). Confirmed unspecified;
    `storage-plan.md` §3.1.1 forbids inventing it here and defers to `crypto/ECDSA.md`.
 2. **The item `ciphertext` byte layout.** `storage-plan.md` describes separate
@@ -142,3 +146,7 @@ question for the user — they are backend spec changes plus regenerated test ve
    `src/lib/secrets/codec.ts` ships a provisional versioned layout (`0x01 ‖ iv(12) ‖ ct+tag`)
    that rejects unknown version bytes, so a later ratified layout is detectable rather than
    silently misparsed. It needs ratifying alongside the KEK.
+
+3. **The `encrypted_seed` byte layout** (Tasks 15/16/18). `recovery-flow.md:477` names AES-GCM
+   but not where the IV sits, and the blob is written by one device and read by another during
+   recovery — plus it is committed to the `recovery-setup` signature digest.
