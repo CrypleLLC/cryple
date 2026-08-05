@@ -36,6 +36,41 @@ None of these is internal to one client. `front-end-guide.md` §2 states the API
 a mobile app as well, and `encrypted_seed` is written by one device and read by a *different*
 one by construction.
 
+## A fourth gap, found building Task 18 — `recovery-session`
+
+Different in kind from the three above (it is a *missing field*, not just a missing layout), but
+the same silent-failure shape, so it is recorded here rather than separately.
+
+`pqxdh.md` lists `recovery-session` as a PQXDH usage whose recipient key source is the session's
+`ephemeral_public_key`. Two things make it unimplementable as specified:
+
+1. **One field, two keys.** `POST /recovery/request` takes a single opaque
+   `ephemeral_public_key`, but PQXDH needs an X25519 (32 B) **and** an ML-KEM-768 (1184 B)
+   recipient key. No packing is defined, and `service.go:401` only checks the field is
+   non-empty — so the guardian's device and the recovering device must agree on an encoding
+   that nothing validates.
+
+2. **The recovering device cannot build `info`.** It needs
+   `"Cryple-PQXDH-v1|recovery-session|{sender}|{recipient}"`, but
+   `GET /recovery/session/{id}` returns only `{re_encrypted_share, submitted_at}`
+   (`listSessionShares` in `repository/statements.go:228`). It learns neither the submitting
+   guardian's `user_address` (sender) nor its own account's `user_address` (recipient, per
+   `pqxdh.md`) — and it cannot derive its own, because that needs the seed being recovered.
+   There is no username → address lookup.
+
+**Possible resolutions, all the backend's call:**
+
+- Define the packing (e.g. a length-prefixed concatenation, or two fields
+  `ephemeral_x25519_public` / `ephemeral_mlkem_public` — a small, additive schema change), **and**
+- Either return the guardian's `user_address` alongside each collected share, or define
+  `recovery-session` to use fixed sentinel values in the `info` string instead of real addresses
+  — the ephemeral key is already single-use and session-bound, so the addresses may be
+  contributing less binding here than they do for `succession-dek`.
+
+Until then `src/lib/recovery/session-crypto.ts` throws
+`RecoverySessionCryptoUnspecifiedError`; everything around it (request, poll, vault fetch,
+SSS reconstruction, seed decryption) is built and tested behind that seam.
+
 ## What is already settled, and is not in question
 
 - The **frozen key tree** derives exactly four things and no symmetric key. This proposal adds

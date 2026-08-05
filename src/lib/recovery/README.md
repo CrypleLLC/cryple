@@ -223,9 +223,61 @@ The same absence rule applies to `owner_user_address` and `owner_release_cycle` 
 place a guardian can obtain either, and `owner_release_cycle` must be re-read before every
 release vote — it changes when a countdown is cancelled.
 
+## The recovery session — recovering-device side
+
+> ### ⚠️ The PQXDH binding for `recovery-session` is unspecified
+>
+> The transport, polling, vault fetch and reconstruction are built and tested. **The crypto is
+> not**, and it is not a matter of writing it — two things are missing from the wire contract:
+>
+> 1. **`POST /recovery/request` carries a single opaque `ephemeral_public_key`**, but PQXDH
+>    needs **both** an X25519 (32 B) and an ML-KEM-768 (1184 B) recipient key. No encoding for
+>    packing two keys into one field is defined anywhere, and the server stores the value
+>    unvalidated (`service.go:401` only checks it is non-empty).
+> 2. **The recovering device cannot build the PQXDH `info` string.**
+>    `info = "Cryple-PQXDH-v1|recovery-session|{sender}|{recipient}"`, but
+>    `GET /recovery/session/{id}` returns only `{re_encrypted_share, submitted_at}` — the
+>    device learns neither the submitting **guardian's** `user_address` (the sender) nor its
+>    **own account's** `user_address` (the recipient, per `pqxdh.md`). It cannot derive its own,
+>    because that needs the seed it is trying to recover, and there is no username → address
+>    lookup.
+>
+> `generateEphemeralKeys` and `unwrapShare` therefore throw
+> `RecoverySessionCryptoUnspecifiedError`. **Do not invent either** — same silent-failure shape
+> as the KEK. Recorded in [proposals/opaque-blob-layouts.md](../../../proposals/opaque-blob-layouts.md).
+
+What does work:
+
+| Function | Endpoint | Notes |
+| --- | --- | --- |
+| `startRecovery` | `POST /recovery/request` | public, **unsigned**, **not retry-safe** |
+| `getRecoverySession` / `pollRecoverySession` | `GET /recovery/session/{id}` | public |
+| `getRecoveryVault` | `GET /recovery/vault?username=` | public |
+| `completeRecovery` | — | unwrap → combine → decrypt |
+
+**`POST /recovery/request` creates a row per call.** There is no idempotency key and no
+signature — the caller has lost the seed, so there is no key to sign with, and its protection
+is the guardian vote rather than a credential. **Persist `session.id` before the first
+attempt** and resume by polling it; a blind retry strands the first session with its own
+30-minute TTL and its own shares.
+
+**Shares are withheld below the threshold.** Under `k`, `shares` is absent; at or above it,
+`status` flips to `shares_collected` and every collected share arrives at once.
+
+**Poll, do not wait** — there are no webhooks. `pollRecoverySession` defaults to 3s, takes an
+`AbortSignal` so polling stops when the screen closes, and raises `SessionExpiredError` both on
+a `409` and on a locally-observed `expires_at`. Sessions live 30 minutes.
+
+`completeRecovery` accepts an `ownShare` alongside the collected ones — the user's Recovery Kit
+copy, typed or scanned from the PDF. That is the share that actually counts at recovery time,
+since the server-stored share 0 is wrapped to keys the user no longer has.
+
+After reconstruction the flow rejoins the normal restore path (Task 10): set a new local PIN,
+re-wrap the seed, then `POST /sign-up` to restore.
+
 ## What is not here
 
-The recovery session flows are Tasks 18–19; PIN reset is Task 20.
+The guardian side of the session is Task 19; PIN reset is Task 20.
 
 ## Tests
 

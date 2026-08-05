@@ -147,6 +147,13 @@ review, not a decision taken here.
    that rejects unknown version bytes, so a later ratified layout is detectable rather than
    silently misparsed. It needs ratifying alongside the KEK.
 
-3. **The `encrypted_seed` byte layout** (Tasks 15/16/18). `recovery-flow.md:477` names AES-GCM
+3. **The `recovery-session` PQXDH binding** (blocks Task 18's unwrap, and Task 19). Two missing
+   pieces: `POST /recovery/request` carries one opaque `ephemeral_public_key` where PQXDH needs
+   an X25519 **and** an ML-KEM key, and `GET /recovery/session/{id}` returns no guardian
+   identity, so the recovering device cannot build the PQXDH `info` string (it knows neither
+   the sender's nor its own `user_address`). Seam throws in
+   `src/lib/recovery/session-crypto.ts`.
+
+4. **The `encrypted_seed` byte layout** (Tasks 15/16/18). `recovery-flow.md:477` names AES-GCM
    but not where the IV sits, and the blob is written by one device and read by another during
    recovery — plus it is committed to the `recovery-setup` signature digest.
