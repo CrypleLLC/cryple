@@ -167,9 +167,65 @@ the client has a bug — and errors carry no message to render, so the check has
 `SetupValidationError` and `ThresholdError` both extend `RecoveryValidationError`, so one
 `catch` covers payload validation regardless of which rule failed.
 
+## Guardian management
+
+| Function | Endpoint | Action | Signed by |
+| --- | --- | --- | --- |
+| `inviteGuardian` | `POST /recovery/guardians/invite` | `guardian-invite` | owner |
+| `acceptGuardianship` | `PATCH /recovery/guardians/{id}/accept` | `guardian-accept` | **invitee** |
+| `revokeGuardian` | `DELETE /recovery/guardians/{id}` | `guardian-revoke` | owner |
+| `listGuardians` | `GET /recovery/guardians` | — | paginated |
+| `listGuardianships` | `GET /recovery/guardianships` | — | paginated |
+
+**Both directions of a guardian-set change need the seed key.** Adding is not the safe half: a
+guardian the owner did not choose counts toward the PIN-reset quorum, can fetch a Shamir share,
+and can cast a release vote.
+
+**Invite signs the `guardian_username`**, so a signature made for one username is refused for
+another. The server checks that signature **before** looking the username up, so this endpoint
+is never a username-existence oracle — use `GET /users/lookup` for that. A test asserts the
+signature fails to verify against a substituted username.
+
+**Accept needs a signature, not just the JWT** — it changed on 2026-07-29 and used to be a
+bodyless `PATCH`. Accepting is the moment the owner's `user_address` becomes visible to you and
+the moment you start counting toward their quorum, so a bearer token must not be able to forge
+the second leg of a consent handshake. It is the **invitee's own** second factor that applies.
+
+### Revocation is not cryptographic revocation
+
+`revokeGuardian` returns a `200` **with a body you must read**. When `recovery_setup_stale` is
+`true`, re-running `PUT /recovery/setup` is a **required next step, not a notice**:
+
+- the vault still claims `n_shares` holders but one is gone, and
+- more importantly, **the revoked guardian already downloaded their share.** Deleting the row
+  stops the server serving it; it does not take it back. Until you re-split under a **fresh
+  REK** and re-encrypt the seed, `k` holders including the ex-guardian can still reconstruct it.
+
+`recovery_setup_stale` is `false` when they never held a share — nothing to redo.
+
+The call is idempotent: a retry answers `share_removed: false`, `votes_withdrawn: 0`. Use a
+fresh challenge, since action signatures are single-use.
+
+### Quorum
+
+`summarizeQuorum` returns the active count, the configured threshold and the effective quorum
+`min(configured, active)` **together**, plus `raisesBarWithoutParticipant` — because a forced or
+accidental extra guardian raises the owner's bar without adding anyone who will actually
+respond. Surface them as one unit; the number alone is misleading.
+
+`toRecipient` converts a listed guardian into a PQXDH recipient for
+[`buildSetupPayload`](#put-recoverysetup-and-its-digest). It throws
+`GuardianKeysUnavailableError` rather than wrapping to nothing when the guardian is not yet
+active — `encryption_public_key_*` are **absent** on non-active rows, not empty strings.
+
+The same absence rule applies to `owner_user_address` and `owner_release_cycle` on
+`GET /recovery/guardianships`: present only on `active` rows. That endpoint is the **only**
+place a guardian can obtain either, and `owner_release_cycle` must be re-read before every
+release vote — it changes when a countdown is cancelled.
+
 ## What is not here
 
-Guardian invite/accept/revoke is Task 17; the recovery session flows are Tasks 18–19.
+The recovery session flows are Tasks 18–19; PIN reset is Task 20.
 
 ## Tests
 
