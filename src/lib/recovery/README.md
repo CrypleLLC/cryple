@@ -123,11 +123,53 @@ Lower level: `generateRek`, `encryptSeedPhrase` / `decryptSeedPhrase`, `splitSec
 The REK is zeroed in a `finally` on every path in both `buildRecoveryVault` and
 `recoverSeedPhrase`.
 
+## `PUT /recovery/setup` and its digest
+
+`buildSetupPayload` does the whole client side: builds the vault, PQXDH-wraps every share with
+`usage=recovery-share`, and returns the payload plus the **raw share 0** for the Recovery Kit.
+`submitRecoverySetup` validates, digests, signs and sends it.
+
+Share 0 is wrapped **to the owner's own keys** (sender and recipient both the owner), per
+[`recovery-flow.md:126`](../../../../api-general/.docs/recovery-flow.md) — *"encrypted with
+User's own public key → Recovery Kit (PDF / offline)"*. The stored copy lets an owner who still
+has their seed re-download their kit; it is useless during an actual recovery, because
+unwrapping it needs the very seed that was lost. **That is why `recoveryKitShare` is returned
+raw** — the offline PDF is the copy that matters.
+
+### The digest
+
+```
+canonical = encrypted_seed | n_shares | k_threshold | version
+          | share_index ":" guardian_username ":" pq_hybrid_encrypted_share   (one per share)
+argument  = lowercase hex SHA-256(canonical)
+```
+
+- Fields joined with `|`, the three inside a share with `:`.
+- **Shares sorted ascending by `share_index`** before serializing, so the digest does not depend
+  on the order the client happened to build the array in. `canonicalSetupString` sorts a copy —
+  it never mutates the caller's array.
+- **Share 0's middle field is empty** — it has no guardian.
+- **`version` is the literal string you send** — empty when omitted, because the digest is
+  computed before the server normalizes it to `v1`. **Sign what you send.** `buildSetupPayload`
+  omits the key entirely by default, and `JSON.stringify` drops it, so body and digest agree.
+
+Signing the payload rather than the intent is what stops anything between client and server
+substituting its own shares on a validly-authorized call — setup **deletes every existing
+share** and overwrites the vault in one transaction.
+
+### Local validation
+
+`validateSetupPayload` mirrors every server rule (`shares.length === n_shares`, unique indices
+in range, index 0 present and guardian-less, a guardian on every index ≥ 1, no guardian twice,
+non-empty ciphertexts, version). The guide is explicit that a `400` from this endpoint means
+the client has a bug — and errors carry no message to render, so the check has to be local.
+
+`SetupValidationError` and `ThresholdError` both extend `RecoveryValidationError`, so one
+`catch` covers payload validation regardless of which rule failed.
+
 ## What is not here
 
-Wrapping shares **to guardians** is PQXDH `usage=recovery-share` and lives in
-[`lib/pqxdh`](../pqxdh/README.md). Submitting the vault (`PUT /recovery/setup`, its digest, and
-guardian management) is Tasks 16–17.
+Guardian invite/accept/revoke is Task 17; the recovery session flows are Tasks 18–19.
 
 ## Tests
 

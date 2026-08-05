@@ -1,4 +1,5 @@
 import { combine as sssCombine, split as sssSplit } from 'shamir-secret-sharing';
+import { RecoveryValidationError } from './errors';
 
 export const MIN_SHARES = 1;
 export const MAX_SHARES = 255;
@@ -14,10 +15,9 @@ export interface SplitConfig {
   threshold: number;
 }
 
-export class ThresholdError extends Error {
+export class ThresholdError extends RecoveryValidationError {
   constructor(message: string) {
-    super(message);
-    this.name = 'ThresholdError';
+    super(message, 'ThresholdError');
   }
 }
 
