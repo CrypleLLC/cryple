@@ -89,11 +89,12 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
 
 ## Milestone 4 — Succession
 
-- [ ] **Task 21: Beneficiaries.** Register (action `beneficiary-register`; omit the snapshot fields and let the server copy the heir's enrolled keys — supplying them only adds a mismatch failure mode; re-registering refreshes and **drops that heir's wrapped shares**, surfaced from `dropped_shares`), list (`keys_rotated: true` means *the heir deleted their account* — render "remove them and choose another", never a re-wrap prompt), delete (action `beneficiary-delete`, cascades their shares).
+- [x] **Task 21: Beneficiaries.** Register (action `beneficiary-register`; omit the snapshot fields and let the server copy the heir's enrolled keys — supplying them only adds a mismatch failure mode; re-registering refreshes and **drops that heir's wrapped shares**, surfaced from `dropped_shares`), list (`keys_rotated: true` means *the heir deleted their account* — render "remove them and choose another", never a re-wrap prompt), delete (action `beneficiary-delete`, cascades their shares).
 
-- [ ] **Task 22: Inheritance shares** *(needs Task 12/13 for the owner-side unwrap)*. Assign: unwrap the item's DEK, PQXDH-wrap it to the heir's snapshot keys (`usage=succession-dek`), `POST /succession/shares` (action `share-assign`, args `beneficiary_id, item_id`). List per beneficiary; delete (action `share-delete`). `item_type` is `secret` only.
+- [x] **Task 22: Inheritance shares** — built, with its one blocked step behind the Task 12 seam. Assign: unwrap the item's DEK, PQXDH-wrap it to the heir's snapshot keys (`usage=succession-dek`), `POST /succession/shares` (action `share-assign`, args `beneficiary_id, item_id`). List per beneficiary; delete (action `share-delete`). `item_type` is `secret` only. **The `unwrapDek` call still rejects with `KekNotSpecifiedError`** until Decision A lands, so assignment throws before reaching the network; everything downstream of the unwrap is implemented and tested against a stand-in wrapper. No call site changes when the KEK ships.
 
-- [ ] **Task 23: Release votes and status.** Guardian: fetch `release_cycle` from `GET /succession/status` **immediately before** signing `succession-release-vote` (args: owner's `user_address`, cycle — a cycle-*n* signature is refused in cycle *n+1*). Owner: status renders only `monitoring` / `counting_down` (nothing writes the other states; `last_check_in` is not a live "last seen"); `GET /succession/votes` audited client-side by rebuilding `challenge:signed_timestamp:succession-release-vote:owner_address:release_cycle` per vote.
+- [x] **Task 23: Release votes and status.** Guardian: fetch the cycle **immediately before** signing `succession-release-vote` (args: owner's `user_address`, cycle — a cycle-*n* signature is refused in cycle *n+1*). Owner: status renders only `monitoring` / `counting_down` (nothing writes the other states; `last_check_in` is not a live "last seen"); `GET /succession/votes` audited client-side by rebuilding `challenge:signed_timestamp:succession-release-vote:owner_address:release_cycle` per vote.
+  - ⚠️ **Corrected while implementing**: this task said to read `release_cycle` from `GET /succession/status`. That endpoint is **owner-scoped** and reports the guardian's *own* switch, so its cycle is the wrong number to sign. [front-end-endpoints.md](./front-end-endpoints.md) says so explicitly under both `POST /succession/votes` and `GET /succession/status`: guardians read `owner_release_cycle` from `GET /recovery/guardianships`. The guide wins on wire behaviour; the implementation follows it.
 
 ## Milestone 5 — Product shell and cleanup
 
@@ -152,7 +153,9 @@ provisionally, so that code becomes final rather than changing.
 
 - **A + B** → implement `DekWrapper` in `src/lib/secrets/dek.ts` and make it the default; refresh
   `src/test/fixtures/test-vectors.json`; add KEK + sealed-blob assertions; delete
-  `fakeDekWrapperForTestsOnly`; close Task 13, then Task 22.
+  `fakeDekWrapperForTestsOnly`; close Task 13. Task 22 needs no change beyond that — its
+  assignment path is built and only its `unwrapDek` call is blocked. Decision A's vault key is
+  also what should seal `encrypted_label` (`succession`'s one pass-through field).
 - **C + D** → implement `RecoverySessionCrypto` in `src/lib/recovery/session-crypto.ts`; update the
   `POST /recovery/request` body to two fields; close Tasks 18 and 19.
 
