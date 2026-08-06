@@ -10,14 +10,14 @@ import type { AuthedContext } from '@/lib/context';
 import {
   awaitingSubmission,
   contributeShare,
+  ephemeralPublicFields,
+  generateEphemeralKeys,
   getStoredShare,
   listPendingSessions,
-  RecoverySessionCryptoUnspecifiedError,
   submitReEncryptedShare,
   unwrapOwnShare,
-  unspecifiedRecoverySessionCrypto,
+  unwrapSessionShare,
   type PendingSession,
-  type RecoverySessionCrypto,
 } from './index';
 
 const mnemonic = vectors.seed_and_user_address.mnemonic;
@@ -28,21 +28,6 @@ const publicKey = tree.identity.publicKeyUncompressed;
 const SESSION_ID = '4d7a1b2c-4f89-11d3-9a0c-0305e82c3301';
 const OWNER_ADDRESS = 'a'.repeat(64);
 const GUARDIAN_ADDRESS = vectors.seed_and_user_address.user_address;
-const RECOVERING_ADDRESS = OWNER_ADDRESS;
-
-function fakeSessionCryptoForTestsOnly(): RecoverySessionCrypto {
-  return {
-    async generateEphemeralKeys() {
-      throw new Error('not used');
-    },
-    async rewrapToSession(share) {
-      return bytesToBase64(share);
-    },
-    async unwrapShare(blob) {
-      return Uint8Array.from(atob(blob), (c) => c.charCodeAt(0));
-    },
-  };
-}
 
 function mockFetch(...specs: { status: number; body?: unknown }[]) {
   const calls: { method: string; url: string; body?: Record<string, unknown> }[] = [];
@@ -78,6 +63,9 @@ async function newContext(paranoid = true): Promise<AuthedContext> {
   return { session, tokens, paranoid };
 }
 
+const EPHEMERAL_KEYS = generateEphemeralKeys();
+const EPHEMERAL_FIELDS = ephemeralPublicFields(EPHEMERAL_KEYS);
+
 const SHARE_PLAINTEXT = new Uint8Array(33).fill(7);
 
 async function ownerWrappedShare(): Promise<string> {
@@ -99,7 +87,7 @@ describe('the guardian inbox', () => {
     {
       session_id: SESSION_ID,
       owner_username: '3f1c8a2b9d4e',
-      ephemeral_public_key: 'base64-ephemeral',
+      ...EPHEMERAL_FIELDS,
       submitted: false,
       expires_at: '2026-07-26T12:30:00Z',
       created_at: '2026-07-26T12:00:00Z',
@@ -107,7 +95,7 @@ describe('the guardian inbox', () => {
     {
       session_id: '9c4f2a1b-4f89-11d3-9a0c-0305e82c3301',
       owner_username: '7a2d5e1b8c3f',
-      ephemeral_public_key: 'base64-ephemeral-2',
+      ...EPHEMERAL_FIELDS,
       submitted: true,
       expires_at: '2026-07-26T12:30:00Z',
       created_at: '2026-07-26T12:00:00Z',
@@ -130,7 +118,7 @@ describe('the guardian inbox', () => {
       body: {
         data: {
           session_id: SESSION_ID,
-          ephemeral_public_key: 'base64-ephemeral',
+          ...EPHEMERAL_FIELDS,
           pq_hybrid_encrypted_share: 'opaque',
         },
       },
@@ -239,10 +227,17 @@ describe('the full contribution', () => {
     body: {
       data: {
         session_id: SESSION_ID,
-        ephemeral_public_key: 'base64-ephemeral',
+        ...EPHEMERAL_FIELDS,
         pq_hybrid_encrypted_share: '',
       },
     },
+  };
+
+  const contributeOptions = {
+    ownerUserAddress: OWNER_ADDRESS,
+    guardianUserAddress: GUARDIAN_ADDRESS,
+    x25519PrivateKey: tree.x25519.privateKey,
+    mlkemSecretKey: tree.mlkem768.secretKey,
   };
 
   it('fetches, unwraps, re-wraps and submits', async () => {
@@ -255,52 +250,64 @@ describe('the full contribution', () => {
       { status: 204 },
     );
 
-    await contributeShare(await newContext(), SESSION_ID, {
-      ownerUserAddress: OWNER_ADDRESS,
-      guardianUserAddress: GUARDIAN_ADDRESS,
-      recoveringUserAddress: RECOVERING_ADDRESS,
-      x25519PrivateKey: tree.x25519.privateKey,
-      mlkemSecretKey: tree.mlkem768.secretKey,
-      crypto: fakeSessionCryptoForTestsOnly(),
-    });
+    await contributeShare(await newContext(), SESSION_ID, contributeOptions);
 
     expect(calls).toHaveLength(2);
     expect(calls[1].method).toBe('POST');
     expect(calls[1].url).toContain('/recovery/submit');
-
-    const submitted = calls[1].body!.re_encrypted_share as string;
-    expect(bytesToHex(Uint8Array.from(atob(submitted), (c) => c.charCodeAt(0)))).toBe(
-      bytesToHex(SHARE_PLAINTEXT),
-    );
   });
 
-  it('is blocked at the re-wrap when no session crypto is supplied', async () => {
+  it('hands the recovering device something only its ephemeral keys can open', async () => {
+    const wrapped = await ownerWrappedShare();
+    const calls = mockFetch(
+      {
+        status: 200,
+        body: { data: { ...storedResponse.body.data, pq_hybrid_encrypted_share: wrapped } },
+      },
+      { status: 204 },
+    );
+
+    await contributeShare(await newContext(), SESSION_ID, contributeOptions);
+
+    const submitted = calls[1].body!.re_encrypted_share as string;
+    const opened = await unwrapSessionShare(submitted, EPHEMERAL_KEYS, SESSION_ID);
+
+    expect(bytesToHex(opened)).toBe(bytesToHex(SHARE_PLAINTEXT));
+  });
+
+  it('never puts the plaintext share on the wire', async () => {
+    const wrapped = await ownerWrappedShare();
+    const calls = mockFetch(
+      {
+        status: 200,
+        body: { data: { ...storedResponse.body.data, pq_hybrid_encrypted_share: wrapped } },
+      },
+      { status: 204 },
+    );
+
+    await contributeShare(await newContext(), SESSION_ID, contributeOptions);
+
+    const submitted = calls[1].body!.re_encrypted_share as string;
+    expect(submitted).not.toBe(bytesToBase64(SHARE_PLAINTEXT));
+    expect(atob(submitted)).not.toContain(String.fromCharCode(7).repeat(33));
+  });
+
+  it('refuses a malformed ephemeral key rather than wrapping to nonsense', async () => {
     const wrapped = await ownerWrappedShare();
     mockFetch({
       status: 200,
-      body: { data: { ...storedResponse.body.data, pq_hybrid_encrypted_share: wrapped } },
+      body: {
+        data: {
+          session_id: SESSION_ID,
+          ephemeral_x25519_public: 'AAAA',
+          ephemeral_mlkem_public: EPHEMERAL_FIELDS.ephemeral_mlkem_public,
+          pq_hybrid_encrypted_share: wrapped,
+        },
+      },
     });
 
     await expect(
-      contributeShare(await newContext(), SESSION_ID, {
-        ownerUserAddress: OWNER_ADDRESS,
-        guardianUserAddress: GUARDIAN_ADDRESS,
-        recoveringUserAddress: RECOVERING_ADDRESS,
-        x25519PrivateKey: tree.x25519.privateKey,
-        mlkemSecretKey: tree.mlkem768.secretKey,
-      }),
-    ).rejects.toThrow(RecoverySessionCryptoUnspecifiedError);
-  });
-
-  it('names rewrapToSession in the seam error', async () => {
-    const error = await unspecifiedRecoverySessionCrypto
-      .rewrapToSession(new Uint8Array(1), 'k', {
-        senderUserAddress: 'a',
-        recipientUserAddress: 'b',
-      })
-      .catch((e) => e);
-
-    expect(error).toBeInstanceOf(RecoverySessionCryptoUnspecifiedError);
-    expect(error.message).toContain('rewrapToSession');
+      contributeShare(await newContext(), SESSION_ID, contributeOptions),
+    ).rejects.toThrow(/ephemeral_x25519_public/);
   });
 });

@@ -81,9 +81,9 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
 
 - [x] **Task 17: Guardian management.** Invite (action `guardian-invite`, signs the username — signature verified before the username lookup, so no existence oracle), accept (action `guardian-accept` binding `invitation_id` — consent needs the seed key, not just the JWT), revoke (action `guardian-revoke` — deletes the share and withdraws standing votes), `GET /recovery/guardians`, `GET /recovery/guardianships`. Surface guardian count and effective quorum (`min(configured, active)`) together — an extra guardian raises the bar without adding a participant.
 
-- [ ] **Task 18: Seed recovery — recovering-device side.** `POST /recovery/request` (public, unsigned — the caller lost the seed; **not retry-safe**, it creates a row per call) with a fresh ephemeral key pair for the session; poll `GET /recovery/session/{id}` every few seconds while on screen (sessions expire in 30 minutes); fetch `GET /recovery/vault`; on quorum, unwrap shares (PQXDH `usage=recovery-session`, recipient = own `user_address`), reconstruct the REK, decrypt the seed, then run the normal restore path (Task 10).
+- [x] **Task 18: Seed recovery — recovering-device side.** `POST /recovery/request` (public, unsigned — the caller lost the seed; **not retry-safe**, it creates a row per call) with a fresh ephemeral key pair for the session; poll `GET /recovery/session/{id}` every few seconds while on screen (sessions expire in 30 minutes); fetch `GET /recovery/vault`; on quorum, unwrap shares (PQXDH `usage=recovery-session`, recipient = own `user_address`), reconstruct the REK, decrypt the seed, then run the normal restore path (Task 10).
 
-- [ ] **Task 19: Seed recovery — guardian side.** Poll `GET /recovery/sessions/pending` (~once a minute), `GET /recovery/share/{session_id}`, unwrap own share, re-wrap to the session's ephemeral key, submit via `POST /recovery/submit` (action `recovery-share-submit`, guardian's own second factor).
+- [x] **Task 19: Seed recovery — guardian side.** Poll `GET /recovery/sessions/pending` (~once a minute), `GET /recovery/share/{session_id}`, unwrap own share, re-wrap to the session's ephemeral key, submit via `POST /recovery/submit` (action `recovery-share-submit`, guardian's own second factor).
 
 - [x] **Task 20: PIN reset.** Owner: `request` / `revoke` / `confirm` (all signed, none takes a second factor — the owner lost the PIN; `confirm` signs the *new* token), 48h contest period surfaced in UI. Guardian: poll `GET /recovery/pin-reset/pending`, vote (action `pin-reset-vote`, guardian's second factor applies). Owner-side vote audit: `GET /auth/pin-reset/{id}/votes` returns semantic fields — rebuild `challenge:signed_timestamp:pin-reset-vote:request_id` and verify each signature client-side; never trust a server-rendered payload string.
 
@@ -114,6 +114,49 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
 - Bad signature and wrong PIN are indistinguishable by design (`401 INVALID_CREDENTIALS`); render one generic message.
 - When wire behaviour is ambiguous, the backend's tests are the tie-breaker: `../api-general/internal/domain/*/http/http_test.go` and `auth/service/service_test.go` (AGENTS.md § The API's own tests).
 - A task is not done until its domain README is updated and its fixture/unit tests pass.
+
+## Dependency graph
+
+```
+1 → 2 → 3 → 4,5,6 → 7 → 8 → 9 → 10 → 11
+                              12 → 13 ─────────┐
+                    14 → 15 → 16 → 17 → 18,19,20│
+                              21 → 22 (also ← 13)
+                              23
+                    24,25 (after their domains) → 26 → 27
+```
+
+Milestone 2's Task 13 is the only externally blocked item (KEK spec, backend). Milestones 3 and 4 do not depend on it except Task 22's unwrap step — sequence around it rather than waiting.
+
+## Backend spec decisions — taken 2026-08-06
+
+Four cross-client byte contracts were unspecified and blocked Tasks 13, 18, 19 and 22. All four
+are now **decided and written into `../api-general/.docs`**. Reasoning and the options that were
+weighed are in [proposals/opaque-blob-layouts.md](./proposals/opaque-blob-layouts.md).
+
+| # | Decision | Spec | Unblocks |
+| --- | --- | --- | --- |
+| A | Vault KEK = `HKDF-SHA512(seed, ∅, "Cryple-Key-v1\|vault-kek", 32)` | `crypto/ECDSA.md` § Step 5 | 13, 22 |
+| B | One sealed-blob envelope `0x01 ‖ iv(12) ‖ ct+tag` for `wrapped_dek`, `ciphertext`, `encrypted_seed` | `crypto/ECDSA.md` § Sealed Blob Format | 13, 15, 16, 22 |
+| C | Ephemeral session key becomes **two** fields: `ephemeral_x25519_public`, `ephemeral_mlkem_public` | `recovery-flow.md` | 18, 19 |
+| D | `recovery-session` `info` binds the **`session_id`** in both address slots | `crypto/pqxdh.md` § Exception | 18, 19 |
+
+**Nothing is unblocked until the backend side lands** — the specs are written, the vectors and the
+API change are not. Tracked as `api-general` Tasks 64–67. Until then the seams still throw:
+`src/lib/secrets/dek.ts` and `src/lib/recovery/session-crypto.ts`.
+
+Decision B ratifies the layout `src/lib/secrets/codec.ts` and `src/lib/sealed/` already ship
+provisionally, so that code becomes final rather than changing.
+
+### Client work once `api-general` Tasks 64–67 land
+
+- **A + B** → implement `DekWrapper` in `src/lib/secrets/dek.ts` and make it the default; refresh
+  `src/test/fixtures/test-vectors.json`; add KEK + sealed-blob assertions; delete
+  `fakeDekWrapperForTestsOnly`; close Task 13, then Task 22.
+- **C + D** → implement `RecoverySessionCrypto` in `src/lib/recovery/session-crypto.ts`; update the
+  `POST /recovery/request` body to two fields; close Tasks 18 and 19.
+
+No call sites change in either case — that is what the seams were for.
 
 ## Dependency graph
 

@@ -2,10 +2,11 @@ import { ApiError, assertCanonicalUuid, request } from '@/lib/api';
 import { zeroBytes } from '@/lib/encoding';
 import { recoverSeedPhrase } from './rek';
 import {
-  unspecifiedRecoverySessionCrypto,
+  disposeEphemeralKeys,
+  ephemeralPublicFields,
+  generateEphemeralKeys,
+  unwrapSessionShare,
   type EphemeralSessionKeys,
-  type RecoverySessionCrypto,
-  type SessionShareContext,
 } from './session-crypto';
 
 export const SESSION_TTL_MINUTES = 30;
@@ -45,7 +46,6 @@ export class SessionExpiredError extends Error {
 
 export interface StartRecoveryOptions {
   username: string;
-  crypto?: RecoverySessionCrypto;
   timeoutMs?: number;
 }
 
@@ -61,20 +61,21 @@ export interface StartedRecovery {
 export async function startRecovery(
   options: StartRecoveryOptions,
 ): Promise<StartedRecovery> {
-  const crypto = options.crypto ?? unspecifiedRecoverySessionCrypto;
-  const keys = await crypto.generateEphemeralKeys();
+  const keys = generateEphemeralKeys();
 
-  const response = await request<RecoverySession>({
-    method: 'POST',
-    path: '/recovery/request',
-    timeoutMs: options.timeoutMs,
-    body: {
-      username: options.username,
-      ephemeral_public_key: keys.publicKeyField,
-    },
-  });
+  try {
+    const response = await request<RecoverySession>({
+      method: 'POST',
+      path: '/recovery/request',
+      timeoutMs: options.timeoutMs,
+      body: { username: options.username, ...ephemeralPublicFields(keys) },
+    });
 
-  return { session: response.data, keys };
+    return { session: response.data, keys };
+  } catch (error) {
+    disposeEphemeralKeys(keys);
+    throw error;
+  }
 }
 
 export async function getRecoverySession(
@@ -174,16 +175,13 @@ export interface CompleteRecoveryOptions {
   session: RecoverySession;
   keys: EphemeralSessionKeys;
   vault: RecoveryVault;
-  shareContext: SessionShareContext;
   ownShare?: Uint8Array;
-  crypto?: RecoverySessionCrypto;
 }
 
 export async function completeRecovery(
   options: CompleteRecoveryOptions,
 ): Promise<string> {
-  const { session, keys, vault, shareContext, ownShare } = options;
-  const crypto = options.crypto ?? unspecifiedRecoverySessionCrypto;
+  const { session, keys, vault, ownShare } = options;
 
   if (!hasReachedThreshold(session)) {
     throw new Error('the session has not collected its threshold of shares yet');
@@ -193,7 +191,7 @@ export async function completeRecovery(
 
   try {
     for (const share of session.shares ?? []) {
-      unwrapped.push(await crypto.unwrapShare(share.re_encrypted_share, keys, shareContext));
+      unwrapped.push(await unwrapSessionShare(share.re_encrypted_share, keys, session.id));
     }
     if (ownShare !== undefined) {
       unwrapped.push(ownShare);
@@ -211,10 +209,6 @@ export async function completeRecovery(
       zeroBytes(share);
     }
   }
-}
-
-export function disposeEphemeralKeys(keys: EphemeralSessionKeys): void {
-  zeroBytes(keys.x25519PrivateKey, keys.mlkemSecretKey);
 }
 
 export * from './session-crypto';

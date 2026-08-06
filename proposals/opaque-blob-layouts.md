@@ -1,8 +1,26 @@
-# Proposal: the three unspecified opaque-blob byte contracts
+# Proposal: the unspecified opaque-blob byte contracts
 
-**Status: PROPOSAL. Nothing here is decided, and none of it is implemented as spec in the
-client.** Written from `web-app` because that is where the gaps surfaced during integration;
-the decision and the resulting spec text belong in **`api-general`**, in
+> ## ✅ ACCEPTED 2026-08-06 — kept as the rationale record
+>
+> All four gaps below were decided and written into `../api-general/.docs`:
+>
+> | # | Decision | Landed in |
+> | --- | --- | --- |
+> | A | Vault KEK — `HKDF-SHA512(seed, ∅, "Cryple-Key-v1\|vault-kek", 32)` | `crypto/ECDSA.md` § Step 5 |
+> | B | One sealed-blob envelope for all three fields | `crypto/ECDSA.md` § Sealed Blob Format |
+> | C | Two ephemeral key fields on `POST /recovery/request` | `recovery-flow.md` |
+> | D | `recovery-session` binds the `session_id` | `crypto/pqxdh.md` § Exception |
+>
+> Open questions 1–4 at the foot of this document were answered as: `vault-kek`; **one** envelope
+> for all three; `encrypted_seed`'s layout co-located in `ECDSA.md` with a pointer from
+> `recovery-flow.md`; the file vault (postponed) inherits the same envelope and version byte.
+>
+> **The specs are written; the vectors and the API change are not** — tracked as `api-general`
+> Tasks 64–67. This document is retained because the spec records *what* was decided and this
+> records *why*, including the options that were rejected.
+
+**Original status: PROPOSAL.** Written from `web-app` because that is where the gaps surfaced
+during integration; the decision and the resulting spec text belong in **`api-general`**, in
 [`.docs/crypto/ECDSA.md`](../../api-general/.docs/crypto/ECDSA.md), with regenerated vectors.
 
 > **The labels and constructions below are the backend spec's to choose, never this client's.**

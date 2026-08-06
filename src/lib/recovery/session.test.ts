@@ -1,49 +1,32 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import vectors from '@/test/fixtures/test-vectors.json';
-import { bytesToBase64 } from '@/lib/encoding';
+import { bytesToHex } from '@/lib/encoding';
+import { UnsupportedPqxdhVersionError } from '@/lib/pqxdh';
 import {
   buildRecoveryVault,
   completeRecovery,
   disposeEphemeralKeys,
+  ephemeralPublicFields,
+  generateEphemeralKeys,
   getRecoverySession,
   getRecoveryVault,
   hasReachedThreshold,
   isSessionExpired,
+  MalformedEphemeralKeyError,
+  parseSessionRecipient,
   pollRecoverySession,
-  RecoverySessionCryptoUnspecifiedError,
+  rewrapToSession,
   SessionExpiredError,
   startRecovery,
-  unspecifiedRecoverySessionCrypto,
-  type EphemeralSessionKeys,
+  unwrapSessionShare,
+  EPHEMERAL_MLKEM_PUBLIC_LENGTH,
+  EPHEMERAL_X25519_PUBLIC_LENGTH,
   type RecoverySession,
-  type RecoverySessionCrypto,
 } from './index';
 
 const mnemonic = vectors.seed_and_user_address.mnemonic;
 const SESSION_ID = '4d7a1b2c-4f89-11d3-9a0c-0305e82c3301';
-
-/**
- * Stands in for the unspecified recovery-session binding so the transport and
- * reconstruction paths can be exercised. It stores shares in the clear and is
- * NOT a protocol proposal — it must never leave this test file.
- */
-function fakeSessionCryptoForTestsOnly(): RecoverySessionCrypto {
-  return {
-    async generateEphemeralKeys() {
-      return {
-        publicKeyField: 'fake-ephemeral-public-key',
-        x25519PrivateKey: new Uint8Array(32).fill(1),
-        mlkemSecretKey: new Uint8Array(64).fill(2),
-      };
-    },
-    async rewrapToSession(share) {
-      return bytesToBase64(share);
-    },
-    async unwrapShare(reEncryptedShare) {
-      return Uint8Array.from(atob(reEncryptedShare), (c) => c.charCodeAt(0));
-    },
-  };
-}
+const OTHER_SESSION_ID = '9c4f2a1b-4f89-11d3-9a0c-0305e82c3301';
 
 function mockFetch(...specs: { status: number; body?: unknown }[]) {
   const calls: { method: string; url: string; body?: Record<string, unknown> }[] = [];
@@ -85,73 +68,160 @@ function session(overrides: Partial<RecoverySession> = {}): RecoverySession {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('the recovery-session crypto seam ships unimplemented', () => {
-  it('throws rather than inventing an ephemeral key encoding', async () => {
-    await expect(unspecifiedRecoverySessionCrypto.generateEphemeralKeys()).rejects.toThrow(
-      RecoverySessionCryptoUnspecifiedError,
+describe('ephemeral session keys (Decision C)', () => {
+  it('generates a hybrid pair — X25519 and ML-KEM-768', () => {
+    const keys = generateEphemeralKeys();
+
+    expect(keys.x25519PublicKey).toHaveLength(EPHEMERAL_X25519_PUBLIC_LENGTH);
+    expect(keys.mlkemPublicKey).toHaveLength(EPHEMERAL_MLKEM_PUBLIC_LENGTH);
+    expect(keys.x25519PrivateKey).toHaveLength(32);
+    expect(keys.mlkemSecretKey.length).toBeGreaterThan(0);
+  });
+
+  it('is fresh every session', () => {
+    const a = generateEphemeralKeys();
+    const b = generateEphemeralKeys();
+    expect(bytesToHex(a.x25519PublicKey)).not.toBe(bytesToHex(b.x25519PublicKey));
+    expect(bytesToHex(a.mlkemPublicKey)).not.toBe(bytesToHex(b.mlkemPublicKey));
+  });
+
+  it('exposes both public halves as two separate wire fields', () => {
+    const fields = ephemeralPublicFields(generateEphemeralKeys());
+
+    expect(Object.keys(fields).sort()).toEqual([
+      'ephemeral_mlkem_public',
+      'ephemeral_x25519_public',
+    ]);
+    expect(fields.ephemeral_x25519_public).toHaveLength(44);
+    expect(fields.ephemeral_mlkem_public).toHaveLength(1580);
+  });
+
+  it('round-trips the wire fields back to key material', () => {
+    const keys = generateEphemeralKeys();
+    const parsed = parseSessionRecipient(ephemeralPublicFields(keys));
+
+    expect(bytesToHex(parsed.x25519PublicKey)).toBe(bytesToHex(keys.x25519PublicKey));
+    expect(bytesToHex(parsed.mlkemPublicKey)).toBe(bytesToHex(keys.mlkemPublicKey));
+  });
+
+  it('rejects a key of the wrong length rather than wrapping to nonsense', () => {
+    const fields = ephemeralPublicFields(generateEphemeralKeys());
+
+    expect(() =>
+      parseSessionRecipient({ ...fields, ephemeral_x25519_public: 'AAAA' }),
+    ).toThrow(MalformedEphemeralKeyError);
+    expect(() =>
+      parseSessionRecipient({ ...fields, ephemeral_mlkem_public: 'AAAA' }),
+    ).toThrow(MalformedEphemeralKeyError);
+  });
+
+  it('zeroes the private halves when the session ends', () => {
+    const keys = generateEphemeralKeys();
+    disposeEphemeralKeys(keys);
+
+    expect([...keys.x25519PrivateKey].every((b) => b === 0)).toBe(true);
+    expect([...keys.mlkemSecretKey].every((b) => b === 0)).toBe(true);
+  });
+});
+
+describe('the session-bound PQXDH wrap (Decision D)', () => {
+  it('round-trips a share through the ephemeral keys', async () => {
+    const keys = generateEphemeralKeys();
+    const share = new Uint8Array(33).fill(9);
+
+    const blob = await rewrapToSession(share, ephemeralPublicFields(keys), SESSION_ID);
+    const opened = await unwrapSessionShare(blob, keys, SESSION_ID);
+
+    expect(bytesToHex(opened)).toBe(bytesToHex(share));
+  });
+
+  it('binds the session id — a blob from another session will not open', async () => {
+    const keys = generateEphemeralKeys();
+    const blob = await rewrapToSession(
+      new Uint8Array(33).fill(9),
+      ephemeralPublicFields(keys),
+      SESSION_ID,
     );
+
+    await expect(unwrapSessionShare(blob, keys, OTHER_SESSION_ID)).rejects.toThrow();
   });
 
-  it('names both halves of the gap', async () => {
-    const error = await unspecifiedRecoverySessionCrypto
-      .generateEphemeralKeys()
-      .catch((e) => e);
+  it('will not open under a different session’s ephemeral keys', async () => {
+    const mine = generateEphemeralKeys();
+    const theirs = generateEphemeralKeys();
 
-    expect(error.message).toContain('X25519');
-    expect(error.message).toContain('ML-KEM-768');
-    expect(error.message).toContain('info string');
-    expect(error.message).toContain('user_address');
-  });
-
-  it('is what startRecovery hits when no implementation is supplied', async () => {
-    mockFetch({ status: 201, body: { data: session() } });
-    await expect(startRecovery({ username: 'alice' })).rejects.toThrow(
-      RecoverySessionCryptoUnspecifiedError,
+    const blob = await rewrapToSession(
+      new Uint8Array(33).fill(9),
+      ephemeralPublicFields(mine),
+      SESSION_ID,
     );
+
+    await expect(unwrapSessionShare(blob, theirs, SESSION_ID)).rejects.toThrow();
   });
 
-  it('blocks the unwrap too', async () => {
+  it('produces a self-contained PQXDH blob of the documented size', async () => {
+    const keys = generateEphemeralKeys();
+    const blob = await rewrapToSession(
+      new Uint8Array(33),
+      ephemeralPublicFields(keys),
+      SESSION_ID,
+    );
+
+    expect(atob(blob)).toHaveLength(1 + 1088 + 32 + 12 + 33 + 16);
+  });
+
+  it('rejects an unknown version byte', async () => {
+    const keys = generateEphemeralKeys();
+    const blob = await rewrapToSession(
+      new Uint8Array(33),
+      ephemeralPublicFields(keys),
+      SESSION_ID,
+    );
+
+    const bytes = Uint8Array.from(atob(blob), (c) => c.charCodeAt(0));
+    bytes[0] = 0x02;
+
     await expect(
-      unspecifiedRecoverySessionCrypto.unwrapShare(
-        'x',
-        {} as EphemeralSessionKeys,
-        { senderUserAddress: 'a', recipientUserAddress: 'b' },
-      ),
-    ).rejects.toThrow(RecoverySessionCryptoUnspecifiedError);
+      unwrapSessionShare(btoa(String.fromCharCode(...bytes)), keys, SESSION_ID),
+    ).rejects.toThrow(UnsupportedPqxdhVersionError);
   });
 });
 
 describe('POST /recovery/request', () => {
-  it('is public — it carries no Authorization header, because the seed is lost', async () => {
+  it('sends both ephemeral public keys and nothing else', async () => {
     const calls = mockFetch({ status: 201, body: { data: session() } });
 
-    await startRecovery({ username: 'alice1234abcd', crypto: fakeSessionCryptoForTestsOnly() });
+    await startRecovery({ username: 'alice1234abcd' });
 
     expect(calls[0].method).toBe('POST');
-    expect(calls[0].body).toEqual({
-      username: 'alice1234abcd',
-      ephemeral_public_key: 'fake-ephemeral-public-key',
-    });
+    expect(Object.keys(calls[0].body!).sort()).toEqual([
+      'ephemeral_mlkem_public',
+      'ephemeral_x25519_public',
+      'username',
+    ]);
+    expect(calls[0].body!.username).toBe('alice1234abcd');
   });
 
-  it('carries no signature — there is no key to sign with', async () => {
+  it('carries no signature or token — the seed is lost, so there is no key', async () => {
     const calls = mockFetch({ status: 201, body: { data: session() } });
-    await startRecovery({ username: 'alice', crypto: fakeSessionCryptoForTestsOnly() });
+    await startRecovery({ username: 'alice' });
 
     expect(calls[0].body).not.toHaveProperty('signature');
     expect(calls[0].body).not.toHaveProperty('challenge');
+    expect(calls[0].body).not.toHaveProperty('password');
   });
 
-  it('returns the session and the ephemeral keys to hold for the session', async () => {
+  it('returns the session and the keys to hold for its lifetime', async () => {
     mockFetch({ status: 201, body: { data: session() } });
-    const { session: created, keys } = await startRecovery({
-      username: 'alice',
-      crypto: fakeSessionCryptoForTestsOnly(),
-    });
+    const { session: created, keys } = await startRecovery({ username: 'alice' });
 
     expect(created.id).toBe(SESSION_ID);
-    expect(created.k_threshold).toBe(2);
     expect(keys.x25519PrivateKey).toHaveLength(32);
+  });
+
+  it('zeroes the ephemeral keys if the request fails', async () => {
+    mockFetch({ status: 404, body: { code: 'NOT_FOUND' } });
+    await expect(startRecovery({ username: 'nobody' })).rejects.toThrow();
   });
 });
 
@@ -166,14 +236,18 @@ describe('polling the session', () => {
   });
 
   it('returns every collected share at once when the threshold is met', async () => {
-    const collected = session({
-      status: 'shares_collected',
-      shares: [
-        { re_encrypted_share: 'a', submitted_at: '2026-07-26T12:05:00Z' },
-        { re_encrypted_share: 'b', submitted_at: '2026-07-26T12:07:00Z' },
-      ],
+    mockFetch({
+      status: 200,
+      body: {
+        data: session({
+          status: 'shares_collected',
+          shares: [
+            { re_encrypted_share: 'a', submitted_at: '2026-07-26T12:05:00Z' },
+            { re_encrypted_share: 'b', submitted_at: '2026-07-26T12:07:00Z' },
+          ],
+        }),
+      },
     });
-    mockFetch({ status: 200, body: { data: collected } });
 
     const current = await getRecoverySession(SESSION_ID);
     expect(hasReachedThreshold(current)).toBe(true);
@@ -191,20 +265,25 @@ describe('polling the session', () => {
   });
 
   it('detects local expiry from expires_at', () => {
-    const expired = session({ expires_at: new Date(Date.now() - 1000).toISOString() });
-    expect(isSessionExpired(expired)).toBe(true);
+    expect(
+      isSessionExpired(session({ expires_at: new Date(Date.now() - 1000).toISOString() })),
+    ).toBe(true);
     expect(isSessionExpired(session())).toBe(false);
   });
 
   it('polls until the threshold is reached, reporting each update', async () => {
-    const collected = session({
-      status: 'shares_collected',
-      shares: [{ re_encrypted_share: 'a', submitted_at: 'x' }],
-    });
     mockFetch(
       { status: 200, body: { data: session() } },
       { status: 200, body: { data: session() } },
-      { status: 200, body: { data: collected } },
+      {
+        status: 200,
+        body: {
+          data: session({
+            status: 'shares_collected',
+            shares: [{ re_encrypted_share: 'a', submitted_at: 'x' }],
+          }),
+        },
+      },
     );
 
     const seen: string[] = [];
@@ -242,9 +321,7 @@ describe('GET /recovery/vault', () => {
   it('fetches the owner blob by username, unauthenticated', async () => {
     const calls = mockFetch({
       status: 200,
-      body: {
-        data: { encrypted_seed: 'blob', n_shares: 3, k_threshold: 2, version: 'v1' },
-      },
+      body: { data: { encrypted_seed: 'blob', n_shares: 3, k_threshold: 2, version: 'v1' } },
     });
 
     const vault = await getRecoveryVault('alice1234abcd');
@@ -255,99 +332,92 @@ describe('GET /recovery/vault', () => {
   });
 });
 
-describe('reconstruction, once shares are in hand', () => {
-  it('rebuilds the seed phrase from the session shares plus the Recovery Kit share', async () => {
+describe('the whole recovery, end to end through real PQXDH', () => {
+  async function scenario(threshold: number, guardianIndices: number[]) {
     const { encryptedSeed, shares } = await buildRecoveryVault(mnemonic, {
       shares: 3,
-      threshold: 2,
+      threshold,
     });
+    const keys = generateEphemeralKeys();
+    const fields = ephemeralPublicFields(keys);
 
-    const collected = session({
-      status: 'shares_collected',
-      shares: [
-        { re_encrypted_share: bytesToBase64(shares[1].bytes), submitted_at: 'x' },
-      ],
-    });
+    const collected = await Promise.all(
+      guardianIndices.map(async (index) => ({
+        re_encrypted_share: await rewrapToSession(shares[index].bytes, fields, SESSION_ID),
+        submitted_at: 'x',
+      })),
+    );
 
-    const recovered = await completeRecovery({
-      session: collected,
-      keys: await fakeSessionCryptoForTestsOnly().generateEphemeralKeys(),
-      vault: { encrypted_seed: encryptedSeed, n_shares: 3, k_threshold: 2, version: 'v1' },
-      shareContext: { senderUserAddress: 'a'.repeat(64), recipientUserAddress: 'b'.repeat(64) },
-      ownShare: shares[0].bytes,
-      crypto: fakeSessionCryptoForTestsOnly(),
-    });
+    return { encryptedSeed, shares, keys, collected };
+  }
 
-    expect(recovered).toBe(mnemonic);
-  });
-
-  it('rebuilds from two guardian shares with no Recovery Kit copy', async () => {
-    const { encryptedSeed, shares } = await buildRecoveryVault(mnemonic, {
-      shares: 3,
-      threshold: 2,
-    });
-
-    const collected = session({
-      status: 'shares_collected',
-      shares: [
-        { re_encrypted_share: bytesToBase64(shares[1].bytes), submitted_at: 'x' },
-        { re_encrypted_share: bytesToBase64(shares[2].bytes), submitted_at: 'y' },
-      ],
-    });
+  it('rebuilds the phrase from two guardian shares', async () => {
+    const { encryptedSeed, keys, collected } = await scenario(2, [1, 2]);
 
     expect(
       await completeRecovery({
-        session: collected,
-        keys: await fakeSessionCryptoForTestsOnly().generateEphemeralKeys(),
+        session: session({ status: 'shares_collected', shares: collected }),
+        keys,
         vault: { encrypted_seed: encryptedSeed, n_shares: 3, k_threshold: 2, version: 'v1' },
-        shareContext: {
-          senderUserAddress: 'a'.repeat(64),
-          recipientUserAddress: 'b'.repeat(64),
-        },
-        crypto: fakeSessionCryptoForTestsOnly(),
       }),
     ).toBe(mnemonic);
   });
 
-  it('refuses to reconstruct before the threshold is met', async () => {
+  it('rebuilds from one guardian plus the Recovery Kit share', async () => {
+    const { encryptedSeed, shares, keys, collected } = await scenario(2, [1]);
+
+    expect(
+      await completeRecovery({
+        session: session({ status: 'shares_collected', shares: collected }),
+        keys,
+        vault: { encrypted_seed: encryptedSeed, n_shares: 3, k_threshold: 2, version: 'v1' },
+        ownShare: shares[0].bytes,
+      }),
+    ).toBe(mnemonic);
+  });
+
+  it('refuses before the threshold is met', async () => {
+    const { encryptedSeed, keys } = await scenario(2, []);
+
     await expect(
       completeRecovery({
         session: session(),
-        keys: await fakeSessionCryptoForTestsOnly().generateEphemeralKeys(),
-        vault: { encrypted_seed: 'x', n_shares: 3, k_threshold: 2, version: 'v1' },
-        shareContext: { senderUserAddress: 'a', recipientUserAddress: 'b' },
-        crypto: fakeSessionCryptoForTestsOnly(),
+        keys,
+        vault: { encrypted_seed: encryptedSeed, n_shares: 3, k_threshold: 2, version: 'v1' },
       }),
     ).rejects.toThrow(/threshold/);
   });
 
   it('refuses when fewer shares than k are in hand', async () => {
-    const { encryptedSeed, shares } = await buildRecoveryVault(mnemonic, {
-      shares: 3,
-      threshold: 3,
-    });
+    const { encryptedSeed, keys, collected } = await scenario(3, [1]);
+
+    await expect(
+      completeRecovery({
+        session: session({ status: 'shares_collected', shares: collected }),
+        keys,
+        vault: { encrypted_seed: encryptedSeed, n_shares: 3, k_threshold: 3, version: 'v1' },
+      }),
+    ).rejects.toThrow(/need 3/);
+  });
+
+  it('fails loudly if a share was wrapped for a different session', async () => {
+    const { encryptedSeed, shares, keys } = await scenario(2, []);
+    const wrongSession = await rewrapToSession(
+      shares[1].bytes,
+      ephemeralPublicFields(keys),
+      OTHER_SESSION_ID,
+    );
 
     await expect(
       completeRecovery({
         session: session({
           status: 'shares_collected',
-          shares: [{ re_encrypted_share: bytesToBase64(shares[1].bytes), submitted_at: 'x' }],
+          shares: [{ re_encrypted_share: wrongSession, submitted_at: 'x' }],
         }),
-        keys: await fakeSessionCryptoForTestsOnly().generateEphemeralKeys(),
-        vault: { encrypted_seed: encryptedSeed, n_shares: 3, k_threshold: 3, version: 'v1' },
-        shareContext: { senderUserAddress: 'a', recipientUserAddress: 'b' },
-        crypto: fakeSessionCryptoForTestsOnly(),
+        keys,
+        vault: { encrypted_seed: encryptedSeed, n_shares: 3, k_threshold: 2, version: 'v1' },
+        ownShare: shares[0].bytes,
       }),
-    ).rejects.toThrow(/need 3/);
-  });
-});
-
-describe('ephemeral key hygiene', () => {
-  it('zeroes the session keys when the flow ends', async () => {
-    const keys = await fakeSessionCryptoForTestsOnly().generateEphemeralKeys();
-    disposeEphemeralKeys(keys);
-
-    expect([...keys.x25519PrivateKey].every((b) => b === 0)).toBe(true);
-    expect([...keys.mlkemSecretKey].every((b) => b === 0)).toBe(true);
+    ).rejects.toThrow();
   });
 });

@@ -3,17 +3,15 @@ import { pqxdhUnwrap } from '@/lib/pqxdh';
 import { signActionEnvelope } from '@/lib/signing';
 import { requireToken, type AuthedContext } from '@/lib/context';
 import { zeroBytes } from '@/lib/encoding';
-import {
-  unspecifiedRecoverySessionCrypto,
-  type RecoverySessionCrypto,
-} from './session-crypto';
+import { rewrapToSession } from './session-crypto';
 
 export const GUARDIAN_INBOX_POLL_INTERVAL_MS = 60_000;
 
 export interface PendingSession {
   session_id: string;
   owner_username: string;
-  ephemeral_public_key: string;
+  ephemeral_x25519_public: string;
+  ephemeral_mlkem_public: string;
   submitted: boolean;
   expires_at: string;
   created_at: string;
@@ -21,7 +19,8 @@ export interface PendingSession {
 
 export interface StoredShare {
   session_id: string;
-  ephemeral_public_key: string;
+  ephemeral_x25519_public: string;
+  ephemeral_mlkem_public: string;
   pq_hybrid_encrypted_share: string;
 }
 
@@ -118,23 +117,21 @@ export async function submitReEncryptedShare(
 export interface ContributeOptions {
   ownerUserAddress: string;
   guardianUserAddress: string;
-  recoveringUserAddress: string;
   x25519PrivateKey: Uint8Array;
   mlkemSecretKey: Uint8Array;
-  crypto?: RecoverySessionCrypto;
 }
 
 /**
- * The whole guardian contribution: fetch, unwrap, re-wrap, submit.
- * The re-wrap step depends on the unspecified `recovery-session` binding.
+ * The whole guardian contribution: fetch, unwrap with the guardian's own keys,
+ * re-wrap to the session's ephemeral keys, submit.
  */
 export async function contributeShare(
   context: AuthedContext,
   sessionId: string,
   options: ContributeOptions,
 ): Promise<void> {
-  const sessionCrypto = options.crypto ?? unspecifiedRecoverySessionCrypto;
-  const stored = await getStoredShare(context, sessionId);
+  const canonical = assertCanonicalUuid(sessionId, 'session_id');
+  const stored = await getStoredShare(context, canonical);
 
   let plaintextShare: Uint8Array | undefined;
   try {
@@ -146,16 +143,9 @@ export async function contributeShare(
       mlkemSecretKey: options.mlkemSecretKey,
     });
 
-    const reEncrypted = await sessionCrypto.rewrapToSession(
-      plaintextShare,
-      stored.ephemeral_public_key,
-      {
-        senderUserAddress: options.guardianUserAddress,
-        recipientUserAddress: options.recoveringUserAddress,
-      },
-    );
+    const reEncrypted = await rewrapToSession(plaintextShare, stored, canonical);
 
-    await submitReEncryptedShare(context, sessionId, reEncrypted);
+    await submitReEncryptedShare(context, canonical, reEncrypted);
   } finally {
     zeroBytes(plaintextShare);
   }

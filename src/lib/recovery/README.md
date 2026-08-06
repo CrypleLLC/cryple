@@ -19,8 +19,8 @@ REK ──────────Shamir k-of-n─────→ shares        
 The server holds `encrypted_seed` and the wrapped guardian shares, and can reconstruct
 neither — it holds no guardian's private key.
 
-The REK is **random, not derived from the seed**. That is what keeps this milestone
-independent of the unresolved KEK ([Task 12](../secrets/README.md)).
+The REK is **random, not derived from the seed** — unrelated to the vault KEK
+([`lib/secrets`](../secrets/README.md)), which wraps item DEKs and nothing else.
 
 ## n = guardians + 1
 
@@ -99,12 +99,13 @@ encrypted_seed = base64( 0x01 ‖ iv(12) ‖ AES-256-GCM(rek, iv, utf8(mnemonic)
 ```
 
 That envelope lives in [`lib/sealed`](../sealed/README.md) and is shared with the item
-`ciphertext`. ⚠️ **The layout is provisional** — `recovery-flow.md` names AES-GCM but never
-says where the IV sits, and the blob is written by one device and read by another during
-recovery. It is also committed to the `recovery-setup` signature digest.
+`ciphertext` and `wrapped_dek`. **Ratified 2026-08-06 as Decision B** —
+[`crypto/ECDSA.md` § Sealed Blob Format](../../../../api-general/.docs/crypto/ECDSA.md#sealed-blob-format).
+It was previously provisional; the shipped layout was the one adopted, so this code did not
+change.
 
-See [proposals/opaque-blob-layouts.md](../../../proposals/opaque-blob-layouts.md); it needs
-backend ratification alongside the KEK.
+The layout matters beyond this module: the blob is written by one device and read by a
+**different** one during recovery, and it is committed to the `recovery-setup` signature digest.
 
 `encryptSeedPhrase` validates the mnemonic checksum before sealing, so a typo cannot be
 committed to a recovery vault that then restores a wrong-but-valid account.
@@ -225,28 +226,30 @@ release vote — it changes when a countdown is cancelled.
 
 ## The recovery session — recovering-device side
 
-> ### ⚠️ The PQXDH binding for `recovery-session` is unspecified
->
-> The transport, polling, vault fetch and reconstruction are built and tested. **The crypto is
-> not**, and it is not a matter of writing it — two things are missing from the wire contract:
->
-> 1. **`POST /recovery/request` carries a single opaque `ephemeral_public_key`**, but PQXDH
->    needs **both** an X25519 (32 B) and an ML-KEM-768 (1184 B) recipient key. No encoding for
->    packing two keys into one field is defined anywhere, and the server stores the value
->    unvalidated (`service.go:401` only checks it is non-empty).
-> 2. **The recovering device cannot build the PQXDH `info` string.**
->    `info = "Cryple-PQXDH-v1|recovery-session|{sender}|{recipient}"`, but
->    `GET /recovery/session/{id}` returns only `{re_encrypted_share, submitted_at}` — the
->    device learns neither the submitting **guardian's** `user_address` (the sender) nor its
->    **own account's** `user_address` (the recipient, per `pqxdh.md`). It cannot derive its own,
->    because that needs the seed it is trying to recover, and there is no username → address
->    lookup.
->
-> `generateEphemeralKeys` and `unwrapShare` therefore throw
-> `RecoverySessionCryptoUnspecifiedError`. **Do not invent either** — same silent-failure shape
-> as the KEK. Recorded in [proposals/opaque-blob-layouts.md](../../../proposals/opaque-blob-layouts.md).
+The transport, polling, vault fetch, reconstruction **and the crypto** are all built. The two
+gaps that blocked this task were closed on 2026-08-06 as Decisions C and D — see
+[proposals/opaque-blob-layouts.md](../../../proposals/opaque-blob-layouts.md).
 
-What does work:
+**Decision C — the ephemeral key is two keys.** PQXDH is hybrid, so
+`POST /recovery/request` carries `ephemeral_x25519_public` (32 B) **and**
+`ephemeral_mlkem_public` (1184 B), both base64. `generateEphemeralKeys` mints both pairs;
+`parseSessionRecipient` **validates each length** before wrapping, so a malformed key fails
+loudly rather than producing a share the recovering device silently cannot open.
+
+**Decision D — `info` binds the `session_id`.** For `usage=recovery-session` both address slots
+of the PQXDH info string carry the session id, because the recovering device can derive neither
+its own `user_address` (that needs the lost seed) nor the guardian's (the session response
+carries no guardian identity). The session id is single-use, server-generated and 30-minute
+scoped, so it provides the cross-session binding the addresses were there for. A test confirms a
+blob wrapped for one session will not open under another.
+
+⚠️ **Deployment ordering:** the client now sends two fields, but the running API still expects
+the single `ephemeral_public_key` until `api-general` Task 65 ships. This client is ahead of the
+server on that one endpoint.
+
+What is here:
+
+
 
 | Function | Endpoint | Notes |
 | --- | --- | --- |
