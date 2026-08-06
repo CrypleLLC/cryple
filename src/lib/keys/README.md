@@ -48,9 +48,9 @@ to remember which encoding an endpoint wants:
 ## The traps this module exists to avoid
 
 **`user_address` hashes the 64 raw seed bytes**, not the mnemonic and not the seed's hex
-string. Hashing the hex string is the bug in the obsolete `src/lib/crypto.ts`; it yields a
-valid-looking address for a different account. `keys.test.ts` asserts both values and that
-they differ.
+string. Hashing the hex string was the bug in the pre-rewrite `src/lib/crypto.ts` (deleted in
+Task 26); it yields a valid-looking address for a different account. `keys.test.ts` asserts
+both values and that they differ.
 
 **SLIP-0010, not BIP32.** The HMAC key is `"Nist256p1 seed"` and the retry rules validate
 against **P-256's** order (`p256.Point.Fn.ORDER`). Deriving with a secp256k1 BIP32 library
