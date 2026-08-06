@@ -73,19 +73,19 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
 
 ## Milestone 3 — Recovery
 
-- [ ] **Task 14: PQXDH module** per [crypto/pqxdh.md](../api-general/.docs/crypto/pqxdh.md). Fresh ephemeral X25519 per wrap; `IKM = 0xFF×32 ‖ ecdhSecret ‖ kemSecret`; `HKDF-SHA256`, zero salt, `info = "Cryple-PQXDH-v1|{usage}|{sender}|{recipient}"`; AES-256-GCM, no AAD; wire blob `0x01 ‖ kem_ct(1088) ‖ eph_pub(32) ‖ iv(12) ‖ ct+tag`. Reject unknown versions and length-inconsistent blobs before decrypting. Zero all intermediates after use. Acceptance: reproduce the vector file's `session_key_hex` and decrypt its `wire_blob_base64` (encapsulation randomness makes wrap non-deterministic; unwrap of the recorded blob is the test).
+- [x] **Task 14: PQXDH module** per [crypto/pqxdh.md](../api-general/.docs/crypto/pqxdh.md). Fresh ephemeral X25519 per wrap; `IKM = 0xFF×32 ‖ ecdhSecret ‖ kemSecret`; `HKDF-SHA256`, zero salt, `info = "Cryple-PQXDH-v1|{usage}|{sender}|{recipient}"`; AES-256-GCM, no AAD; wire blob `0x01 ‖ kem_ct(1088) ‖ eph_pub(32) ‖ iv(12) ‖ ct+tag`. Reject unknown versions and length-inconsistent blobs before decrypting. Zero all intermediates after use. Acceptance: reproduce the vector file's `session_key_hex` and decrypt its `wire_blob_base64` (encapsulation randomness makes wrap non-deterministic; unwrap of the recorded blob is the test).
 
-- [ ] **Task 15: REK + Shamir.** Generate a random Recovery Encryption Key, AES-256-GCM the seed phrase under it, split the REK k-of-n (n = guardians + 1; share 0 is the user's own Recovery Kit copy). Pick and pin an SSS library in the same change (audited, GF(256), deterministic share format) — the share format is as durable as any protocol constant once shares are distributed. UI validation is the API's only rule: `1 ≤ k ≤ n`. **k=1 with one guardian requires the explicit warning**: "This person can recover your vault on their own."
+- [x] **Task 15: REK + Shamir.** Generate a random Recovery Encryption Key, AES-256-GCM the seed phrase under it, split the REK k-of-n (n = guardians + 1; share 0 is the user's own Recovery Kit copy). Pick and pin an SSS library in the same change (audited, GF(256), deterministic share format) — the share format is as durable as any protocol constant once shares are distributed. UI validation is the API's only rule: `1 ≤ k ≤ n`. **k=1 with one guardian requires the explicit warning**: "This person can recover your vault on their own."
 
-- [ ] **Task 16: `PUT /recovery/setup`** with the `recovery-setup` digest: `encrypted_seed | n_shares | k_threshold | version | share_index:guardian_username:pq_hybrid_encrypted_share…`, shares sorted ascending by index, share 0's guardian field empty, `version` as the literal string sent (empty if omitted — sign what you send), argument = lowercase hex SHA-256. Guardian shares wrapped with PQXDH `usage=recovery-share`. Acceptance: port the backend's two `SetupDigest` tests (share-order independence; digest changes with every committed field) against this implementation.
+- [x] **Task 16: `PUT /recovery/setup`** with the `recovery-setup` digest: `encrypted_seed | n_shares | k_threshold | version | share_index:guardian_username:pq_hybrid_encrypted_share…`, shares sorted ascending by index, share 0's guardian field empty, `version` as the literal string sent (empty if omitted — sign what you send), argument = lowercase hex SHA-256. Guardian shares wrapped with PQXDH `usage=recovery-share`. Acceptance: port the backend's two `SetupDigest` tests (share-order independence; digest changes with every committed field) against this implementation.
 
-- [ ] **Task 17: Guardian management.** Invite (action `guardian-invite`, signs the username — signature verified before the username lookup, so no existence oracle), accept (action `guardian-accept` binding `invitation_id` — consent needs the seed key, not just the JWT), revoke (action `guardian-revoke` — deletes the share and withdraws standing votes), `GET /recovery/guardians`, `GET /recovery/guardianships`. Surface guardian count and effective quorum (`min(configured, active)`) together — an extra guardian raises the bar without adding a participant.
+- [x] **Task 17: Guardian management.** Invite (action `guardian-invite`, signs the username — signature verified before the username lookup, so no existence oracle), accept (action `guardian-accept` binding `invitation_id` — consent needs the seed key, not just the JWT), revoke (action `guardian-revoke` — deletes the share and withdraws standing votes), `GET /recovery/guardians`, `GET /recovery/guardianships`. Surface guardian count and effective quorum (`min(configured, active)`) together — an extra guardian raises the bar without adding a participant.
 
-- [ ] **Task 18: Seed recovery — recovering-device side.** `POST /recovery/request` (public, unsigned — the caller lost the seed; **not retry-safe**, it creates a row per call) with a fresh ephemeral key pair for the session; poll `GET /recovery/session/{id}` every few seconds while on screen (sessions expire in 30 minutes); fetch `GET /recovery/vault`; on quorum, unwrap shares (PQXDH `usage=recovery-session`, recipient = own `user_address`), reconstruct the REK, decrypt the seed, then run the normal restore path (Task 10).
+- [x] **Task 18: Seed recovery — recovering-device side.** `POST /recovery/request` (public, unsigned — the caller lost the seed; **not retry-safe**, it creates a row per call) with a fresh ephemeral key pair for the session; poll `GET /recovery/session/{id}` every few seconds while on screen (sessions expire in 30 minutes); fetch `GET /recovery/vault`; on quorum, unwrap shares (PQXDH `usage=recovery-session`, recipient = own `user_address`), reconstruct the REK, decrypt the seed, then run the normal restore path (Task 10).
 
-- [ ] **Task 19: Seed recovery — guardian side.** Poll `GET /recovery/sessions/pending` (~once a minute), `GET /recovery/share/{session_id}`, unwrap own share, re-wrap to the session's ephemeral key, submit via `POST /recovery/submit` (action `recovery-share-submit`, guardian's own second factor).
+- [x] **Task 19: Seed recovery — guardian side.** Poll `GET /recovery/sessions/pending` (~once a minute), `GET /recovery/share/{session_id}`, unwrap own share, re-wrap to the session's ephemeral key, submit via `POST /recovery/submit` (action `recovery-share-submit`, guardian's own second factor).
 
-- [ ] **Task 20: PIN reset.** Owner: `request` / `revoke` / `confirm` (all signed, none takes a second factor — the owner lost the PIN; `confirm` signs the *new* token), 48h contest period surfaced in UI. Guardian: poll `GET /recovery/pin-reset/pending`, vote (action `pin-reset-vote`, guardian's second factor applies). Owner-side vote audit: `GET /auth/pin-reset/{id}/votes` returns semantic fields — rebuild `challenge:signed_timestamp:pin-reset-vote:request_id` and verify each signature client-side; never trust a server-rendered payload string.
+- [x] **Task 20: PIN reset.** Owner: `request` / `revoke` / `confirm` (all signed, none takes a second factor — the owner lost the PIN; `confirm` signs the *new* token), 48h contest period surfaced in UI. Guardian: poll `GET /recovery/pin-reset/pending`, vote (action `pin-reset-vote`, guardian's second factor applies). Owner-side vote audit: `GET /auth/pin-reset/{id}/votes` returns semantic fields — rebuild `challenge:signed_timestamp:pin-reset-vote:request_id` and verify each signature client-side; never trust a server-rendered payload string.
 
 ## Milestone 4 — Succession
 
@@ -128,10 +128,57 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
 
 Milestone 2's Task 13 is the only externally blocked item (KEK spec, backend). Milestones 3 and 4 do not depend on it except Task 22's unwrap step — sequence around it rather than waiting.
 
+## Backend spec decisions — taken 2026-08-06
+
+Four cross-client byte contracts were unspecified and blocked Tasks 13, 18, 19 and 22. All four
+are now **decided and written into `../api-general/.docs`**. Reasoning and the options that were
+weighed are in [proposals/opaque-blob-layouts.md](./proposals/opaque-blob-layouts.md).
+
+| # | Decision | Spec | Unblocks |
+| --- | --- | --- | --- |
+| A | Vault KEK = `HKDF-SHA512(seed, ∅, "Cryple-Key-v1\|vault-kek", 32)` | `crypto/ECDSA.md` § Step 5 | 13, 22 |
+| B | One sealed-blob envelope `0x01 ‖ iv(12) ‖ ct+tag` for `wrapped_dek`, `ciphertext`, `encrypted_seed` | `crypto/ECDSA.md` § Sealed Blob Format | 13, 15, 16, 22 |
+| C | Ephemeral session key becomes **two** fields: `ephemeral_x25519_public`, `ephemeral_mlkem_public` | `recovery-flow.md` | 18, 19 |
+| D | `recovery-session` `info` binds the **`session_id`** in both address slots | `crypto/pqxdh.md` § Exception | 18, 19 |
+
+**Nothing is unblocked until the backend side lands** — the specs are written, the vectors and the
+API change are not. Tracked as `api-general` Tasks 64–67. Until then the seams still throw:
+`src/lib/secrets/dek.ts` and `src/lib/recovery/session-crypto.ts`.
+
+Decision B ratifies the layout `src/lib/secrets/codec.ts` and `src/lib/sealed/` already ship
+provisionally, so that code becomes final rather than changing.
+
+### Client work once `api-general` Tasks 64–67 land
+
+- **A + B** → implement `DekWrapper` in `src/lib/secrets/dek.ts` and make it the default; refresh
+  `src/test/fixtures/test-vectors.json`; add KEK + sealed-blob assertions; delete
+  `fakeDekWrapperForTestsOnly`; close Task 13, then Task 22.
+- **C + D** → implement `RecoverySessionCrypto` in `src/lib/recovery/session-crypto.ts`; update the
+  `POST /recovery/request` body to two fields; close Tasks 18 and 19.
+
+No call sites change in either case — that is what the seams were for.
+
+## Dependency graph
+
+```
+1 → 2 → 3 → 4,5,6 → 7 → 8 → 9 → 10 → 11
+                              12 → 13 ─────────┐
+                    14 → 15 → 16 → 17 → 18,19,20│
+                              21 → 22 (also ← 13)
+                              23
+                    24,25 (after their domains) → 26 → 27
+```
+
+Milestone 2's Task 13 is the only externally blocked item (KEK spec, backend). Milestones 3 and 4 do not depend on it except Task 22's unwrap step — sequence around it rather than waiting.
+
 ## Open items for the backend spec
 
 Both are cross-client byte contracts that this repo must not decide unilaterally. Neither is a
 question for the user — they are backend spec changes plus regenerated test vectors.
+
+A drafted proposal covering all three is in
+[proposals/opaque-blob-layouts.md](./proposals/opaque-blob-layouts.md) — a concrete option to
+review, not a decision taken here.
 
 1. **The owner-side KEK** that produces `wrapped_dek` (blocks Task 13). Confirmed unspecified;
    `storage-plan.md` §3.1.1 forbids inventing it here and defers to `crypto/ECDSA.md`.
@@ -142,3 +189,14 @@ question for the user — they are backend spec changes plus regenerated test ve
    `src/lib/secrets/codec.ts` ships a provisional versioned layout (`0x01 ‖ iv(12) ‖ ct+tag`)
    that rejects unknown version bytes, so a later ratified layout is detectable rather than
    silently misparsed. It needs ratifying alongside the KEK.
+
+3. **The `recovery-session` PQXDH binding** (blocks Task 18's unwrap, and Task 19). Two missing
+   pieces: `POST /recovery/request` carries one opaque `ephemeral_public_key` where PQXDH needs
+   an X25519 **and** an ML-KEM key, and `GET /recovery/session/{id}` returns no guardian
+   identity, so the recovering device cannot build the PQXDH `info` string (it knows neither
+   the sender's nor its own `user_address`). Seam throws in
+   `src/lib/recovery/session-crypto.ts`.
+
+4. **The `encrypted_seed` byte layout** (Tasks 15/16/18). `recovery-flow.md:477` names AES-GCM
+   but not where the IV sits, and the blob is written by one device and read by another during
+   recovery — plus it is committed to the `recovery-setup` signature digest.
