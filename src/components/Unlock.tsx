@@ -6,7 +6,7 @@ import { useCryple } from './CrypleProvider';
 import { Button, Card, Field, Notice } from './ui';
 
 export default function Unlock() {
-  const { unlock, forgetDevice } = useCryple();
+  const { unlock, logOut } = useCryple();
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
@@ -50,7 +50,7 @@ export default function Unlock() {
             device was deleted. Your vault is untouched — sign in again with your recovery phrase,
             or recover it through your guardians.
           </Notice>
-          <Button onClick={forgetDevice}>Start over on this device</Button>
+          <Button onClick={logOut}>Start over on this device</Button>
         </div>
       </Card>
     );
@@ -81,8 +81,8 @@ export default function Unlock() {
           <Button type="submit" disabled={busy || pin.length === 0}>
             {busy ? 'Unlocking…' : 'Unlock'}
           </Button>
-          <Button type="button" variant="secondary" onClick={forgetDevice}>
-            Use a different recovery phrase
+          <Button type="button" variant="secondary" onClick={logOut}>
+            Log out of this device
           </Button>
         </div>
       </form>

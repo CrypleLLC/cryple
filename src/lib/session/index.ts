@@ -24,7 +24,7 @@ export interface SessionKeystoreOptions {
 
 interface SessionState {
   tree: CrypleKeyTree;
-  serverAuthToken: Uint8Array;
+  serverAuthToken?: Uint8Array;
 }
 
 export class SessionKeystore {
@@ -62,11 +62,12 @@ export class SessionKeystore {
     return { status: 'unlocked', userAddress: tree.userAddress };
   }
 
-  async unlockWithMnemonic(mnemonic: string, pin: string): Promise<string> {
+  async unlockWithMnemonic(mnemonic: string, pin?: string): Promise<string> {
     this.lock();
 
     const tree = await deriveKeyTree(mnemonic);
-    const serverAuthToken = await deriveServerAuthTokenBytes(pin, tree.userAddress);
+    const serverAuthToken =
+      pin === undefined ? undefined : await deriveServerAuthTokenBytes(pin, tree.userAddress);
 
     this.state = { tree, serverAuthToken };
     this.touch();
@@ -76,7 +77,9 @@ export class SessionKeystore {
   async rekeySecondFactor(pin: string): Promise<void> {
     const state = this.require();
     const replacement = await deriveServerAuthTokenBytes(pin, state.tree.userAddress);
-    zeroBytes(state.serverAuthToken);
+    if (state.serverAuthToken !== undefined) {
+      zeroBytes(state.serverAuthToken);
+    }
     state.serverAuthToken = replacement;
   }
 
@@ -90,7 +93,9 @@ export class SessionKeystore {
     }
 
     zeroKeyTree(this.state.tree);
-    zeroBytes(this.state.serverAuthToken);
+    if (this.state.serverAuthToken !== undefined) {
+      zeroBytes(this.state.serverAuthToken);
+    }
     this.state = undefined;
 
     for (const listener of this.lockListeners) {
@@ -163,8 +168,9 @@ export class SessionKeystore {
     };
   }
 
-  serverAuthToken(): string {
-    return bytesToHex(this.require().serverAuthToken);
+  serverAuthToken(): string | undefined {
+    const { serverAuthToken } = this.require();
+    return serverAuthToken === undefined ? undefined : bytesToHex(serverAuthToken);
   }
 }
 

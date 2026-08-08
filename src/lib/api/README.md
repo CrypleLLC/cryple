@@ -10,13 +10,13 @@ Tasks 7 and 9 of [tasks.md](../../../tasks.md). Governed by
 
 ## Base URL
 
-`NEXT_PUBLIC_BASE_API_URL` **includes the `/v1` segment**; default
-`http://localhost:8080/v1`. Trailing slashes are stripped once, here.
+`NEXT_PUBLIC_BASE_API_URL` points at the API root; default `http://localhost:8080`. Trailing
+slashes are stripped once, here.
 
-**`v1` appears nowhere else in this codebase.** Route constants are written exactly as the
-endpoint reference writes them (`/sign-up`, `/users/me`) and concatenated onto the base — the
-version prefix is the thing you will want to change in one place later. `GET /health` and
-`GET /ready` are unversioned and are not called by this client.
+**There is no version segment.** Route constants are written exactly as the endpoint reference
+writes them (`/sign-up`, `/users/me`) and concatenated onto the base — a future prefix is the
+thing you will want to change in one place, so it belongs in the base URL and nowhere else.
+`GET /health` and `GET /ready` sit at the same root and are not called by this client.
 
 ## `request()`
 

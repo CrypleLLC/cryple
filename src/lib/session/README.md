@@ -18,7 +18,7 @@ After `unlock`, in memory only:
 
 - the P-256 identity private key (signs every challenge and action)
 - the X25519 and ML-KEM-768 private keys (PQXDH unwrap, Milestone 3+)
-- the `Server_Auth_Token` as **raw bytes**
+- the `Server_Auth_Token` as **raw bytes** — only when a PIN was supplied
 - `user_address` and the three public keys in wire encoding
 
 ## API
@@ -26,11 +26,23 @@ After `unlock`, in memory only:
 ```ts
 const keystore = new SessionKeystore({ idleTimeoutMs, storage });
 
-await keystore.unlock(pin);                      // from the local PIN-wrapped vault
-await keystore.unlockWithMnemonic(mnemonic, pin); // restore / first sign-up, before a vault exists
+await keystore.unlock(pin);                       // from the local PIN-wrapped vault
+await keystore.unlockWithMnemonic(mnemonic, pin); // restore / Paranoid sign-up, before a vault exists
+await keystore.unlockWithMnemonic(mnemonic);      // Standard Mode — there is no PIN to derive from
 keystore.lock();
-keystore.onLock(() => …);                        // returns an unsubscribe function
+keystore.onLock(() => …);                         // returns an unsubscribe function
 ```
+
+**A Standard Mode session holds no second factor**, because a Standard account has no PIN at
+all — nothing derives a `Server_Auth_Token` and nothing is written to the local vault. The PIN
+argument is therefore optional, and `serverAuthToken()` returns `undefined` rather than throwing
+when there is none. It still throws while **locked**: "no session" and "no second factor" are
+different answers and must not be conflated.
+
+Returning `undefined` rather than throwing is what lets every call site keep passing
+`serverAuthToken: session.serverAuthToken()` unconditionally. The decision to *send* it stays
+where it belongs — the signed-request helper, which refuses a Paranoid request with no token and
+says so ([`lib/signing`](../signing/README.md)).
 
 `unlock` returns the vault's outcome unchanged (`invalid-pin` with `attemptsRemaining`,
 `wiped`, `no-vault`) or `{ status: 'unlocked', userAddress }`. It does not throw on a wrong
@@ -47,7 +59,12 @@ instance in tests.
 
 The account's mode (`has_password` on `GET /users/me`) is not known at unlock — there is no
 JWT yet. Rather than re-prompting for the PIN later once the mode is known, `unlock` always
-derives the `Server_Auth_Token` while the PIN is in hand and holds it.
+derives the `Server_Auth_Token` whenever a PIN is in hand, and holds it.
+
+This still applies on the vault path (`unlock(pin)`), because a local vault only ever exists on
+a Paranoid account now. It does not apply to `unlockWithMnemonic(mnemonic)` with no PIN: there is
+nothing to derive from, and there never will be for that account until it enables a second factor
+via `rekeySecondFactor`.
 
 Whether to actually **send** it is a per-request decision made by the signed-request helper
 (Task 8) from the action table plus `has_password` — never a guess, and never cached local

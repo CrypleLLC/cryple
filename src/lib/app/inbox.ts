@@ -1,13 +1,15 @@
 import {
   canVoteOn,
   GUARDIAN_INBOX_POLL_INTERVAL_MS,
+  pendingInvitations,
+  type Guardianship,
   type PendingPinReset,
   type PendingSession,
 } from '@/lib/recovery';
 
 export const INBOX_POLL_INTERVAL_MS = GUARDIAN_INBOX_POLL_INTERVAL_MS;
 
-export type InboxKind = 'recovery-session' | 'pin-reset';
+export type InboxKind = 'guardian-invite' | 'recovery-session' | 'pin-reset';
 
 export interface InboxItem {
   kind: InboxKind;
@@ -20,8 +22,25 @@ export interface InboxItem {
   expiresAt?: string;
 }
 
+export const GUARDIAN_INVITE_HEADLINE = 'asked you to be their guardian';
 export const RECOVERY_SESSION_HEADLINE = 'is recovering their vault';
 export const PIN_RESET_HEADLINE = 'is resetting their PIN';
+
+export const GUARDIAN_INVITE_DETAIL =
+  'Accepting shows you their account address and counts you toward the guardians they need to ' +
+  'get back in. There is no way to decline — leave it if you do not want this.';
+
+function guardianInviteItem(invitation: Guardianship): InboxItem {
+  return {
+    kind: 'guardian-invite',
+    id: invitation.id,
+    ownerUsername: invitation.owner_username,
+    actionable: true,
+    headline: `${invitation.owner_username} ${GUARDIAN_INVITE_HEADLINE}`,
+    detail: GUARDIAN_INVITE_DETAIL,
+    createdAt: invitation.created_at,
+  };
+}
 
 function recoveryItem(session: PendingSession): InboxItem {
   return {
@@ -58,14 +77,25 @@ function pinResetItem(reset: PendingPinReset): InboxItem {
 export function buildInbox(
   sessions: readonly PendingSession[],
   resets: readonly PendingPinReset[],
+  guardianships: readonly Guardianship[] = [],
 ): InboxItem[] {
-  return [...sessions.map(recoveryItem), ...resets.map(pinResetItem)].sort((a, b) => {
+  return [
+    ...pendingInvitations(guardianships).map(guardianInviteItem),
+    ...sessions.map(recoveryItem),
+    ...resets.map(pinResetItem),
+  ].sort((a, b) => {
     if (a.actionable !== b.actionable) {
       return a.actionable ? -1 : 1;
     }
     return b.createdAt.localeCompare(a.createdAt);
   });
 }
+
+export const INBOX_ACTION_LABELS: Record<InboxKind, { idle: string; busy: string }> = {
+  'guardian-invite': { idle: 'Accept', busy: 'Accepting…' },
+  'pin-reset': { idle: 'Approve', busy: 'Sending…' },
+  'recovery-session': { idle: 'Send my share', busy: 'Sending…' },
+};
 
 export function actionableCount(items: readonly InboxItem[]): number {
   return items.filter((item) => item.actionable).length;

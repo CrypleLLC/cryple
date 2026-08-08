@@ -120,7 +120,6 @@ The API was rewritten. Everything below in `src/` targets an API that no longer 
 | --- | --- |
 | `Authorization: Bearer ${userAddress}:${hash(password)}` | Auth is a JWT from `/sign-up` \| `/sign-in`, obtained with an ECDSA P-256 signature. |
 | Calls `/users/check`, `/keys`, `/keys/{id}` | None of these routes exist. Legacy items live at `/secrets`. |
-| Base URL without a version segment | Every path is under `/v1` (except `/health`, `/ready`). |
 | `POST /sign-in` with `{user_address, password}` | Needs `challenge`, `timestamp`, `signature`; `password` is the `Server_Auth_Token`. |
 | Reads `errorData.error`, and `data.id` at the top level | Success is `{message, data}`; errors are **only** `{"code":"…"}` — no message field. |
 | `encrypted_key` / `encrypted_data` / `data_iv` / `key_iv` per item | A secret is `{id, ciphertext, wrapped_dek, version}`. There is a per-item DEK now. |
@@ -222,7 +221,7 @@ Derived from the guide and the specs; these are the ones a client gets wrong by 
 - Never log, persist unencrypted, or send to the server: the seed phrase, private keys, DEKs, the PIN, or the `Server_Auth_Token`. Zero `sessionKey`, `ecdhSecret`, `kemSecret` and ephemeral private keys after use.
 - Path alias `@/*` → `./src/*`. TypeScript `strict` is on.
 - Branches: `development` → `staging` → `preview` → `main`. Work off `development` unless told otherwise.
-- `NEXT_PUBLIC_BASE_API_URL` points at the API **including `/v1`**; default `http://localhost:8080/v1`. Configure it once — never sprinkle `v1` through route constants.
+- `NEXT_PUBLIC_BASE_API_URL` points at the API root — **there is no `/v1` prefix**; default `http://localhost:8080`. Configure it once — route constants are the documented paths verbatim.
 
 ## Commands
 

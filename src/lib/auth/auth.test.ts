@@ -102,6 +102,25 @@ describe('sign-up enrolls all three public keys', () => {
     expect(paranoid[0].password).toBe(serverAuthToken);
   });
 
+  it('enrols a Standard account from a session that never saw a PIN', async () => {
+    const bodies = mockFetch(created);
+    const session = new SessionKeystore({ idleTimeoutMs: 0 });
+    await session.unlockWithMnemonic(mnemonic);
+
+    await signUp({ session, paranoid: false });
+
+    expect(bodies[0]).toMatchObject({ user_address: userAddress });
+    expect(bodies[0]).not.toHaveProperty('password');
+  });
+
+  it('refuses to enrol a Paranoid account from a session with no second factor', async () => {
+    mockFetch(created);
+    const session = new SessionKeystore({ idleTimeoutMs: 0 });
+    await session.unlockWithMnemonic(mnemonic);
+
+    await expect(signUp({ session, paranoid: true })).rejects.toThrow(/Server_Auth_Token/);
+  });
+
   it('never puts the PIN or the seed phrase on the wire', async () => {
     const bodies = mockFetch(created);
     await signUp({ session: await newSession(), paranoid: true });

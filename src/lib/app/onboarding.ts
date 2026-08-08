@@ -8,8 +8,8 @@ export type OnboardingStep =
   | 'backup'
   | 'verify'
   | 'import'
-  | 'pin'
   | 'mode'
+  | 'pin'
   | 'enrolling'
   | 'done';
 
@@ -46,15 +46,28 @@ const PIN_REJECTION_COPY: Record<PinRejection, string> = {
 export const MODE_COPY = {
   standard: {
     title: 'Standard',
-    summary: 'Your recovery phrase alone unlocks this account.',
+    summary: 'No PIN. Your recovery phrase alone unlocks the account.',
+    tradeoff:
+      'Nothing is kept on this device, so you type your recovery phrase again whenever the ' +
+      'session ends — on every reload, and after 15 minutes idle.',
   },
   paranoid: {
     title: 'Paranoid',
-    summary: 'A 6-digit PIN is required alongside your recovery phrase.',
+    summary: 'A 6-digit PIN is required alongside your recovery phrase to sign in.',
+    tradeoff:
+      'The PIN also encrypts a copy of your phrase on this device, so unlocking later is just ' +
+      'the PIN. Three wrong tries erase that copy.',
   },
   oneWayDoor:
     'You can move from Standard to Paranoid later, but never back. There is no way to remove a ' +
     'PIN once it is set — that is what protects you if your recovery phrase is ever stolen.',
+} as const;
+
+export const PIN_STEP_COPY = {
+  title: 'Choose your 6-digit PIN',
+  subtitle:
+    'You will need it alongside your recovery phrase every time you sign in. It also encrypts ' +
+    'the copy of your phrase kept on this device — three wrong tries erase that copy.',
 } as const;
 
 export const SEED_WARNING =
@@ -106,6 +119,10 @@ export function mnemonicWords(mnemonic: string): string[] {
   return mnemonic.normalize('NFKD').trim().split(/\s+/).filter(Boolean);
 }
 
+export function mnemonicSentence(mnemonic: string): string {
+  return mnemonicWords(mnemonic).join(' ');
+}
+
 export function buildVerificationChallenge(
   mnemonic: string,
   count = 3,
@@ -138,6 +155,29 @@ export function verifyBackup(
   );
 }
 
+export function previousStep(state: OnboardingState): OnboardingStep | undefined {
+  switch (state.step) {
+    case 'backup':
+    case 'import':
+      return 'origin';
+    case 'verify':
+      return 'backup';
+    case 'mode':
+      if (state.origin === undefined) {
+        return 'origin';
+      }
+      return state.origin === 'import' ? 'import' : 'verify';
+    case 'pin':
+      return 'mode';
+    default:
+      return undefined;
+  }
+}
+
+export function canGoBack(state: OnboardingState): boolean {
+  return previousStep(state) !== undefined;
+}
+
 export function onboardingReducer(
   state: OnboardingState,
   event: OnboardingEvent,
@@ -159,7 +199,7 @@ export function onboardingReducer(
       return {
         ...state,
         mnemonic: event.mnemonic,
-        step: state.origin === 'generate' ? state.step : 'pin',
+        step: state.origin === 'generate' ? state.step : 'mode',
         error: undefined,
       };
     }
@@ -167,34 +207,58 @@ export function onboardingReducer(
     case 'backup-confirmed':
       return state.step === 'backup'
         ? { ...state, step: 'verify', error: undefined }
-        : { ...state, step: 'pin', error: undefined };
+        : { ...state, step: 'mode', error: undefined };
+
+    case 'mode-chosen':
+      return {
+        ...state,
+        paranoid: event.paranoid,
+        pin: undefined,
+        step: event.paranoid ? 'pin' : 'enrolling',
+        error: undefined,
+      };
 
     case 'pin-chosen': {
       const feedback = checkPin(event.pin);
       if (!feedback.ok) {
         return { ...state, error: feedback.message };
       }
-      return { ...state, pin: event.pin, step: 'mode', error: undefined };
+      return { ...state, pin: event.pin, step: 'enrolling', error: undefined };
     }
-
-    case 'mode-chosen':
-      return { ...state, paranoid: event.paranoid, step: 'enrolling', error: undefined };
 
     case 'enrolled':
       return { ...state, step: 'done', error: undefined };
 
-    case 'failed':
-      return { ...state, step: state.step === 'enrolling' ? 'mode' : state.step, error: event.message };
+    case 'failed': {
+      if (state.step !== 'enrolling') {
+        return { ...state, error: event.message };
+      }
+      return { ...state, step: state.paranoid === true ? 'pin' : 'mode', error: event.message };
+    }
 
-    case 'back':
-      return { ...INITIAL_ONBOARDING, wordCount: state.wordCount };
+    case 'back': {
+      const target = previousStep(state);
+      if (target === undefined) {
+        return state;
+      }
+      return {
+        ...state,
+        step: target,
+        origin: target === 'origin' ? undefined : state.origin,
+        mnemonic: target === 'origin' ? undefined : state.mnemonic,
+        paranoid: target === 'mode' ? undefined : state.paranoid,
+        pin: target === 'mode' ? undefined : state.pin,
+        error: undefined,
+      };
+    }
   }
 }
 
 export function isReadyToEnroll(
   state: OnboardingState,
-): state is OnboardingState & { mnemonic: string; pin: string; paranoid: boolean } {
-  return (
-    state.mnemonic !== undefined && state.pin !== undefined && state.paranoid !== undefined
-  );
+): state is OnboardingState & { mnemonic: string; paranoid: boolean } {
+  if (state.mnemonic === undefined || state.paranoid === undefined) {
+    return false;
+  }
+  return state.paranoid ? state.pin !== undefined : true;
 }

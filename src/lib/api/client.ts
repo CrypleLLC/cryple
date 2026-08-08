@@ -1,6 +1,6 @@
 import { ApiError, NetworkError, RequestTooLargeError, type ApiErrorCode } from './errors';
 
-export const DEFAULT_BASE_URL = 'http://localhost:8080/v1';
+export const DEFAULT_BASE_URL = 'http://localhost:8080';
 export const MAX_BODY_BYTES = 1024 * 1024;
 export const DEFAULT_TIMEOUT_MS = 30_000;
 export const MIN_TIMEOUT_MS = 2_000;

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
+  acceptGuardianship,
   contributeShare,
   listGuardianships,
   listPendingPinResets,
@@ -9,7 +10,14 @@ import {
   voteOnPinReset,
   type Guardianship,
 } from '@/lib/recovery';
-import { actionableCount, buildInbox, hasExpired, INBOX_POLL_INTERVAL_MS, type InboxItem } from '@/lib/app';
+import {
+  actionableCount,
+  buildInbox,
+  hasExpired,
+  INBOX_ACTION_LABELS,
+  INBOX_POLL_INTERVAL_MS,
+  type InboxItem,
+} from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
 import { Button, Card, Empty, Notice, Spinner } from './ui';
 
@@ -20,6 +28,7 @@ export default function GuardianInbox() {
   const [items, setItems] = useState<InboxItem[]>();
   const [guardianships, setGuardianships] = useState<Guardianship[]>([]);
   const [message, setMessage] = useState<string>();
+  const [notice, setNotice] = useState<string>();
   const [busyId, setBusyId] = useState<string>();
 
   const load = useCallback(async () => {
@@ -30,7 +39,7 @@ export default function GuardianInbox() {
         listGuardianships(context),
       ]);
       setGuardianships(rows);
-      setItems(buildInbox(pendingSessions, pendingResets));
+      setItems(buildInbox(pendingSessions, pendingResets, rows));
       setMessage(undefined);
     } catch (error) {
       setMessage(reportError(error));
@@ -46,8 +55,14 @@ export default function GuardianInbox() {
 
   async function act(item: InboxItem) {
     setBusyId(item.id);
+    setNotice(undefined);
     try {
-      if (item.kind === 'pin-reset') {
+      if (item.kind === 'guardian-invite') {
+        await acceptGuardianship(context, item.id);
+        setNotice(
+          `You are now a guardian for ${item.ownerUsername}. They can ask you to help them back in.`,
+        );
+      } else if (item.kind === 'pin-reset') {
         await voteOnPinReset(context, item.id, account?.username ?? '');
       } else {
         const row = guardianships.find(
@@ -90,6 +105,7 @@ export default function GuardianInbox() {
       }
     >
       {message ? <Notice tone="danger">{message}</Notice> : null}
+      {notice ? <Notice tone="success">{notice}</Notice> : null}
 
       {items === undefined ? (
         <Spinner />
@@ -114,10 +130,8 @@ export default function GuardianInbox() {
                 {item.actionable && !expired ? (
                   <Button disabled={busyId === item.id} onClick={() => void act(item)}>
                     {busyId === item.id
-                      ? 'Sending…'
-                      : item.kind === 'pin-reset'
-                        ? 'Approve'
-                        : 'Send my share'}
+                      ? INBOX_ACTION_LABELS[item.kind].busy
+                      : INBOX_ACTION_LABELS[item.kind].idle}
                   </Button>
                 ) : null}
               </li>

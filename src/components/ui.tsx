@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
 
 export function Card({
@@ -42,6 +43,79 @@ export function Button({
       className={`rounded-lg px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed ${styles} ${className}`}
       {...props}
     />
+  );
+}
+
+export function CopyButton({
+  value,
+  label = 'Copy',
+  copiedLabel = 'Copied',
+  disabled = false,
+  className = '',
+}: {
+  value: string;
+  label?: string;
+  copiedLabel?: string;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      title={label}
+      aria-label={copied ? copiedLabel : label}
+      className={`inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 ${className}`}
+      onClick={() => {
+        void navigator.clipboard?.writeText(value);
+        setCopied(true);
+        clearTimeout(timer.current);
+        timer.current = setTimeout(() => setCopied(false), 2000);
+      }}
+    >
+      {copied ? <CheckIcon /> : <ClipboardIcon />}
+      <span>{copied ? copiedLabel : label}</span>
+    </button>
+  );
+}
+
+function ClipboardIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4"
+    >
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v1" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4"
+    >
+      <path d="m5 13 4 4 10-10" />
+    </svg>
   );
 }
 

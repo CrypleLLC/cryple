@@ -70,6 +70,13 @@ localStorage["encrypted_seed"] = { "v": 1, "salt": "…", "iv": "…", "ct": "�
 `v` is the KDF version marker. It is checked on read and an unknown version **throws**
 rather than being guessed at — a future move off PBKDF2 needs it to re-wrap old blobs.
 
+**Only Paranoid accounts have a vault.** The spec's § Local Seed Encryption is headed "Both
+Modes", but this client gives a Standard account no PIN at all
+([`lib/app` § Onboarding](../app/README.md)), and there is nothing else to wrap the seed under —
+so a Standard device stores nothing and re-derives from the phrase each session. `hasSeedVault()`
+is therefore also the answer to "is this device Paranoid", which is why the app's `locked` phase
+and the PIN-entry `Unlock` screen are reached only by Paranoid accounts.
+
 `UnlockResult` is a union rather than a thrown error because the caller must render four
 different outcomes:
 

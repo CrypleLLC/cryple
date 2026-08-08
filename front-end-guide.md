@@ -50,20 +50,18 @@ The API surface is split into five domains: `auth`, `users`, `secrets` (the lega
 | Item             | Value                                                                   |
 | ---------------- | ----------------------------------------------------------------------- |
 | Default port     | `8080` (`PORT` env var)                                                 |
-| Local base URL   | `http://localhost:8080/v1`                                              |
-| API version      | `v1`, in the path. **Every path in this guide is relative to it.**      |
+| Local base URL   | `http://localhost:8080`                                                 |
+| API version      | None in the path. **Every path in this guide is relative to the root.** |
 | Content type     | `application/json; charset=utf-8` on every response with a body         |
 | Request body     | JSON. `Content-Type` is not enforced, but send `application/json`.      |
 | Max body size    | **1 MiB** (`MAX_BODY_BYTES`). Larger requests get `400 INVALID_BODY`.   |
 | Trailing slashes | Stripped by middleware — `/secrets/` and `/secrets` are the same route. |
 
-**The version prefix is in the base URL, not in the paths below.** Every route in this guide is written as `POST /sign-up`, and the request you actually send is `POST /v1/sign-up`. Configure `https://…/v1` once as your client's base URL and concatenate the documented paths onto it — do not sprinkle `v1` through your route constants, because that is the thing you will want to change in exactly one place later.
+**There is no version prefix.** Every route in this guide is written as `POST /sign-up`, and the request you actually send is `POST /sign-up` against the base URL. Configure the base once as your client's base URL and concatenate the documented paths onto it — keep any future prefix in that one place rather than in your route constants.
 
-Why it is there at all: this API is consumed by a **mobile app**, and once a build ships it lives on devices for months with no way to force it forward. The prefix is what will let a future contract change reach new clients without breaking the ones already installed. There is no version header and no version in the response body — the path is the whole mechanism.
+There is no version segment, no version header and no version in the response body. If a versioning scheme is introduced later it will land in the base URL, and this guide will say so.
 
-**`v1` is the only version, and everything this API serves is v1.** There is no `/v2`, nothing is deprecated, and there is no end date for `v1`. If a call starts failing, that is a bug — not a version being retired.
-
-Two paths are **not** versioned: `GET /health` and `GET /ready`, which stay at the root because they answer to orchestrators rather than to clients. You should not be calling them either way ([§6](./front-end-endpoints.md#6-service-endpoints)).
+`GET /health` and `GET /ready` sit at the same root as everything else; they answer to orchestrators rather than to clients, and you should not be calling them either way ([§6](./front-end-endpoints.md#6-service-endpoints)).
 
 **Every public endpoint takes at least 350 ms** (`AUTH_MIN_RESPONSE_MS`), on success and on every failure alike. That covers `/sign-up`, `/sign-in`, `/auth/verify`, `/users/lookup`, and the public `recovery` and `pin-reset` routes; the JWT-protected routes answer at their natural speed. The floor is deliberate — without it, "no such account" would return measurably faster than a real one and hand back exactly the information the uniform `404` withholds. Budget for it in polling loops and spinners, never treat it as latency to optimize around, and never infer anything from how long a public call took.
 

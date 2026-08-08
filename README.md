@@ -56,8 +56,19 @@ the reading is in this repository, and there is no key on the server side to do 
 
 ### Unlocking a device
 
-Typing 24 words every time is unusable, so the app keeps an encrypted copy of your phrase in the
-browser, locked with a 6-digit PIN you choose. The PIN never leaves your device in this role.
+You choose how signing in works, once, when you set up:
+
+- **Standard** — your recovery phrase alone. No PIN anywhere. Nothing about your account is kept
+  on the device, so you type your phrase again whenever the session ends: on every reload, and
+  after fifteen idle minutes.
+- **Paranoid** — a 6-digit PIN *and* your phrase, both required, the PIN checked by the server.
+  That same PIN also encrypts a copy of your phrase in this browser, so day to day you unlock with
+  six digits instead of twenty-four words.
+
+Paranoid mode exists for one scenario: someone steals your recovery phrase. Without your PIN it is
+not enough. You can upgrade from Standard to Paranoid later, but **never the reverse** — a stolen
+phrase must not be able to switch protection off. The app has no button to remove a PIN and never
+will.
 
 Turning a 6-digit PIN into a real encryption key takes deliberate effort — the app runs 600,000
 rounds of a slow key-derivation function, which is why unlocking pauses for a moment. That pause
@@ -66,20 +77,15 @@ is the point: it makes guessing PINs expensive. It is paid once per session, not
 **Three wrong PINs erase the copy on that device.** Your vault is untouched — you get back in with
 your recovery phrase, or through your guardians.
 
-You also choose how signing in works:
-
-- **Standard** — your recovery phrase alone.
-- **Paranoid** — your phrase *and* your PIN, both required, checked by the server.
-
-Paranoid mode exists for one scenario: someone steals your recovery phrase. Without your PIN it is
-not enough. You can upgrade from Standard to Paranoid later, but **never the reverse** — a stolen
-phrase must not be able to switch protection off. The app has no button to remove a PIN and never
-will.
-
 ### Getting back in: guardians
 
 Guardians are people you trust — family, close friends. They do not get access to your vault. They
 hold a piece of the key that unlocks a recovery.
+
+Nobody becomes a guardian by being named. You invite them by username, and the invitation waits in
+their own guardian inbox until they accept it — an accepted guardian is one who agreed and knows
+they agreed. Until then they count for nothing. Accepting cannot be undone from their side; only
+you can remove a guardian.
 
 The app takes a recovery key, encrypts your phrase with it, then splits that key into pieces using
 a scheme where any *k* of *n* pieces rebuild it and anything fewer reveals **nothing at all**. Not
@@ -132,18 +138,33 @@ Four screens.
 **Setting up.** Generate a new phrase or type in an existing one. The app checks the phrase's
 built-in checksum before doing anything with it, so a typo is caught immediately rather than
 silently creating a different empty account. It asks you to confirm a few words back before
-continuing. Then you set your PIN and choose your mode.
+continuing. Then you choose your mode: Standard finishes there, and Paranoid asks for the PIN it
+needs. Every step has a Back that returns to the one before it, so a wrong turn costs one click
+rather than starting over.
 
-**Unlocking.** Your PIN, once per session. Wrong-attempt warnings count down before the local copy
-is erased.
+**Unlocking.** Paranoid accounts: your PIN, once per session, with wrong-attempt warnings counting
+down before the local copy is erased. Standard accounts have no local copy to unlock — they start
+from the recovery phrase each time.
+
+**Leaving.** Two exits, differing only in what this device keeps. **Lock** ends the session and
+keeps the encrypted copy of your phrase, so your PIN brings you back — Paranoid accounts only,
+since Standard ones store nothing to keep. **Log out** ends the session and removes that copy, so
+coming back needs the phrase itself. Neither touches your vault, your guardians or your heirs, and
+neither can reach other devices: there is no revocation endpoint anywhere in this API, so logging
+out is exactly "delete my own copy of the token" and nothing more.
+
+**Security.** Turn on PIN protection if you started in Standard mode. You confirm your recovery
+phrase — this device is not keeping one yet, and your new PIN is what will encrypt it — choose the
+PIN, and the account becomes Paranoid. That is also what gives you the Lock option. It is one-way:
+there is no button to turn it back off.
 
 **Vault.** Your items, newest first. The app verifies what it received rather than trusting the
 server's word about it.
 
 **Guardians.** Invite people, see how many have actually accepted, configure your threshold, and
-produce your Recovery Kit. This screen is also your inbox for the other direction: when someone
-who named *you* as their guardian needs help recovering, or needs to reset their PIN, the request
-appears here for you to approve.
+produce your Recovery Kit. This screen is also your inbox for the other direction: when somebody
+asks *you* to be their guardian, or someone who already named you needs help recovering or needs to
+reset their PIN, the request appears here for you to accept or approve.
 
 **Succession.** Whether a release has been requested, which guardians voted, and who inherits.
 Every guardian vote is verified in your browser against that guardian's own key — the app rebuilds
@@ -182,10 +203,10 @@ npm run dev
 
 Then open http://localhost:3000.
 
-Point the client at your API in `.env.local`. Note that the URL includes the version segment:
+Point the client at your API in `.env.local`:
 
 ```bash
-NEXT_PUBLIC_BASE_API_URL=http://localhost:8080/v1
+NEXT_PUBLIC_BASE_API_URL=http://localhost:8080
 ```
 
 That is the only setting. It defaults to the value above.

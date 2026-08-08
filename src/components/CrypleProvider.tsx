@@ -38,11 +38,11 @@ interface CrypleValue {
   paranoid: boolean;
   context?: AuthedContext;
   unlock(pin: string): Promise<UnlockOutcome>;
-  enrol(mnemonic: string, pin: string, paranoid: boolean): Promise<UnlockOutcome>;
+  enrol(mnemonic: string, pin: string | undefined, paranoid: boolean): Promise<UnlockOutcome>;
   refreshAccount(): Promise<void>;
   reportError(error: unknown): string;
   lock(): void;
-  forgetDevice(): void;
+  logOut(): void;
 }
 
 const CrypleContext = createContext<CrypleValue | undefined>(undefined);
@@ -125,7 +125,11 @@ export function CrypleProvider({ children }: { children: ReactNode }) {
   );
 
   const enrol = useCallback(
-    async (mnemonic: string, pin: string, wantParanoid: boolean): Promise<UnlockOutcome> => {
+    async (
+      mnemonic: string,
+      pin: string | undefined,
+      wantParanoid: boolean,
+    ): Promise<UnlockOutcome> => {
       try {
         await session.unlockWithMnemonic(mnemonic, pin);
         const booted = await enrolAccount({
@@ -134,7 +138,9 @@ export function CrypleProvider({ children }: { children: ReactNode }) {
           paranoid: wantParanoid,
         });
 
-        await createSeedVault(mnemonic, pin);
+        if (pin !== undefined) {
+          await createSeedVault(mnemonic, pin);
+        }
         writeModeHint(booted.account.has_password);
 
         setAccount(booted.account);
@@ -170,7 +176,7 @@ export function CrypleProvider({ children }: { children: ReactNode }) {
     dropToken(tokens, session);
   }, [session, tokens]);
 
-  const forgetDevice = useCallback(() => {
+  const logOut = useCallback(() => {
     dropToken(tokens, session);
     wipeSeedVault();
     clearModeHint();
@@ -188,9 +194,9 @@ export function CrypleProvider({ children }: { children: ReactNode }) {
       refreshAccount,
       reportError,
       lock,
-      forgetDevice,
+      logOut,
     }),
-    [phase, account, paranoid, context, unlock, enrol, refreshAccount, reportError, lock, forgetDevice],
+    [phase, account, paranoid, context, unlock, enrol, refreshAccount, reportError, lock, logOut],
   );
 
   return <CrypleContext.Provider value={value}>{children}</CrypleContext.Provider>;

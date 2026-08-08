@@ -18,12 +18,62 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 ## Onboarding
 
 The flow is a reducer, not scattered `useState` — every guard that matters is testable without
-rendering. Order: **origin → (backup → verify | import) → PIN → mode → enrolling → done.**
+rendering. Order:
 
-**The PIN step comes before the mode choice and applies to both modes.** This is easy to get
-backwards: the PIN is not only the second factor. It always wraps the seed in the local vault at
-rest ([`pin`](../pin/README.md)), and only *additionally* becomes the `Server_Auth_Token` in
-Paranoid Mode. A Standard-mode user still sets one.
+```
+origin → (backup → verify | import) → mode ─┬─ Standard ──────────→ enrolling → done
+                                            └─ Paranoid → PIN ────→ enrolling → done
+```
+
+**The mode is chosen first, and only Paranoid reaches the PIN step.** Asking for a PIN before the
+user knows what a PIN is *for* is the wrong order; and a Standard account has no PIN at all, so
+asking for one is asking for something that is then thrown away.
+
+`mode-chosen` therefore also clears any `pin` already entered — a user who picks Paranoid, types a
+PIN, goes `back` and picks Standard must not enrol carrying it. `isReadyToEnroll` requires a PIN
+only when `paranoid` is true, and a failed enrolment returns to whichever step the user last acted
+on — `pin` for Paranoid, `mode` for Standard.
+
+### Going back
+
+`previousStep` is the reverse of the diagram above, and `back` walks it **one step at a time** —
+it is not a reset. Reaching `origin` by pressing Back repeatedly is the only way to start over, and
+that is the one transition that discards the phrase and the branch, because both are chosen there.
+
+What each step back forgets is what that step chooses, and nothing more:
+
+| Back onto | Forgets |
+| --- | --- |
+| `origin` | the phrase and the generate/import branch — the word count survives |
+| `backup` / `verify` / `import` | nothing; the phrase is still needed to show or edit |
+| `mode` | the mode **and** the PIN, since the PIN only exists because Paranoid was chosen |
+
+`back` also clears `error`, so a rejection never follows the user onto a screen it did not come
+from. `origin`, `enrolling` and `done` have no previous step: the first has nothing behind it, and
+the other two are past the point of no return — `previousStep` returns `undefined` and `back` is a
+no-op rather than a half-cancelled enrolment. The Back control renders once, below the step card,
+driven by `canGoBack`; steps do not each carry their own.
+
+`ImportStep` seeds its textarea from `state.mnemonic`, so stepping back onto it offers the phrase
+for correction rather than an empty box.
+
+**The consequence for Standard, which the copy states rather than hides:** the PIN is what
+encrypts the local seed vault ([`pin`](../pin/README.md)), so with no PIN there is no vault and
+nothing about the account is kept on the device. A Standard user re-enters the recovery phrase
+whenever the session ends — every reload, and after the 15-minute idle lock. That is what
+"your recovery phrase alone" costs, and `MODE_COPY.standard.tradeoff` says so on the choice screen
+next to the Standard button, not afterwards.
+
+This is a deliberate divergence from `auth/two-factor-PIN.md` § Local Seed Encryption (Both
+Modes), which assumes a PIN exists in both modes. The alternative reading — keep a PIN in Standard
+purely for storage — was built first and rejected as a product decision: a "Standard" mode that
+still demands a PIN is not a second mode. Nothing on the wire changes either way; the spec section
+describes a client-local convenience, and no server behaviour depends on it.
+
+The generated phrase is rendered as **one sentence, not a numbered list** — that is how a phrase is
+written down and how every other wallet renders it, and a numbered grid invites transcription into
+a numbered list where a single misplaced word survives unnoticed. `mnemonicSentence` produces the
+one string that is both shown and copied by the clipboard button, so the two can never diverge.
 
 The reducer refuses to advance on a failed checksum or a rejected PIN, so a bad value cannot
 reach a derivation. `MODE_COPY.oneWayDoor` states that Paranoid → Standard does not exist; a test
@@ -57,20 +107,83 @@ Two things it deliberately does **not** do:
 The hint in `localStorage` is not a secret and not a credential — it is one of `standard` /
 `paranoid`, and an unrecognised value reads as absent.
 
+## Turning on the second factor
+
+`sessionExits` can only offer a PIN-locked session to an account that has a PIN, so the Security
+screen is where a Standard account gets one — `POST /users/second-factor`, the API's one supported
+mode transition ([`lib/users`](../users/README.md)).
+
+`checkUpgrade` validates the **phrase before the PIN**: a wrong phrase makes the PIN useless, and
+failing on the cheap half first is the better message. The copy reuses `MODE_COPY.oneWayDoor`
+verbatim rather than paraphrasing it — the one-way-door warning must read identically wherever it
+appears, and a test pins that.
+
+Why the screen asks for the recovery phrase at all: a Standard account keeps nothing on the device,
+so the upgrade has to create the local vault, and that needs the phrase. The keystore does not
+retain it ([`lib/session` § Never](../session/README.md)), so it is asked for. It is checked
+against the signed-in `user_address` **before** anything is sent — wrapping the wrong seed under
+the right PIN would produce a vault that unlocks into a different account.
+
+## Leaving a session
+
+There is no revocation endpoint, so ending a session is purely local
+([`lib/auth` § Sign-out](../auth/README.md)). The only real choice is **what the device keeps**,
+and `sessionExits(deviceRemembersPhrase)` is that choice as data:
+
+| | Keeps the local vault | Coming back needs |
+| --- | --- | --- |
+| **Lock** | yes | the PIN |
+| **Log out** | no — the vault is wiped | the recovery phrase |
+
+- **Lock is offered only when there is something to lock.** A Standard account stores nothing on
+  the device, so locking and logging out would be the same action under two names; that mode gets
+  one button. `hasSeedVault()` is the test, not `paranoid` — they agree today, but the vault is the
+  thing actually being kept.
+- **Only the erasing log-out confirms.** Wiping the device copy is worth a second look; ending a
+  session that stored nothing is not, and a confirmation there would train the reflex that makes
+  the real one useless.
+- The confirmation says the vault, guardians and heirs are **untouched**, because "log out and
+  erase this device" reads like account deletion and is not. Losing the local copy costs one
+  re-entry of the phrase.
+- Both exits run through the provider's `lock` / `logOut`; `logOut` is also what the `Unlock`
+  screen's "Log out of this device" and post-wipe "Start over" buttons call — one concept, three
+  entry points, no second implementation.
+
 ## The guardian inbox
 
-Both guardian queues — pending recovery sessions and pending PIN resets — are one list, because to
-a guardian they are one job. `buildInbox` sorts **actionable first, then newest**, so the thing
-needing a response is never below a completed one.
+All three guardian queues — **pending guardianship invitations**, pending recovery sessions and
+pending PIN resets — are one list, because to a guardian they are one job: somebody is asking for
+something. `buildInbox` sorts **actionable first, then newest**, so the thing needing a response is
+never below a completed one, and `INBOX_ACTION_LABELS` keeps the three verbs (`Accept`, `Approve`,
+`Send my share`) distinct so a row's button says what it does.
 
+- **Invitations come from `GET /recovery/guardianships`, not from a queue endpoint** — there is no
+  `…/pending` route for them. Only `pending_invite` rows become items; `active` and `revoked` rows
+  are not requests and are filtered out by the recovery domain's `pendingInvitations`.
+- The item's `id` is the **invitation id**, which is what `guardian-accept` signs and what the
+  `PATCH /recovery/guardians/{id}/accept` path takes — not the owner's id or username.
+- **Accepting is a signed action, not a formality** — the JWT alone is not enough
+  (`front-end-endpoints.md` § PATCH …/accept, changed 2026-07-29). It reveals the owner's
+  `user_address` to the guardian and raises the owner's effective quorum, so a bearer token must
+  not be able to forge the second leg of the handshake. The second factor demanded is the
+  **guardian's own**, which `context.paranoid` already supplies.
+- **There is no decline endpoint.** A guardian accepts or leaves it; only the owner can revoke.
+  `GUARDIAN_INVITE_DETAIL` says so on the row rather than offering a button that cannot exist.
 - A `contest_period` PIN reset is **informational, never a vote prompt**. Only `pending_quorum`
   rows accept a vote; the API answers `409` otherwise. `canVoteOn` from the recovery domain is the
   single source of that rule.
-- An already-submitted recovery share stays visible, marked done, rather than vanishing.
+- An already-submitted recovery share stays visible, marked done, rather than vanishing. An
+  accepted invitation does **not** — it stops being a request, so the row goes and a success notice
+  takes its place.
 - Recovery sessions carry a 30-minute `expires_at` and `hasExpired` gates the action. PIN resets
-  have no expiry here — their clock is the 48h contest period.
+  and invitations have no expiry here — a reset's clock is the 48h contest period, and an
+  invitation does not lapse.
 - The poll interval is the recovery domain's `GUARDIAN_INBOX_POLL_INTERVAL_MS` (60s), not a new
   constant. There are no webhooks; polling faster buys nothing.
+
+Not built: a standing "accounts you guard for" list. `GET /recovery/guardianships` carries the
+`active` rows to render it, but it is a reference view rather than an inbox, and the inbox is what
+Task 30 was about.
 
 ## The vault index
 
