@@ -89,6 +89,10 @@ operation** — there is no revocation endpoint, and a leaked token stays valid 
 no matter what the owner does. Do not build a "sign out all devices" affordance or a session
 list; nothing server-side backs one.
 
+Because nothing is sent, the *user-visible* difference between locking and logging out is
+entirely local: what the device keeps. `sessionExits` in [`lib/app`](../app/README.md) is where
+that distinction is drawn — `signOut` itself is the same call underneath both.
+
 ## Tests
 
 `auth.test.ts` stubs `fetch` and asserts the enrolled keys match the fixture in wire encoding,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import vectors from '@/test/fixtures/test-vectors.json';
-import type { PendingPinReset, PendingSession } from '@/lib/recovery';
+import type { Guardianship, PendingPinReset, PendingSession } from '@/lib/recovery';
 import type { SecretMetaRecord, SecretRecord } from '@/lib/secrets';
 import type { Beneficiary, ReleaseStatusRecord, ReleaseVoteReport } from '@/lib/succession';
 import { KekNotSpecifiedError } from '@/lib/secrets';
@@ -15,15 +15,20 @@ import {
   buildReleaseView,
   buildVaultIndex,
   checkIntegrity,
+  checkUpgrade,
   decodeRecoveryKitShare,
   encodeRecoveryKitShare,
   formatBytes,
   hasExpired,
+  INBOX_ACTION_LABELS,
   INBOX_POLL_INTERVAL_MS,
   isVaultSealed,
+  MODE_COPY,
   RECOVERY_KIT_PREFIX,
+  SECOND_FACTOR_COPY,
   RecoveryKitParseError,
   renderRecoveryKit,
+  sessionExits,
 } from './index';
 
 const tree = await deriveKeyTreeFromSeed(hexToBytes(vectors.seed_and_user_address.seed_hex));
@@ -49,6 +54,16 @@ function reset(overrides: Partial<PendingPinReset> = {}): PendingPinReset {
     status: 'pending_quorum',
     voted: false,
     created_at: '2026-07-26T11:00:00Z',
+    ...overrides,
+  };
+}
+
+function guardianship(overrides: Partial<Guardianship> = {}): Guardianship {
+  return {
+    id: '4a2c8f6e-4f89-11d3-9a0c-0305e82c3301',
+    owner_username: 'c71b3e9d5a02',
+    status: 'pending_invite',
+    created_at: '2026-07-26T10:00:00Z',
     ...overrides,
   };
 }
@@ -120,6 +135,139 @@ describe('the guardian inbox merges both queues', () => {
   it('has no expiry for a PIN reset — its clock is the 48h contest period', () => {
     const [item] = buildInbox([], [reset()]);
     expect(item.expiresAt).toBeUndefined();
+  });
+});
+
+describe('turning on the second factor', () => {
+  const mnemonic = vectors.seed_and_user_address.mnemonic;
+  const pin = vectors.server_auth_token.pin;
+
+  it('accepts a valid phrase and PIN together', () => {
+    expect(checkUpgrade(mnemonic, pin, pin)).toEqual({ ok: true });
+  });
+
+  it('checks the phrase before the PIN — a wrong phrase is the useless half', () => {
+    const result = checkUpgrade('not a recovery phrase at all here ok', pin, pin);
+
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.message).toMatch(/12 or 24 words/);
+  });
+
+  it('applies the same PIN rules as onboarding', () => {
+    expect(checkUpgrade(mnemonic, '123456', '123456')).toMatchObject({ ok: false });
+    expect(checkUpgrade(mnemonic, pin, '999999')).toMatchObject({ ok: false });
+  });
+
+  it('says the upgrade is one-way, in the same words as onboarding', () => {
+    expect(SECOND_FACTOR_COPY.offered.oneWayDoor).toBe(MODE_COPY.oneWayDoor);
+    expect(SECOND_FACTOR_COPY.enabled.oneWayDoor).toBe(MODE_COPY.oneWayDoor);
+  });
+
+  it('never offers to turn the second factor off', () => {
+    expect(JSON.stringify(SECOND_FACTOR_COPY)).not.toMatch(/disable|remove the PIN|turn off/i);
+  });
+
+  it('explains why the phrase is asked for, since the device has none stored', () => {
+    expect(SECOND_FACTOR_COPY.offered.phrasePrompt).toMatch(/does not keep one yet/);
+    expect(SECOND_FACTOR_COPY.phraseMismatch).toMatch(/different account/);
+  });
+});
+
+describe('leaving a session', () => {
+  it('offers logging out in both modes — it is never the only thing missing', () => {
+    for (const remembers of [true, false]) {
+      expect(sessionExits(remembers).map((exit) => exit.id)).toContain('log-out');
+    }
+  });
+
+  it('offers a plain lock only when the device has a phrase to come back to', () => {
+    expect(sessionExits(true).map((exit) => exit.id)).toEqual(['lock', 'log-out']);
+    expect(sessionExits(false).map((exit) => exit.id)).toEqual(['log-out']);
+  });
+
+  it('confirms only the log out that erases the stored phrase', () => {
+    const [lock, logOut] = sessionExits(true);
+
+    expect(lock.confirm).toBeUndefined();
+    expect(lock.destructive).toBe(false);
+    expect(logOut.confirm).toBeDefined();
+    expect(logOut.destructive).toBe(true);
+  });
+
+  it('does not warn a Standard user about erasing something they never stored', () => {
+    const [logOut] = sessionExits(false);
+
+    expect(logOut.confirm).toBeUndefined();
+    expect(logOut.destructive).toBe(false);
+    expect(logOut.description).toMatch(/recovery phrase again/);
+  });
+
+  it('promises the account survives, since logging out is local only', () => {
+    const [, logOut] = sessionExits(true);
+
+    expect(logOut.confirm).toMatch(/recovery phrase/i);
+    expect(logOut.confirm).toMatch(/untouched/i);
+  });
+});
+
+describe('guardianship invitations are the third queue', () => {
+  it('surfaces a pending invitation as something the guardian must accept', () => {
+    const [item] = buildInbox([], [], [guardianship()]);
+
+    expect(item.kind).toBe('guardian-invite');
+    expect(item.id).toBe(guardianship().id);
+    expect(item.ownerUsername).toBe('c71b3e9d5a02');
+    expect(item.actionable).toBe(true);
+    expect(item.expiresAt).toBeUndefined();
+  });
+
+  it('carries the invitation id, not the owner — that is what guardian-accept signs', () => {
+    const [item] = buildInbox([], [], [guardianship({ id: 'ffffffff-4f89-11d3-9a0c-0305e82c3301' })]);
+    expect(item.id).toBe('ffffffff-4f89-11d3-9a0c-0305e82c3301');
+  });
+
+  it('says what accepting costs, and that there is no decline', () => {
+    const [item] = buildInbox([], [], [guardianship()]);
+
+    expect(item.detail).toMatch(/account address/i);
+    expect(item.detail).toMatch(/no way to decline/i);
+  });
+
+  it('drops rows that are already active or revoked — only invitations are requests', () => {
+    const items = buildInbox(
+      [],
+      [],
+      [
+        guardianship({ id: 'a-active', status: 'active' }),
+        guardianship({ id: 'a-revoked', status: 'revoked' }),
+        guardianship(),
+      ],
+    );
+
+    expect(items).toHaveLength(1);
+    expect(items[0].id).toBe(guardianship().id);
+  });
+
+  it('sits alongside the other two queues and counts toward what is waiting', () => {
+    const items = buildInbox([session()], [reset()], [guardianship()]);
+
+    expect(items).toHaveLength(3);
+    expect(new Set(items.map((item) => item.kind))).toEqual(
+      new Set(['guardian-invite', 'recovery-session', 'pin-reset']),
+    );
+    expect(actionableCount(items)).toBe(3);
+  });
+
+  it('has an Accept label distinct from approving a PIN reset', () => {
+    expect(INBOX_ACTION_LABELS['guardian-invite'].idle).toBe('Accept');
+    expect(INBOX_ACTION_LABELS['guardian-invite'].idle).not.toBe(
+      INBOX_ACTION_LABELS['pin-reset'].idle,
+    );
+    expect(Object.keys(INBOX_ACTION_LABELS).sort()).toEqual([
+      'guardian-invite',
+      'pin-reset',
+      'recovery-session',
+    ]);
   });
 });
 

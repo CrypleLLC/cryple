@@ -50,19 +50,19 @@ afterEach(() => {
 });
 
 describe('base URL', () => {
-  it('defaults to localhost with the version segment', () => {
-    expect(getBaseUrl()).toBe('http://localhost:8080/v1');
+  it('defaults to localhost at the API root', () => {
+    expect(getBaseUrl()).toBe('http://localhost:8080');
   });
 
   it('takes NEXT_PUBLIC_BASE_API_URL and strips trailing slashes', () => {
-    process.env.NEXT_PUBLIC_BASE_API_URL = 'https://api.cryple.io/v1/';
-    expect(getBaseUrl()).toBe('https://api.cryple.io/v1');
+    process.env.NEXT_PUBLIC_BASE_API_URL = 'https://api.cryple.io/';
+    expect(getBaseUrl()).toBe('https://api.cryple.io');
   });
 
   it('concatenates documented paths onto the versioned base', async () => {
     const calls = mockFetch({ status: 200, body: { message: 'ok', data: {} } });
     await request({ method: 'GET', path: '/users/me' });
-    expect(calls[0].url).toBe('http://localhost:8080/v1/users/me');
+    expect(calls[0].url).toBe('http://localhost:8080/users/me');
   });
 });
 
@@ -90,7 +90,7 @@ describe('request shape', () => {
       path: '/secrets',
       query: { fields: 'meta', limit: 25, cursor: undefined },
     });
-    expect(calls[0].url).toBe('http://localhost:8080/v1/secrets?fields=meta&limit=25');
+    expect(calls[0].url).toBe('http://localhost:8080/secrets?fields=meta&limit=25');
   });
 
   it('refuses a body over the 1 MiB cap before sending', async () => {

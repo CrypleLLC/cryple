@@ -12,9 +12,9 @@ Conventions for this file: check a task only when its listed acceptance criteria
 
 Nothing ships, and no other milestone starts, until Task 3's fixture is green. A wrong derivation here produces a valid-looking but different account, and the failure surfaces at inheritance release — years too late.
 
-- [x] **Task 1: Test runner.** Add Vitest (proposed in AGENTS.md as the conventional choice for Next 15 + TS strict; confirm with the user before installing). Wire `npm test`. Acceptance: a trivial test runs in CI-able form. *Blocks: every task below — the crypto layer cannot be written without its fixtures.*
+- [x] **Task 1: Test runner.** Add Vitest (proposed in AGENTS.md as the conventional choice for Next 15 + TS strict; confirm with the user before installing). Wire `npm test`. Acceptance: a trivial test runs in CI-able form. _Blocks: every task below — the crypto layer cannot be written without its fixtures._
 
-- [x] **Task 2: Dependencies.** Add `@noble/curves` (SLIP-0010 P-256 signing, X25519 — WebCrypto cannot import a raw EC private scalar) and `@noble/post-quantum` (ML-KEM-768). `@noble/hashes` and `bip39` are already installed. Copy `../api-general/.docs/crypto/test-vectors.json` into the test fixtures verbatim — this client only ever *reads* that file; regenerating it is a backend operation.
+- [x] **Task 2: Dependencies.** Add `@noble/curves` (SLIP-0010 P-256 signing, X25519 — WebCrypto cannot import a raw EC private scalar) and `@noble/post-quantum` (ML-KEM-768). `@noble/hashes` and `bip39` are already installed. Copy `../api-general/.docs/crypto/test-vectors.json` into the test fixtures verbatim — this client only ever _reads_ that file; regenerating it is a backend operation.
 
 - [x] **Task 3: The frozen key tree** (`src/lib/keys/` or equivalent — naming is the implementer's, the constants are not). Implement exactly [crypto/ECDSA.md](../api-general/.docs/crypto/ECDSA.md):
   - BIP39 mnemonic → 64-byte seed (validate checksum before use; NFKD; passphrase supported, default empty).
@@ -37,7 +37,7 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
 ## Milestone 1 — HTTP and authentication
 
 - [x] **Task 7: HTTP layer** (`src/lib/api/`). One place that owns:
-  - `NEXT_PUBLIC_BASE_API_URL` (includes `/v1`; default `http://localhost:8080/v1`) — `v1` appears nowhere else.
+  - `NEXT_PUBLIC_BASE_API_URL` (API root, no version segment; default `http://localhost:8080`) — paths are concatenated onto it verbatim.
   - Success envelope `{message, data}`; error envelope `{"code": "…"}` only — all user-facing copy is built client-side from `code` + endpoint.
   - Status handling by response, never by verb (`DELETE` can return `200` with a body; `204` exists).
   - `401 UNAUTHORIZED` (session over → sign in again) vs `401 INVALID_CREDENTIALS` (can appear on a plain `GET`) as distinct outcomes.
@@ -55,7 +55,7 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
   - Encode the action table from [signed-actions.md § Actions](../api-general/.docs/auth/signed-actions.md#actions) as data (action label → arg order → second-factor flag), so a new action is one row, not new code.
   - Acceptance: unit tests mirroring the backend's `service_test.go` cases — signature bound to timestamp, action, and arguments; sign-in payload never valid as an action payload; `secret-delete` ids sorted ascending and de-duplicated before signing.
 
-- [x] **Task 9: JWT lifecycle.** Store the token from `/sign-up` | `/sign-in` (both `201` and `200` carry one), attach as `Authorization: Bearer`, treat its 24h `exp` as the session, drop on logout (deleting our copy *is* logout — no revocation exists). `401 UNAUTHORIZED` anywhere → session over.
+- [x] **Task 9: JWT lifecycle.** Store the token from `/sign-up` | `/sign-in` (both `201` and `200` carry one), attach as `Authorization: Bearer`, treat its 24h `exp` as the session, drop on logout (deleting our copy _is_ logout — no revocation exists). `401 UNAUTHORIZED` anywhere → session over.
 
 - [x] **Task 10: Sign-up / sign-in / restore flows.**
   - Sign-up enrolls all three public keys (SPKI base64, X25519 base64, ML-KEM base64). **Enrollment is immutable** — no re-derivation drift is survivable, which is what Task 3's fixture protects.
@@ -67,9 +67,9 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
 
 - [x] **Task 11: Users domain.** `GET /users/me` (source of truth for `has_password`), `GET /users/lookup`, `GET /users/{uuid}/public-keys`, `POST /users/second-factor` (action `enable-second-factor`, signs the new token; its ambiguous `401` on retry is resolved via `GET /users/me`), `PUT /users/password` (rotate — needs the current token), `DELETE /users` (action `account-delete`). **No "disable PIN" affordance exists or ever will** — Paranoid → Standard is not a supported transition.
 
-- [x] **Task 12: DEK wrap seam.** Define `wrapDek(dek): string` / `unwrapDek(wrapped): dek` as the *only* interface the secrets domain sees. ⚠️ **The owner-side KEK derivation is the one unresolved spec gap** (AGENTS.md § Resolved questions): `storage-plan.md` forbids inventing a KEK path and defers the derivation to `crypto/ECDSA.md`, where nothing has landed. The seam ships with a stub that throws; the real derivation is a backend-spec addition plus regenerated test vectors. **Do not pick a label or construction in this repo under any circumstances** — the server treats `wrapped_dek` as opaque, so a divergent choice fails silently, per item, forever. *Blocks Task 13 only.*
+- [x] **Task 12: DEK wrap seam.** Define `wrapDek(dek): string` / `unwrapDek(wrapped): dek` as the _only_ interface the secrets domain sees. ⚠️ **The owner-side KEK derivation is the one unresolved spec gap** (AGENTS.md § Resolved questions): `storage-plan.md` forbids inventing a KEK path and defers the derivation to `crypto/ECDSA.md`, where nothing has landed. The seam ships with a stub that throws; the real derivation is a backend-spec addition plus regenerated test vectors. **Do not pick a label or construction in this repo under any circumstances** — the server treats `wrapped_dek` as opaque, so a divergent choice fails silently, per item, forever. _Blocks Task 13 only._
 
-- [ ] **Task 13: Secrets domain** *(blocked on Task 12's spec resolution)*. Per-item flow: random 256-bit DEK → AES-256-GCM the payload → `wrapDek` → `POST /secrets {id, ciphertext, wrapped_dek, version}` with a **client-generated `id`** (that is what makes the POST retry-safe). Vault index from `GET /secrets?fields=meta` (unpaginated); hash the ciphertext you received rather than trusting `ciphertext_sha256`; single and batch delete via action `secret-delete` (batch = sorted de-duplicated ids; single = the one-element case; both need a JSON body). Budget ~700 KiB plaintext per item against the 1 MiB cap.
+- [ ] **Task 13: Secrets domain** _(blocked on Task 12's spec resolution)_. Per-item flow: random 256-bit DEK → AES-256-GCM the payload → `wrapDek` → `POST /secrets {id, ciphertext, wrapped_dek, version}` with a **client-generated `id`** (that is what makes the POST retry-safe). Vault index from `GET /secrets?fields=meta` (unpaginated); hash the ciphertext you received rather than trusting `ciphertext_sha256`; single and batch delete via action `secret-delete` (batch = sorted de-duplicated ids; single = the one-element case; both need a JSON body). Budget ~700 KiB plaintext per item against the 1 MiB cap.
 
 ## Milestone 3 — Recovery
 
@@ -85,16 +85,16 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
 
 - [x] **Task 19: Seed recovery — guardian side.** Poll `GET /recovery/sessions/pending` (~once a minute), `GET /recovery/share/{session_id}`, unwrap own share, re-wrap to the session's ephemeral key, submit via `POST /recovery/submit` (action `recovery-share-submit`, guardian's own second factor).
 
-- [x] **Task 20: PIN reset.** Owner: `request` / `revoke` / `confirm` (all signed, none takes a second factor — the owner lost the PIN; `confirm` signs the *new* token), 48h contest period surfaced in UI. Guardian: poll `GET /recovery/pin-reset/pending`, vote (action `pin-reset-vote`, guardian's second factor applies). Owner-side vote audit: `GET /auth/pin-reset/{id}/votes` returns semantic fields — rebuild `challenge:signed_timestamp:pin-reset-vote:request_id` and verify each signature client-side; never trust a server-rendered payload string.
+- [x] **Task 20: PIN reset.** Owner: `request` / `revoke` / `confirm` (all signed, none takes a second factor — the owner lost the PIN; `confirm` signs the _new_ token), 48h contest period surfaced in UI. Guardian: poll `GET /recovery/pin-reset/pending`, vote (action `pin-reset-vote`, guardian's second factor applies). Owner-side vote audit: `GET /auth/pin-reset/{id}/votes` returns semantic fields — rebuild `challenge:signed_timestamp:pin-reset-vote:request_id` and verify each signature client-side; never trust a server-rendered payload string.
 
 ## Milestone 4 — Succession
 
-- [x] **Task 21: Beneficiaries.** Register (action `beneficiary-register`; omit the snapshot fields and let the server copy the heir's enrolled keys — supplying them only adds a mismatch failure mode; re-registering refreshes and **drops that heir's wrapped shares**, surfaced from `dropped_shares`), list (`keys_rotated: true` means *the heir deleted their account* — render "remove them and choose another", never a re-wrap prompt), delete (action `beneficiary-delete`, cascades their shares).
+- [x] **Task 21: Beneficiaries.** Register (action `beneficiary-register`; omit the snapshot fields and let the server copy the heir's enrolled keys — supplying them only adds a mismatch failure mode; re-registering refreshes and **drops that heir's wrapped shares**, surfaced from `dropped_shares`), list (`keys_rotated: true` means _the heir deleted their account_ — render "remove them and choose another", never a re-wrap prompt), delete (action `beneficiary-delete`, cascades their shares).
 
 - [x] **Task 22: Inheritance shares** — built, with its one blocked step behind the Task 12 seam. Assign: unwrap the item's DEK, PQXDH-wrap it to the heir's snapshot keys (`usage=succession-dek`), `POST /succession/shares` (action `share-assign`, args `beneficiary_id, item_id`). List per beneficiary; delete (action `share-delete`). `item_type` is `secret` only. **The `unwrapDek` call still rejects with `KekNotSpecifiedError`** until Decision A lands, so assignment throws before reaching the network; everything downstream of the unwrap is implemented and tested against a stand-in wrapper. No call site changes when the KEK ships.
 
-- [x] **Task 23: Release votes and status.** Guardian: fetch the cycle **immediately before** signing `succession-release-vote` (args: owner's `user_address`, cycle — a cycle-*n* signature is refused in cycle *n+1*). Owner: status renders only `monitoring` / `counting_down` (nothing writes the other states; `last_check_in` is not a live "last seen"); `GET /succession/votes` audited client-side by rebuilding `challenge:signed_timestamp:succession-release-vote:owner_address:release_cycle` per vote.
-  - ⚠️ **Corrected while implementing**: this task said to read `release_cycle` from `GET /succession/status`. That endpoint is **owner-scoped** and reports the guardian's *own* switch, so its cycle is the wrong number to sign. [front-end-endpoints.md](./front-end-endpoints.md) says so explicitly under both `POST /succession/votes` and `GET /succession/status`: guardians read `owner_release_cycle` from `GET /recovery/guardianships`. The guide wins on wire behaviour; the implementation follows it.
+- [x] **Task 23: Release votes and status.** Guardian: fetch the cycle **immediately before** signing `succession-release-vote` (args: owner's `user_address`, cycle — a cycle-_n_ signature is refused in cycle _n+1_). Owner: status renders only `monitoring` / `counting_down` (nothing writes the other states; `last_check_in` is not a live "last seen"); `GET /succession/votes` audited client-side by rebuilding `challenge:signed_timestamp:succession-release-vote:owner_address:release_cycle` per vote.
+  - ⚠️ **Corrected while implementing**: this task said to read `release_cycle` from `GET /succession/status`. That endpoint is **owner-scoped** and reports the guardian's _own_ switch, so its cycle is the wrong number to sign. [front-end-endpoints.md](./front-end-endpoints.md) says so explicitly under both `POST /succession/votes` and `GET /succession/status`: guardians read `owner_release_cycle` from `GET /recovery/guardianships`. The guide wins on wire behaviour; the implementation follows it.
 
 ## Milestone 5 — Product shell and cleanup
 
@@ -103,7 +103,7 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
     is surfaced from the Guardians screen, not during first-run onboarding. Onboarding covers
     phrase, PIN and mode; there is nothing to put in a kit before a guardian exists.
   - The PIN step applies to **both** modes: it always wraps the local seed at rest, and only
-    *additionally* becomes the `Server_Auth_Token` in Paranoid Mode.
+    _additionally_ becomes the `Server_Auth_Token` in Paranoid Mode.
 
 - [x] **Task 25: App shell.** Vault list from the meta listing; guardian inbox (pending recovery sessions + pending PIN resets, ~1-minute poll); succession dashboard within the Task 23 constraints. Respect every boundary in AGENTS.md § Product boundaries — no heir screens, no session list, no key-rotation flow, no UI waiting on unreachable states, no check-in configuration (that is on-chain).
   - Two screens surface blocked spec gaps rather than faking them: vault items cannot be opened or
@@ -116,6 +116,44 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
 - [x] **Task 27: Per-domain `README.md`.** Each module built above carries its README as the sole documentation (no comments in code). Written incrementally with each task; this task is the final audit that none is missing or stale. Added `src/lib/app/README.md` and `src/components/README.md`; corrected the one stale reference (`src/lib/keys/README.md` cited `src/lib/crypto.ts` in the present tense after Task 26 deleted it). All 15 module READMEs present.
 
 ---
+
+## Milestone 6 - Bgs Found
+
+- [x] **Task 28: Onboarding** During onboarding, the user generated a mnemonic. When the seed phrase is displayed, need to be a single sentence of 12 or 24 words, not an enumerated list. Also, add an icon to copy the seed phrase to clipboard.
+
+- [x] **Task 29: PIN configuration** Currently the flow asks for the PIN and confirme standard or paranoid mode after. The correct flow is presenting the two modes first, them user sets PIN if has chosen the paranoid mode.
+  - Order is now **mode → PIN**, and **Standard never sees a PIN step** — it enrols straight from the mode choice.
+  - Consequence, accepted deliberately: the PIN is also what encrypts the local seed vault, so a Standard account has **no vault** and nothing persisted on the device. Standard users re-enter the recovery phrase on every reload and after the 15-minute idle lock. `MODE_COPY.standard.tradeoff` states this on the choice screen.
+  - This diverges from `auth/two-factor-PIN.md` § Local Seed Encryption (**Both Modes**), which assumes a PIN exists either way. Nothing on the wire changes — that section describes a client-local convenience, and no server behaviour depends on it. If the spec should be amended to match, that is a backend-repo edit.
+  - `SessionKeystore` now takes an optional PIN and `serverAuthToken()` returns `undefined` when there is none (it still throws while _locked_ — the two are different answers). The signing layer's existing "a Paranoid Mode account must send the `Server_Auth_Token`" guard is what catches a mode/session mismatch.
+  - **Follow-up worth considering, not built:** with no vault, a returning Standard user lands in onboarding and re-picks a mode that is already immutable server-side. `signInWithModeDetection` could drive that path from `has_password` instead of asking. Sequenced after Task 30.
+
+- [x] **Task 30: Guardian Approval** The user is able to ask for a guardian by username, but not able to approve the guardian. Need to add a flow for the guardian to approve the request.
+  - `acceptGuardianship` (`PATCH /recovery/guardians/{id}/accept`, `guardian-accept`) already existed and was tested; only the UI path to it was missing.
+  - Pending invitations are now the **third guardian-inbox queue**, built from the `pending_invite` rows of `GET /recovery/guardianships` — there is no `…/pending` endpoint for invitations. `INBOX_ACTION_LABELS` keeps the three verbs distinct (`Accept` / `Approve` / `Send my share`).
+  - **No decline affordance**, because no endpoint exists: the invitee accepts or leaves it, and only the owner can revoke. The row says so instead of offering a button that cannot work.
+  - The second factor demanded is the **guardian's own** (`context.paranoid`), per the signed-actions table — never the owner's.
+  - **Not built:** a standing "accounts you guard for" reference list. `GET /recovery/guardianships` carries the `active` rows for it, but that is a view, not an inbox.
+
+- [x] **Task 31: Loging out** The user needs to be able to log out of the application. This is a simple task that will clear the session and return the user to the login page.
+  - `signOut` (drop the JWT, lock and zero the keystore) already existed; the header only exposed it as **Lock**, and the strong version was hidden on the `Unlock` screen as "Use a different recovery phrase".
+  - Now two named exits, as data in `sessionExits`: **Lock** keeps the local PIN-wrapped vault (come back with the PIN), **Log out** wipes it (come back with the recovery phrase). Lock is offered only when a vault exists — in Standard the two would be one action under two names.
+  - Only the erasing log-out confirms, and the confirmation says the vault, guardians and heirs survive: "log out and erase this device" reads like account deletion and is not.
+  - `forgetDevice` was renamed `logOut` — one concept, three entry points (header, `Unlock`, post-wipe "Start over").
+  - Still **no** "sign out all devices" or session list: the API has no revocation, so logging out is local-only by construction.
+
+- [x] **Task 32: Session timeout** The logout option removed the lock. User still needs the option of locking app to require PIN.
+  - Lock was never removed for **Paranoid** accounts — it sits beside Log out. It is absent in **Standard**, because Task 29 removed the PIN there and a lock has nothing to require.
+  - Resolved by building the missing **Standard → Paranoid upgrade** (`POST /users/second-factor`), which is the API's own way to get a PIN. New `Security` tab; `enableSecondFactor` already existed in `src/lib/users` and was unbuilt in the UI.
+  - The upgrade asks for the **recovery phrase** as well as the new PIN: a Standard account keeps no local vault, so one must be created, and the keystore deliberately does not retain the mnemonic. The phrase is checked against the signed-in `user_address` before anything is sent, and `createSeedVault` runs only **after** the API call succeeds — creating it first would leave a Standard account holding a vault if the request failed.
+  - Idle timeout left at 15 minutes and unsurfaced, per the decision on this task. Making it visible or configurable is still open.
+  - **Not built:** `rotateSecondFactor` (`PUT /users/password`, change an existing PIN) exists in the lib and has no UI.
+
+- [x] **Task 33: Option of get Back** The user needs to be able of get back to prevous step in the onboarding flow.
+  - `previousStep` reverses the flow graph and `back` walks it **one step at a time** — it used to reset to the beginning from anywhere except the PIN step.
+  - Each step back forgets only what that step chooses: `origin` discards the phrase and the branch (keeping the word count), `mode` discards the mode and the PIN, the phrase steps discard nothing. `back` also clears `error`.
+  - `origin`, `enrolling` and `done` have no previous step, so `back` is a no-op rather than a half-cancelled enrolment.
+  - One shared Back control below the step card, driven by `canGoBack`; `ImportStep` prefills from `state.mnemonic` so stepping back offers the phrase for correction.
 
 ## Cross-cutting rules (apply to every task)
 
@@ -144,12 +182,12 @@ Four cross-client byte contracts were unspecified and blocked Tasks 13, 18, 19 a
 are now **decided and written into `../api-general/.docs`**. Reasoning and the options that were
 weighed are in [proposals/opaque-blob-layouts.md](./proposals/opaque-blob-layouts.md).
 
-| # | Decision | Spec | Unblocks |
-| --- | --- | --- | --- |
-| A | Vault KEK = `HKDF-SHA512(seed, ∅, "Cryple-Key-v1\|vault-kek", 32)` | `crypto/ECDSA.md` § Step 5 | 13, 22 |
-| B | One sealed-blob envelope `0x01 ‖ iv(12) ‖ ct+tag` for `wrapped_dek`, `ciphertext`, `encrypted_seed` | `crypto/ECDSA.md` § Sealed Blob Format | 13, 15, 16, 22 |
-| C | Ephemeral session key becomes **two** fields: `ephemeral_x25519_public`, `ephemeral_mlkem_public` | `recovery-flow.md` | 18, 19 |
-| D | `recovery-session` `info` binds the **`session_id`** in both address slots | `crypto/pqxdh.md` § Exception | 18, 19 |
+| #   | Decision                                                                                            | Spec                                   | Unblocks       |
+| --- | --------------------------------------------------------------------------------------------------- | -------------------------------------- | -------------- |
+| A   | Vault KEK = `HKDF-SHA512(seed, ∅, "Cryple-Key-v1\|vault-kek", 32)`                                  | `crypto/ECDSA.md` § Step 5             | 13, 22         |
+| B   | One sealed-blob envelope `0x01 ‖ iv(12) ‖ ct+tag` for `wrapped_dek`, `ciphertext`, `encrypted_seed` | `crypto/ECDSA.md` § Sealed Blob Format | 13, 15, 16, 22 |
+| C   | Ephemeral session key becomes **two** fields: `ephemeral_x25519_public`, `ephemeral_mlkem_public`   | `recovery-flow.md`                     | 18, 19         |
+| D   | `recovery-session` `info` binds the **`session_id`** in both address slots                          | `crypto/pqxdh.md` § Exception          | 18, 19         |
 
 **Nothing is unblocked until the backend side lands** — the specs are written, the vectors and the
 API change are not. Tracked as `api-general` Tasks 64–67. Until then the seams still throw:

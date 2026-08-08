@@ -192,6 +192,12 @@ bodyless `PATCH`. Accepting is the moment the owner's `user_address` becomes vis
 the moment you start counting toward their quorum, so a bearer token must not be able to forge
 the second leg of a consent handshake. It is the **invitee's own** second factor that applies.
 
+The invitee reaches `acceptGuardianship` from the guardian inbox
+([`lib/app` § The guardian inbox](../app/README.md)), which builds its invitation rows from the
+`pending_invite` entries of `listGuardianships` — there is no `…/pending` endpoint for
+invitations the way there is for sessions and PIN resets. `pendingInvitations` is that filter.
+**There is no decline**: the invitee accepts or leaves it, and only the owner can `revokeGuardian`.
+
 ### Revocation is not cryptographic revocation
 
 `revokeGuardian` returns a `200` **with a body you must read**. When `recovery_setup_stale` is

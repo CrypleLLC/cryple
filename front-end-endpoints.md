@@ -4,7 +4,7 @@ Every HTTP endpoint the server exposes: the exact request payload it accepts, th
 
 This describes the API **as implemented**, not as specified. Where the implementation and `.docs/` disagree, this file follows the code.
 
-**Read [front-end-guide.md](./front-end-guide.md) first.** It carries what you need before any call here will work: the base URL and its `/v1` prefix, CORS and transport limits, how to build the challenge and action signatures that most of these endpoints require in their request body, JWT usage, and the client caveats. This file assumes all of it.
+**Read [front-end-guide.md](./front-end-guide.md) first.** It carries what you need before any call here will work: the base URL, CORS and transport limits, how to build the challenge and action signatures that most of these endpoints require in their request body, JWT usage, and the client caveats. This file assumes all of it.
 
 Section numbers are **not contiguous** — they are the original numbering from before this file was split out of the guide, kept so that every `§N` reference in `.docs/` and the module READMEs still resolves. §1, §2, §5 and §14 live in the guide.
 
@@ -184,7 +184,7 @@ Two things to know about it. It is decided **before** the token is checked, so a
 
 ## 6. Service Endpoints
 
-All public, no authentication. **These two are the exception to the `/v1` base URL** — they sit at the server root, so the full path is `http://localhost:8080/health`, with no version segment. `/v1/health` is a `404`.
+All public, no authentication. They sit at the server root like every other route, so the full path is `http://localhost:8080/health`.
 
 | Method | Path      | Response                                                   |
 | ------ | --------- | ---------------------------------------------------------- |

@@ -4,33 +4,33 @@ import { useMemo, useReducer, useState } from 'react';
 import { generateMnemonic, type MnemonicWordCount } from '@/lib/keys';
 import {
   buildVerificationChallenge,
+  canGoBack,
   checkMnemonic,
   checkPin,
   INITIAL_ONBOARDING,
   MODE_COPY,
-  mnemonicWords,
+  mnemonicSentence,
   onboardingReducer,
+  PIN_STEP_COPY,
   SEED_WARNING,
   verifyBackup,
   type OnboardingState,
 } from '@/lib/app';
 import { useCryple } from './CrypleProvider';
-import { Button, Card, Field, Notice } from './ui';
+import { Button, Card, CopyButton, Field, Notice } from './ui';
 
 export default function Onboarding() {
   const { enrol } = useCryple();
   const [state, dispatch] = useReducer(onboardingReducer, INITIAL_ONBOARDING);
   const [busy, setBusy] = useState(false);
 
-  async function finish(paranoid: boolean) {
-    dispatch({ type: 'mode-chosen', paranoid });
-
-    if (state.mnemonic === undefined || state.pin === undefined) {
+  async function finish(paranoid: boolean, pin?: string) {
+    if (state.mnemonic === undefined) {
       return;
     }
 
     setBusy(true);
-    const outcome = await enrol(state.mnemonic, state.pin, paranoid);
+    const outcome = await enrol(state.mnemonic, pin, paranoid);
     setBusy(false);
 
     if (outcome.status !== 'ready') {
@@ -41,6 +41,18 @@ export default function Onboarding() {
     }
   }
 
+  function chooseStandard() {
+    dispatch({ type: 'mode-chosen', paranoid: false });
+    void finish(false);
+  }
+
+  function chooseParanoid(pin: string) {
+    dispatch({ type: 'pin-chosen', pin });
+    if (checkPin(pin).ok) {
+      void finish(true, pin);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       {state.error ? <Notice tone="danger">{state.error}</Notice> : null}
@@ -48,16 +60,27 @@ export default function Onboarding() {
       {state.step === 'origin' ? <OriginStep dispatch={dispatch} /> : null}
       {state.step === 'backup' ? <BackupStep state={state} dispatch={dispatch} /> : null}
       {state.step === 'verify' ? <VerifyStep state={state} dispatch={dispatch} /> : null}
-      {state.step === 'import' ? <ImportStep dispatch={dispatch} /> : null}
-      {state.step === 'pin' ? <PinStep dispatch={dispatch} /> : null}
-      {state.step === 'mode' ? <ModeStep busy={busy} onChoose={finish} /> : null}
+      {state.step === 'import' ? <ImportStep state={state} dispatch={dispatch} /> : null}
+      {state.step === 'mode' ? (
+        <ModeStep busy={busy} dispatch={dispatch} onChooseStandard={chooseStandard} />
+      ) : null}
+      {state.step === 'pin' ? (
+        <PinStep busy={busy} onSubmit={chooseParanoid} />
+      ) : null}
       {state.step === 'enrolling' ? (
         <Card title="Creating your vault">
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Deriving your keys and enrolling them. This takes a moment — the PIN stretch is
-            deliberately slow.
+            {state.paranoid
+              ? 'Deriving your keys and enrolling them. This takes a moment — the PIN stretch is deliberately slow.'
+              : 'Deriving your keys and enrolling them. This takes a moment.'}
           </p>
         </Card>
+      ) : null}
+
+      {canGoBack(state) ? (
+        <Button variant="secondary" disabled={busy} onClick={() => dispatch({ type: 'back' })}>
+          Back
+        </Button>
       ) : null}
     </div>
   );
@@ -113,6 +136,7 @@ function BackupStep({
     () => state.mnemonic ?? generateMnemonic(state.wordCount),
     [state.mnemonic, state.wordCount],
   );
+  const phrase = mnemonicSentence(mnemonic);
   const [revealed, setRevealed] = useState(false);
 
   return (
@@ -121,17 +145,12 @@ function BackupStep({
         <Notice tone="warning">{SEED_WARNING}</Notice>
 
         {revealed ? (
-          <ol className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {mnemonicWords(mnemonic).map((word, index) => (
-              <li
-                key={`${index}-${word}`}
-                className="rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm dark:border-slate-800"
-              >
-                <span className="mr-2 text-slate-400">{index + 1}</span>
-                {word}
-              </li>
-            ))}
-          </ol>
+          <div className="space-y-3">
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 font-mono text-sm leading-relaxed break-words text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+              {phrase}
+            </p>
+            <CopyButton value={phrase} label="Copy phrase" copiedLabel="Copied to clipboard" />
+          </div>
         ) : (
           <Button variant="secondary" onClick={() => setRevealed(true)}>
             Reveal my phrase
@@ -200,8 +219,8 @@ function VerifyStep({
   );
 }
 
-function ImportStep({ dispatch }: { dispatch: Dispatch }) {
-  const [text, setText] = useState('');
+function ImportStep({ state, dispatch }: { state: OnboardingState; dispatch: Dispatch }) {
+  const [text, setText] = useState(state.mnemonic ?? '');
   const [message, setMessage] = useState<string>();
 
   return (
@@ -235,16 +254,69 @@ function ImportStep({ dispatch }: { dispatch: Dispatch }) {
   );
 }
 
-function PinStep({ dispatch }: { dispatch: Dispatch }) {
+function ModeStep({
+  busy,
+  dispatch,
+  onChooseStandard,
+}: {
+  busy: boolean;
+  dispatch: Dispatch;
+  onChooseStandard: () => void;
+}) {
+  return (
+    <Card title="How should signing in work?">
+      <div className="space-y-4">
+        <Notice tone="warning">{MODE_COPY.oneWayDoor}</Notice>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+            <h3 className="font-medium">{MODE_COPY.standard.title}</h3>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+              {MODE_COPY.standard.summary}
+            </p>
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-500">
+              {MODE_COPY.standard.tradeoff}
+            </p>
+            <Button className="mt-4" variant="secondary" disabled={busy} onClick={onChooseStandard}>
+              {busy ? 'Creating your vault…' : 'Use Standard'}
+            </Button>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+            <h3 className="font-medium">{MODE_COPY.paranoid.title}</h3>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+              {MODE_COPY.paranoid.summary}
+            </p>
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-500">
+              {MODE_COPY.paranoid.tradeoff}
+            </p>
+            <Button
+              className="mt-4"
+              disabled={busy}
+              onClick={() => dispatch({ type: 'mode-chosen', paranoid: true })}
+            >
+              Use Paranoid
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function PinStep({
+  busy,
+  onSubmit,
+}: {
+  busy: boolean;
+  onSubmit: (pin: string) => void;
+}) {
   const [pin, setPin] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [message, setMessage] = useState<string>();
 
   return (
-    <Card
-      title="Choose a 6-digit PIN"
-      subtitle="This encrypts your recovery phrase on this device. Three wrong tries erase the copy stored here."
-    >
+    <Card title={PIN_STEP_COPY.title} subtitle={PIN_STEP_COPY.subtitle}>
       <div className="space-y-4">
         <Field
           label="PIN"
@@ -266,6 +338,7 @@ function PinStep({ dispatch }: { dispatch: Dispatch }) {
         {message ? <Notice tone="danger">{message}</Notice> : null}
 
         <Button
+          disabled={busy}
           onClick={() => {
             const result = checkPin(pin, confirmation);
             if (!result.ok) {
@@ -273,49 +346,11 @@ function PinStep({ dispatch }: { dispatch: Dispatch }) {
               return;
             }
             setMessage(undefined);
-            dispatch({ type: 'pin-chosen', pin });
+            onSubmit(pin);
           }}
         >
-          Continue
+          {busy ? 'Creating your vault…' : 'Continue'}
         </Button>
-      </div>
-    </Card>
-  );
-}
-
-function ModeStep({
-  busy,
-  onChoose,
-}: {
-  busy: boolean;
-  onChoose: (paranoid: boolean) => void;
-}) {
-  return (
-    <Card title="How should signing in work?">
-      <div className="space-y-4">
-        <Notice tone="warning">{MODE_COPY.oneWayDoor}</Notice>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-            <h3 className="font-medium">{MODE_COPY.standard.title}</h3>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              {MODE_COPY.standard.summary}
-            </p>
-            <Button className="mt-4" variant="secondary" disabled={busy} onClick={() => onChoose(false)}>
-              Use Standard
-            </Button>
-          </div>
-
-          <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-            <h3 className="font-medium">{MODE_COPY.paranoid.title}</h3>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              {MODE_COPY.paranoid.summary}
-            </p>
-            <Button className="mt-4" disabled={busy} onClick={() => onChoose(true)}>
-              Use Paranoid
-            </Button>
-          </div>
-        </div>
       </div>
     </Card>
   );

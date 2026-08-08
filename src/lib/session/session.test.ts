@@ -64,6 +64,32 @@ describe('session unlock', () => {
     expect(keystore.serverAuthToken()).toBe(tokenVector.server_auth_token_hex);
   });
 
+  it('unlocks from a mnemonic alone, holding no second factor — Standard Mode has no PIN', async () => {
+    const keystore = new SessionKeystore({ storage: memoryStorage(), idleTimeoutMs: 0 });
+
+    expect(await keystore.unlockWithMnemonic(mnemonic)).toBe(userAddress);
+    expect(keystore.isUnlocked).toBe(true);
+    expect(bytesToHex(keystore.identityPrivateKey)).toBe(identityVector.private_key_hex);
+    expect(keystore.serverAuthToken()).toBeUndefined();
+  });
+
+  it('still refuses the token when locked, rather than reporting a missing second factor', async () => {
+    const keystore = new SessionKeystore({ storage: memoryStorage(), idleTimeoutMs: 0 });
+    await keystore.unlockWithMnemonic(mnemonic);
+    keystore.lock();
+
+    expect(() => keystore.serverAuthToken()).toThrow(/locked/);
+  });
+
+  it('takes on a second factor when a Standard account enables one', async () => {
+    const keystore = new SessionKeystore({ storage: memoryStorage(), idleTimeoutMs: 0 });
+    await keystore.unlockWithMnemonic(mnemonic);
+
+    await keystore.rekeySecondFactor(pin);
+
+    expect(keystore.serverAuthToken()).toBe(tokenVector.server_auth_token_hex);
+  });
+
   it('propagates the vault outcome without unlocking on a wrong PIN', async () => {
     const storage = memoryStorage();
     await createSeedVault(mnemonic, pin, storage);

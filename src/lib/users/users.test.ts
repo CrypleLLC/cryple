@@ -90,7 +90,7 @@ describe('GET /users/me is the source of truth for the mode', () => {
     const calls = mockFetch(meBody(false));
     const account = await getMe(await newContext());
 
-    expect(calls[0].url).toBe('http://localhost:8080/v1/users/me');
+    expect(calls[0].url).toBe('http://localhost:8080/users/me');
     expect(calls[0].headers.Authorization).toBe('Bearer jwt-token');
     expect(account.has_password).toBe(false);
     expect(account.username).toBe('62a772f85e4b');
@@ -113,7 +113,7 @@ describe('lookup and public keys', () => {
     });
     expect(await lookupUsername(userAddress)).toBe('62a772f85e4b');
     expect(calls[0].url).toBe(
-      `http://localhost:8080/v1/users/lookup?address=${userAddress}`,
+      `http://localhost:8080/users/lookup?address=${userAddress}`,
     );
     expect(calls[0].headers).not.toHaveProperty('Authorization');
   });

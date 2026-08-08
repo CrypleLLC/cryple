@@ -253,13 +253,13 @@ describe('reads', () => {
   it('renders the vault index from ?fields=meta', async () => {
     const calls = mockFetch({ status: 200, body: { data: [] } });
     await listSecretsMeta(await newContext());
-    expect(calls[0].url).toBe('http://localhost:8080/v1/secrets?fields=meta');
+    expect(calls[0].url).toBe('http://localhost:8080/secrets?fields=meta');
   });
 
   it('fetches the full listing without pagination parameters', async () => {
     const calls = mockFetch({ status: 200, body: { data: [storedSecret] } });
     expect(await listSecrets(await newContext())).toHaveLength(1);
-    expect(calls[0].url).toBe('http://localhost:8080/v1/secrets');
+    expect(calls[0].url).toBe('http://localhost:8080/secrets');
   });
 
   it('returns an empty array for an empty vault', async () => {

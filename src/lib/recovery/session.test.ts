@@ -326,7 +326,7 @@ describe('GET /recovery/vault', () => {
 
     const vault = await getRecoveryVault('alice1234abcd');
     expect(calls[0].url).toBe(
-      'http://localhost:8080/v1/recovery/vault?username=alice1234abcd',
+      'http://localhost:8080/recovery/vault?username=alice1234abcd',
     );
     expect(vault.k_threshold).toBe(2);
   });
