@@ -98,13 +98,22 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
 
 ## Milestone 5 — Product shell and cleanup
 
-- [ ] **Task 24: Onboarding.** Generate/import mnemonic (12/24 words, checksum validated with `bip39.validateMnemonic` before any derivation), PIN setup with the format rules, mode choice (Standard vs Paranoid — one-way door, say so), Recovery Kit surface for share 0.
+- [x] **Task 24: Onboarding.** Generate/import mnemonic (12/24 words, checksum validated with `bip39.validateMnemonic` before any derivation), PIN setup with the format rules, mode choice (Standard vs Paranoid — one-way door, say so), Recovery Kit surface for share 0.
+  - Share 0 only exists once recovery setup runs, and setup needs guardians — so the Recovery Kit
+    is surfaced from the Guardians screen, not during first-run onboarding. Onboarding covers
+    phrase, PIN and mode; there is nothing to put in a kit before a guardian exists.
+  - The PIN step applies to **both** modes: it always wraps the local seed at rest, and only
+    *additionally* becomes the `Server_Auth_Token` in Paranoid Mode.
 
-- [ ] **Task 25: App shell.** Vault list from the meta listing; guardian inbox (pending recovery sessions + pending PIN resets, ~1-minute poll); succession dashboard within the Task 23 constraints. Respect every boundary in AGENTS.md § Product boundaries — no heir screens, no session list, no key-rotation flow, no UI waiting on unreachable states, no check-in configuration (that is on-chain).
+- [x] **Task 25: App shell.** Vault list from the meta listing; guardian inbox (pending recovery sessions + pending PIN resets, ~1-minute poll); succession dashboard within the Task 23 constraints. Respect every boundary in AGENTS.md § Product boundaries — no heir screens, no session list, no key-rotation flow, no UI waiting on unreachable states, no check-in configuration (that is on-chain).
+  - Two screens surface blocked spec gaps rather than faking them: vault items cannot be opened or
+    created (`KekNotSpecifiedError`), and naming an heir is disabled (`LabelKeyNotSpecifiedError` —
+    `encrypted_label` needs a device-side sealing key that Decision A has not delivered). Listing,
+    the vault index, and heir removal all work. Both clear with Decision A.
 
-- [ ] **Task 26: Delete the obsolete `src/` scaffolding.** Everything in the AGENTS.md obsolete-code table goes, including `src/lib/crypto.ts` and its environment `console.log`s. Nothing from it is extended or copied. Do this as domains are replaced, not as a big bang — but nothing obsolete survives past Milestone 5.
+- [x] **Task 26: Delete the obsolete `src/` scaffolding.** Everything in the AGENTS.md obsolete-code table goes, including `src/lib/crypto.ts` and its environment `console.log`s. Nothing from it is extended or copied. Done: `src/lib/crypto.ts`, `src/components/LoginForm.tsx` and `src/components/UserDashboard.tsx` are deleted and `src/app/page.tsx` is rewritten on the new session/phase model. Nothing in the obsolete-code table survives.
 
-- [ ] **Task 27: Per-domain `README.md`.** Each module built above carries its README as the sole documentation (no comments in code). Written incrementally with each task; this task is the final audit that none is missing or stale.
+- [x] **Task 27: Per-domain `README.md`.** Each module built above carries its README as the sole documentation (no comments in code). Written incrementally with each task; this task is the final audit that none is missing or stale. Added `src/lib/app/README.md` and `src/components/README.md`; corrected the one stale reference (`src/lib/keys/README.md` cited `src/lib/crypto.ts` in the present tense after Task 26 deleted it). All 15 module READMEs present.
 
 ---
 
@@ -155,7 +164,9 @@ provisionally, so that code becomes final rather than changing.
   `src/test/fixtures/test-vectors.json`; add KEK + sealed-blob assertions; delete
   `fakeDekWrapperForTestsOnly`; close Task 13. Task 22 needs no change beyond that — its
   assignment path is built and only its `unwrapDek` call is blocked. Decision A's vault key is
-  also what should seal `encrypted_label` (`succession`'s one pass-through field).
+  also what should seal `encrypted_label` (`succession`'s one pass-through field) — implement
+  `LabelSealer` in `src/lib/app/label.ts` at the same time and delete `LABEL_SEALED_NOTICE`, which
+  re-enables the "name an heir" form in `SuccessionScreen`.
 - **C + D** → implement `RecoverySessionCrypto` in `src/lib/recovery/session-crypto.ts`; update the
   `POST /recovery/request` body to two fields; close Tasks 18 and 19.
 
