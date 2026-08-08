@@ -6,9 +6,10 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "lint:fix": "eslint --fix"
   },
   "dependencies": {
     "@noble/curves": "^2.2.0",
@@ -21,10 +22,13 @@
     "shamir-secret-sharing": "^0.0.4"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.6",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^15.5.23",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.10"

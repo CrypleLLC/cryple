@@ -12,7 +12,7 @@ Two sets of documents govern this client. They answer different questions and ne
 | [front-end-endpoints.md](./front-end-endpoints.md) | Every route, payload, response and error code. |
 | [tasks.md](./tasks.md) | The integration task list — numbered, milestone-ordered, with acceptance criteria. Work from it. |
 
-These two describe the API **as implemented** — the wire contract. They win over the current source, over `README.md`, and over anything you remember about this project. Cite the `§` you relied on when a change hinges on API behaviour.
+These two describe the API **as implemented** — the wire contract. They win over the current source and over anything you remember about this project. Cite the `§` you relied on when a change hinges on API behaviour.
 
 The wire contract does not specify what goes *into* those fields. Every derivation, every constant, and every byte layout of a `ciphertext` / `wrapped_dek` / `pq_hybrid_*` value lives in the backend repo's `.docs/`, one directory up:
 
@@ -227,12 +227,22 @@ Derived from the guide and the specs; these are the ones a client gets wrong by 
 ## Commands
 
 ```bash
-npm run dev     # next dev --turbopack
+npm run dev       # next dev --turbopack
 npm run build
-npm run lint
+npm test          # vitest run
+npm run test:watch
+npm run lint      # eslint, flat config
+npm run lint:fix
 ```
 
-There is no test setup yet — but the crypto layer cannot be written without one, since `test-vectors.json` has to be a fixture. Propose the runner before adding it.
+CI runs typecheck, lint (`--max-warnings 0`) and tests on every push and PR.
+
+**Lint is ESLint 9 flat config** (`eslint.config.mjs`), extending `next/core-web-vitals` and `next/typescript`. Two rules exist because of this project's threat model rather than style, and both carry their reasoning in the failure message:
+
+- **`no-console` is an error.** The cross-cutting rule is "never log the seed phrase, private keys, DEKs, the PIN, or the `Server_Auth_Token`" — and the deleted `src/lib/crypto.ts` logged the environment and API URL. A blanket ban is the only version of that rule a linter can enforce.
+- **`no-restricted-globals` blocks `localStorage` and `sessionStorage`.** Only the seed vault may reach persistent storage, and only for one PIN-encrypted blob. `src/lib/pin/**` and `src/lib/app/mode-hint.ts` are the two exemptions; adding a third needs a reason that survives §Conventions.
+
+Tests are Vitest (`environment: 'node'`, matching `src/**/*.test.ts` only — so `.tsx` component tests would need jsdom and a testing library that are deliberately not installed). Keep testable product logic in framework-free modules, as `src/lib/app` does.
 
 Regenerating the vectors is a backend operation (`go run ./tools/cryplevectors` in `../api-general`) and is **idempotent**. If its output differs from the committed file, a protocol constant changed — that is a breaking change to every user's keys, not a fix. This client only ever *reads* that file.
 

@@ -191,7 +191,8 @@ NEXT_PUBLIC_BASE_API_URL=http://localhost:8080/v1
 That is the only setting. It defaults to the value above.
 
 ```bash
-npm test     # 469 tests
+npm test      # 469 tests
+npm run lint
 npm run build
 ```
 
