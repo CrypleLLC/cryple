@@ -155,6 +155,8 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
   - `origin`, `enrolling` and `done` have no previous step, so `back` is a no-op rather than a half-cancelled enrolment.
   - One shared Back control below the step card, driven by `canGoBack`; `ImportStep` prefills from `state.mnemonic` so stepping back offers the phrase for correction.
 
+- [ ] **Task 34: Vault CRUD** Vault tab nees a button and form to add a new secret. This project used to have a component for that. secrets was displayed in table. There was a button to hidden values (turn them into asterisks).
+
 ## Cross-cutting rules (apply to every task)
 
 - Never log, persist unencrypted, or transmit: seed phrase, private keys, DEKs, REK, PIN, `Server_Auth_Token` (except the token in the `password` field). Zero key material after use.
