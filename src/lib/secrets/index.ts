@@ -2,7 +2,7 @@ import { assertCanonicalUuid, request } from '@/lib/api';
 import { normalizeActionArgs, signActionEnvelope } from '@/lib/signing';
 import { requireToken, type AuthedContext } from '@/lib/context';
 import { sha256Hex, utf8ToBytes, zeroBytes } from '@/lib/encoding';
-import { generateDek, unspecifiedDekWrapper, type DekWrapper } from './dek';
+import { generateDek, vaultKekDekWrapper, type DekWrapper } from './dek';
 import { openText, sealText } from './codec';
 
 export const MAX_PLAINTEXT_BYTES = 700 * 1024;
@@ -31,7 +31,7 @@ export interface SecretsContext extends AuthedContext {
 }
 
 function wrapper(context: SecretsContext): DekWrapper {
-  return context.dek ?? unspecifiedDekWrapper;
+  return context.dek ?? vaultKekDekWrapper(context.session.vaultKek);
 }
 
 export interface CreateSecretResult {

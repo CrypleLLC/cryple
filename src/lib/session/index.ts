@@ -155,6 +155,10 @@ export class SessionKeystore {
     return this.require().tree.mlkem768.publicKey;
   }
 
+  get vaultKek(): Uint8Array {
+    return this.require().tree.vaultKek;
+  }
+
   get enrollmentPublicKeys(): {
     publicKey: string;
     encryptionPublicKeyX25519: string;

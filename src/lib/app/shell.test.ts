@@ -3,7 +3,6 @@ import vectors from '@/test/fixtures/test-vectors.json';
 import type { Guardianship, PendingPinReset, PendingSession } from '@/lib/recovery';
 import type { SecretMetaRecord, SecretRecord } from '@/lib/secrets';
 import type { Beneficiary, ReleaseStatusRecord, ReleaseVoteReport } from '@/lib/succession';
-import { KekNotSpecifiedError } from '@/lib/secrets';
 import { deriveKeyTreeFromSeed } from '@/lib/keys';
 import { hexToBytes } from '@/lib/encoding';
 import { buildActionPayload, createChallenge, currentTimestamp, signPayload } from '@/lib/signing';
@@ -17,12 +16,14 @@ import {
   checkIntegrity,
   checkUpgrade,
   decodeRecoveryKitShare,
+  decodeSecretPayload,
   encodeRecoveryKitShare,
+  encodeSecretPayload,
   formatBytes,
   hasExpired,
   INBOX_ACTION_LABELS,
   INBOX_POLL_INTERVAL_MS,
-  isVaultSealed,
+  MalformedSecretPayloadError,
   MODE_COPY,
   RECOVERY_KIT_PREFIX,
   SECOND_FACTOR_COPY,
@@ -327,15 +328,23 @@ describe('the vault index', () => {
     expect((await checkIntegrity(secret, entry)).matches).toBe(true);
   });
 
-  it('recognises the sealed-vault condition rather than showing a raw crash', () => {
-    expect(isVaultSealed(new KekNotSpecifiedError('unwrapDek'))).toBe(true);
-    expect(isVaultSealed(new Error('network down'))).toBe(false);
-  });
-
   it('formats sizes for the index', () => {
     expect(formatBytes(512)).toBe('512 B');
     expect(formatBytes(2048)).toBe('2.0 KiB');
     expect(formatBytes(3 * 1024 * 1024)).toBe('3.0 MiB');
+  });
+
+  it('round-trips the local name/value presentation format', () => {
+    const payload = { name: 'GitHub token', value: 'ghp_example' };
+
+    expect(decodeSecretPayload(encodeSecretPayload(payload))).toEqual(payload);
+  });
+
+  it('rejects plaintext this vault UI did not write rather than showing a wrong value', () => {
+    expect(() => decodeSecretPayload('not json')).toThrow(MalformedSecretPayloadError);
+    expect(() => decodeSecretPayload(JSON.stringify({ name: 'only a name' }))).toThrow(
+      MalformedSecretPayloadError,
+    );
   });
 });
 

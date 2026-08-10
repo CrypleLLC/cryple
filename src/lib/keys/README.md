@@ -20,11 +20,16 @@ BIP39 mnemonic (12 or 24 words)
   │
   ├─ SHA-256(seed)                                                  → user_address (64-char lowercase hex)
   ├─ SLIP-0010 P-256, m/9027'/0'/0'                                  → ECDSA P-256 (API auth + ERC-4337 signer)
-  ├─ HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|x25519",   L=32)  → X25519
-  └─ HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|mlkem768", L=64)  → ML-KEM-768 (d‖z for FIPS 203 keygen)
+  ├─ HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|x25519",    L=32)  → X25519
+  ├─ HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|mlkem768",  L=64)  → ML-KEM-768 (d‖z for FIPS 203 keygen)
+  └─ HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|vault-kek", L=32)  → vault KEK (AES-256, symmetric)
 
   RESERVED, NEVER DERIVED:  m/44'/60'/…   — Cryple has no secp256k1 key and no EOA.
 ```
+
+The vault KEK leaf (Decision A) landed 2026-08-08, after the other four — it wraps the per-item
+DEK for [`lib/secrets`](../secrets/README.md) and nothing else. See that module's README for
+scope and the sealed-blob envelope it wraps into.
 
 ## API
 
@@ -33,7 +38,7 @@ BIP39 mnemonic (12 or 24 words)
 | `deriveKeyTree(mnemonic, passphrase?)` | Mnemonic → the whole tree. Validates the checksum first. |
 | `deriveKeyTreeFromSeed(seed)` | Same, from 64 raw seed bytes. Used by the tests and by recovery. |
 | `deriveUserAddress(seed)` | `SHA-256(seed)` as lowercase hex. |
-| `deriveIdentityKey` / `deriveX25519Key` / `deriveMlKem768Key` | Individual leaves. |
+| `deriveIdentityKey` / `deriveX25519Key` / `deriveMlKem768Key` / `deriveVaultKek` | Individual leaves. |
 | `zeroKeyTree(tree)` | Zeroes every private buffer in the tree in place. |
 | `mnemonicToSeed` / `isValidMnemonic` / `generateMnemonic` | BIP39 layer, see below. |
 | `deriveHardenedPath` / `deriveMasterNode` / `deriveHardenedChild` | SLIP-0010 primitives. |
@@ -94,8 +99,8 @@ decapsulation key that `@noble/post-quantum` returns.
 
 ## Zeroing
 
-`zeroKeyTree` zeroes `seed`, the P-256 private key and chain code, the X25519 private key,
-and both ML-KEM secrets. It does **not** zero public keys or the `userAddress` string.
+`zeroKeyTree` zeroes `seed`, the P-256 private key and chain code, the X25519 private key, both
+ML-KEM secrets, and the vault KEK. It does **not** zero public keys or the `userAddress` string.
 Callers that hold a tree for a session should use [`lib/session`](../session/README.md),
 which owns the lifecycle rather than leaving it to each call site.
 
@@ -103,10 +108,11 @@ which owns the lifecycle rather than leaving it to each call site.
 
 `keys.test.ts` reproduces **every value** in
 [`test-vectors.json`](../../test/fixtures/test-vectors.json): seed, `user_address`, the
-P-256 private key / chain code / public key in all three encodings, and both encryption key
-pairs. No Go test consumes that file, so this is the only cross-client check of the
-derivations that exists anywhere — it is not optional, and it gates every other milestone.
+P-256 private key / chain code / public key in all three encodings, both encryption key
+pairs, and the vault KEK. No Go test consumes that file, so this is the only cross-client check
+of the derivations that exists anywhere — it is not optional, and it gates every other milestone.
 
-The suite also pins the constants themselves (`Nist256p1 seed`, the path, both HKDF labels)
+The suite also pins the constants themselves (`Nist256p1 seed`, the path, all three HKDF labels)
 against the fixture, so a typo in a label fails as a named assertion rather than as an
-unexplained key mismatch.
+unexplained key mismatch, and confirms the three HKDF leaves stay domain-separated from one
+another.

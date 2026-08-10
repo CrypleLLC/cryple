@@ -4,7 +4,7 @@ import { TokenStore } from '@/lib/api';
 import { SessionKeystore } from '@/lib/session';
 import { buildActionPayload, verifyPayload } from '@/lib/signing';
 import { deriveKeyTreeFromSeed } from '@/lib/keys';
-import { bytesToBase64, hexToBytes } from '@/lib/encoding';
+import { bytesToBase64, bytesToHex, hexToBytes } from '@/lib/encoding';
 import {
   createSecret,
   deleteSecret,
@@ -12,13 +12,12 @@ import {
   generateDek,
   getSecret,
   hashReceivedCiphertext,
-  KekNotSpecifiedError,
   listSecrets,
   listSecretsMeta,
   openSecret,
   openText,
   sealText,
-  unspecifiedDekWrapper,
+  vaultKekDekWrapper,
   UnsupportedPayloadVersionError,
   DEK_LENGTH,
   MAX_PLAINTEXT_BYTES,
@@ -29,28 +28,14 @@ import {
 
 const mnemonic = vectors.seed_and_user_address.mnemonic;
 const pin = vectors.server_auth_token.pin;
-const publicKey = (await deriveKeyTreeFromSeed(hexToBytes(vectors.seed_and_user_address.seed_hex)))
-  .identity.publicKeyUncompressed;
+const tree = await deriveKeyTreeFromSeed(hexToBytes(vectors.seed_and_user_address.seed_hex));
+const publicKey = tree.identity.publicKeyUncompressed;
+const vaultKekVector = vectors.vault_kek;
+const sealedBlobVector = vectors.sealed_blob;
 
 const ID_A = '0c892e57-93cf-423a-a9e9-fee5a9f87681';
 const ID_B = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
 const ID_C = 'ba7816bf-8f01-4fea-9411-2b4c3f5a1e77';
-
-/**
- * A stand-in so the transport and signing paths can be exercised while the real
- * KEK derivation is unspecified. It is NOT a protocol proposal: it stores the DEK
- * in the clear and must never leave this test file.
- */
-function fakeDekWrapperForTestsOnly(): DekWrapper {
-  return {
-    async wrapDek(dek) {
-      return bytesToBase64(dek);
-    },
-    async unwrapDek(wrapped) {
-      return Uint8Array.from(atob(wrapped), (c) => c.charCodeAt(0));
-    },
-  };
-}
 
 interface Call {
   url: string;
@@ -110,27 +95,51 @@ const storedSecret = {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('Task 12 — the DEK seam ships unimplemented, on purpose', () => {
-  it('throws a named error rather than inventing a KEK', async () => {
-    await expect(unspecifiedDekWrapper.wrapDek(generateDek())).rejects.toThrow(
-      KekNotSpecifiedError,
-    );
-    await expect(unspecifiedDekWrapper.unwrapDek('anything')).rejects.toThrow(
-      KekNotSpecifiedError,
-    );
+describe('Task 13 — the vault KEK wraps and unwraps the per-item DEK', () => {
+  it('matches the frozen HKDF info label', () => {
+    expect(vaultKekVector.hkdf_info_label).toBe('Cryple-Key-v1|vault-kek');
+    expect(bytesToBase64(tree.vaultKek)).toBe(vaultKekVector.vault_kek_base64);
   });
 
-  it('points at the spec that has to resolve it', async () => {
-    const error = await unspecifiedDekWrapper.wrapDek(generateDek()).catch((e) => e);
-    expect(error.message).toMatch(/ECDSA\.md/);
-    expect(error.message).toMatch(/opaque/);
+  it('unwraps the fixture sealed_blob vector under the fixture vault KEK', async () => {
+    const wrapper = vaultKekDekWrapper(hexToBytes(sealedBlobVector.key_hex));
+    const opened = await wrapper.unwrapDek(sealedBlobVector.blob_base64);
+    expect(bytesToHex(opened)).toBe(sealedBlobVector.plaintext_hex);
   });
 
-  it('is what a secrets call hits when no wrapper is supplied', async () => {
-    mockFetch({ status: 201, body: { data: storedSecret } });
-    await expect(createSecret(await newContext(), 'my secret')).rejects.toThrow(
-      KekNotSpecifiedError,
+  it('round-trips a DEK under the session vault KEK, with a fresh IV each time', async () => {
+    const wrapper = vaultKekDekWrapper(tree.vaultKek);
+    const dek = generateDek();
+
+    const wrappedOnce = await wrapper.wrapDek(dek);
+    const wrappedTwice = await wrapper.wrapDek(dek);
+    expect(wrappedOnce).not.toBe(wrappedTwice);
+
+    expect(await wrapper.unwrapDek(wrappedOnce)).toEqual(dek);
+  });
+
+  it('produces a sealed-blob-layout wrapped_dek when no context.dek override is supplied', async () => {
+    const calls = mockFetch({ status: 201, body: { data: storedSecret } });
+
+    await createSecret(await newContext(), 'my secret');
+    const blob = Uint8Array.from(atob(calls[0].body!.wrapped_dek as string), (c) =>
+      c.charCodeAt(0),
     );
+    expect(blob[0]).toBe(0x01);
+  });
+
+  it('lets a caller override the wrapper via context.dek', async () => {
+    const fake: DekWrapper = {
+      wrapDek: async (dek) => bytesToBase64(dek),
+      unwrapDek: async (wrapped) => Uint8Array.from(atob(wrapped), (c) => c.charCodeAt(0)),
+    };
+    const calls = mockFetch({ status: 201, body: { data: storedSecret } });
+
+    await createSecret(await newContext({ dek: fake }), 'my secret');
+    const blob = Uint8Array.from(atob(calls[0].body!.wrapped_dek as string), (c) =>
+      c.charCodeAt(0),
+    );
+    expect(blob).toHaveLength(DEK_LENGTH);
   });
 
   it('generates a random 256-bit DEK', () => {
@@ -183,7 +192,7 @@ describe('payload codec', () => {
 describe('POST /secrets', () => {
   it('sends a client-generated id — that is what makes the retry safe', async () => {
     const calls = mockFetch({ status: 201, body: { data: storedSecret } });
-    const context = await newContext({ dek: fakeDekWrapperForTestsOnly() });
+    const context = await newContext();
 
     await createSecret(context, 'my secret');
 
@@ -196,7 +205,7 @@ describe('POST /secrets', () => {
 
   it('reuses a caller-supplied id so a retry replays the identical body', async () => {
     const calls = mockFetch({ status: 200, body: { data: storedSecret } });
-    const context = await newContext({ dek: fakeDekWrapperForTestsOnly() });
+    const context = await newContext();
 
     const result = await createSecret(context, 'my secret', { id: ID_A });
     expect(calls[0].body!.id).toBe(ID_A);
@@ -205,13 +214,13 @@ describe('POST /secrets', () => {
 
   it('distinguishes 201 stored from 200 already stored', async () => {
     mockFetch({ status: 201, body: { data: storedSecret } });
-    const context = await newContext({ dek: fakeDekWrapperForTestsOnly() });
+    const context = await newContext();
     expect((await createSecret(context, 'x')).created).toBe(true);
   });
 
   it('never puts the plaintext on the wire', async () => {
     const calls = mockFetch({ status: 201, body: { data: storedSecret } });
-    const context = await newContext({ dek: fakeDekWrapperForTestsOnly() });
+    const context = await newContext();
 
     await createSecret(context, 'correct horse battery staple');
     expect(JSON.stringify(calls[0].body)).not.toContain('correct horse');
@@ -219,7 +228,7 @@ describe('POST /secrets', () => {
 
   it('refuses a payload over the per-item plaintext budget', async () => {
     mockFetch({ status: 201, body: { data: storedSecret } });
-    const context = await newContext({ dek: fakeDekWrapperForTestsOnly() });
+    const context = await newContext();
 
     await expect(
       createSecret(context, 'x'.repeat(MAX_PLAINTEXT_BYTES + 1)),
@@ -228,7 +237,7 @@ describe('POST /secrets', () => {
 
   it('refuses a non-canonical supplied id', async () => {
     mockFetch({ status: 201, body: { data: storedSecret } });
-    const context = await newContext({ dek: fakeDekWrapperForTestsOnly() });
+    const context = await newContext();
     await expect(createSecret(context, 'x', { id: ID_A.toUpperCase() })).rejects.toThrow(
       /canonical/,
     );
@@ -236,7 +245,7 @@ describe('POST /secrets', () => {
 
   it('round-trips through openSecret', async () => {
     const calls = mockFetch({ status: 201, body: { data: storedSecret } });
-    const context = await newContext({ dek: fakeDekWrapperForTestsOnly() });
+    const context = await newContext();
 
     await createSecret(context, 'the real payload');
     const echoed = {

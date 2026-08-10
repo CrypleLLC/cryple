@@ -10,7 +10,7 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | `boot.ts` | Sign-in when the mode is not known yet, and account enrolment |
 | `mode-hint.ts` | The locally remembered Standard/Paranoid hint |
 | `inbox.ts` | Merging the two guardian queues into one list |
-| `vault.ts` | The vault index view model and received-ciphertext integrity check |
+| `vault.ts` | The vault index view model, received-ciphertext integrity check, and the local secret name/value format |
 | `succession-view.ts` | Release status, vote audit and heir view models |
 | `recovery-kit.ts` | The printable share-0 Recovery Kit |
 | `label.ts` | The heir-label sealing seam (blocked, see below) |
@@ -193,9 +193,23 @@ Task 30 was about.
 `ciphertext_sha256` rather than trusting the reported digest — a server-reported hash of
 server-held bytes proves nothing.
 
-`VAULT_SEALED_NOTICE` and `isVaultSealed` exist because item bodies cannot be opened in this
-build: `unwrapDek` rejects with `KekNotSpecifiedError` until Decision A lands. The index is real
-data from the server; only the contents are sealed. The UI says so rather than showing a crash.
+Item bodies used to be unopenable — `unwrapDek` rejected with `KekNotSpecifiedError` until
+Decision A landed — and `VAULT_SEALED_NOTICE` / `isVaultSealed` existed so the UI said so rather
+than showing a crash. Both were removed once the seam stopped throwing; see
+[`lib/secrets`](../secrets/README.md) for the vault KEK that replaced the stub.
+
+### The secret name/value format
+
+The wire contract has no `name` field on a secret — only opaque `ciphertext`. `SecretPayload`
+(`{ name, value }`) is a **client-local convention** encoded as JSON before the plaintext ever
+reaches `createSecret`, the same discipline as the Recovery Kit's `CRK1-` encoding: it never
+reaches the server and no other party parses it.
+
+`decodeSecretPayload` rejects anything that isn't `{ name: string, value: string }` with
+`MalformedSecretPayloadError` rather than rendering a garbled value — an item this vault UI
+didn't write (or a future format change) fails loudly instead of showing the wrong field as a
+name or a value. Both directions round-trip losslessly by construction; there is no normalisation
+to lose.
 
 ## The Recovery Kit
 
@@ -229,6 +243,13 @@ listing and removing existing heirs work normally.
 
 Substituting an existing key here — the X25519 private key, the identity key, the
 `Server_Auth_Token` — would be the exact invention `storage-plan.md` §3.1.1 forbids, and worse,
-reusing a credential or an asymmetric secret as a symmetric wrapping key. Decision A's
-`Cryple-Key-v1|vault-kek` is the natural key; when it lands, implement `LabelSealer` and delete
-the notice. No call site changes.
+reusing a credential or an asymmetric secret as a symmetric wrapping key.
+
+**Decision A's `Cryple-Key-v1|vault-kek` landed 2026-08-08, but it is not this key.** Its
+ratified text in `crypto/ECDSA.md` § Step 5 scopes it to wrapping *other keys* — specifically
+the per-item DEK in [`lib/secrets`](../secrets/README.md) — and states it "never encrypts
+application data directly." A label is application data, not a key, so reusing the vault KEK
+here would repeat the exact mistake this section warns against, just with a real key instead of
+a borrowed one. This stays a distinct open item until the backend spec names a construction for
+`encrypted_label` specifically; when it does, implement `LabelSealer` and delete the notice — no
+call site changes.
