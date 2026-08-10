@@ -49,8 +49,10 @@ says so ([`lib/signing`](../signing/README.md)).
 PIN — see [`lib/pin`](../pin/README.md) for why that is a union.
 
 Accessors (`userAddress`, `identityPrivateKey`, `x25519PrivateKey`, `mlkem768SecretKey`,
-`enrollmentPublicKeys`, `serverAuthToken()`, …) throw while locked. `enrollmentPublicKeys`
-returns the three values `POST /sign-up` enrolls, already in the encoding the wire wants.
+`vaultKek`, `enrollmentPublicKeys`, `serverAuthToken()`, …) throw while locked.
+`enrollmentPublicKeys` returns the three values `POST /sign-up` enrolls, already in the encoding
+the wire wants. `vaultKek` is what [`lib/secrets`](../secrets/README.md) wraps the per-item DEK
+with by default — it is never sent to the server.
 
 A module-level `sessionKeystore` singleton is exported for app use; construct your own
 instance in tests.

@@ -10,8 +10,10 @@ import {
 import {
   deriveKeyTreeFromSeed,
   deriveUserAddress,
+  deriveVaultKek,
   IDENTITY_PATH,
   MLKEM768_HKDF_INFO,
+  VAULT_KEK_HKDF_INFO,
   X25519_HKDF_INFO,
 } from './index';
 import { mnemonicToSeed, isValidMnemonic } from './mnemonic';
@@ -21,6 +23,7 @@ const seedVector = vectors.seed_and_user_address;
 const identityVector = vectors.identity_key_p256;
 const x25519Vector = vectors.x25519_key;
 const mlkemVector = vectors.mlkem768_key;
+const vaultKekVector = vectors.vault_kek;
 
 describe('the fixture pins the constants this client must not diverge on', () => {
   it('matches the frozen SLIP-0010 HMAC key and derivation path', () => {
@@ -33,6 +36,7 @@ describe('the fixture pins the constants this client must not diverge on', () =>
   it('matches the frozen HKDF info labels', () => {
     expect(x25519Vector.hkdf_info_label).toBe(X25519_HKDF_INFO);
     expect(mlkemVector.hkdf_info_label).toBe(MLKEM768_HKDF_INFO);
+    expect(vaultKekVector.hkdf_info_label).toBe(VAULT_KEK_HKDF_INFO);
   });
 });
 
@@ -122,6 +126,19 @@ describe('the frozen key tree reproduces test-vectors.json end to end', () => {
     expect(tree.mlkem768.publicKeyBase64).toBe(mlkemVector.public_key_base64);
     expect(tree.mlkem768.publicKey).toHaveLength(1184);
   });
+
+  it('reproduces the vault KEK', async () => {
+    const tree = await treePromise;
+    expect(bytesToHex(tree.vaultKek)).toBe(vaultKekVector.vault_kek_hex);
+    expect(bytesToHex(tree.vaultKek)).toHaveLength(64);
+  });
+});
+
+describe('vault KEK derivation', () => {
+  it('matches the vector via deriveVaultKek directly', async () => {
+    const seed = hexToBytes(seedVector.seed_hex);
+    expect(bytesToHex(await deriveVaultKek(seed))).toBe(vaultKekVector.vault_kek_hex);
+  });
 });
 
 describe('determinism and domain separation', () => {
@@ -135,11 +152,13 @@ describe('determinism and domain separation', () => {
     expect(bytesToHex(a.mlkem768.publicKey)).toBe(bytesToHex(b.mlkem768.publicKey));
   });
 
-  it('keeps the two HKDF leaves independent', async () => {
+  it('keeps the three HKDF leaves independent', async () => {
     const tree = await deriveKeyTreeFromSeed(hexToBytes(seedVector.seed_hex));
     expect(bytesToHex(tree.x25519.privateKey)).not.toBe(
       bytesToHex(tree.mlkem768.seed.slice(0, 32)),
     );
+    expect(bytesToHex(tree.vaultKek)).not.toBe(bytesToHex(tree.x25519.privateKey));
+    expect(bytesToHex(tree.vaultKek)).not.toBe(bytesToHex(tree.mlkem768.seed.slice(0, 32)));
   });
 
   it('round-trips the SPKI encoding back to the uncompressed point', async () => {

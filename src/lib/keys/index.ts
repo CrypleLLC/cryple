@@ -14,9 +14,11 @@ import { mnemonicToSeed } from './mnemonic';
 export const IDENTITY_PATH = [9027, 0, 0] as const;
 export const X25519_HKDF_INFO = 'Cryple-Key-v1|x25519';
 export const MLKEM768_HKDF_INFO = 'Cryple-Key-v1|mlkem768';
+export const VAULT_KEK_HKDF_INFO = 'Cryple-Key-v1|vault-kek';
 
 const X25519_KEY_LENGTH = 32;
 const MLKEM768_SEED_LENGTH = 64;
+const VAULT_KEK_LENGTH = 32;
 
 export interface IdentityKey {
   privateKey: Uint8Array;
@@ -44,6 +46,7 @@ export interface CrypleKeyTree {
   identity: IdentityKey;
   x25519: X25519Key;
   mlkem768: MlKem768Key;
+  vaultKek: Uint8Array;
 }
 
 async function hkdfSha512(
@@ -102,15 +105,20 @@ export async function deriveMlKem768Key(seed: Uint8Array): Promise<MlKem768Key> 
   };
 }
 
+export async function deriveVaultKek(seed: Uint8Array): Promise<Uint8Array> {
+  return hkdfSha512(seed, VAULT_KEK_HKDF_INFO, VAULT_KEK_LENGTH);
+}
+
 export async function deriveKeyTreeFromSeed(seed: Uint8Array): Promise<CrypleKeyTree> {
-  const [userAddress, identity, x25519Key, mlkem768] = await Promise.all([
+  const [userAddress, identity, x25519Key, mlkem768, vaultKek] = await Promise.all([
     deriveUserAddress(seed),
     deriveIdentityKey(seed),
     deriveX25519Key(seed),
     deriveMlKem768Key(seed),
+    deriveVaultKek(seed),
   ]);
 
-  return { seed, userAddress, identity, x25519: x25519Key, mlkem768 };
+  return { seed, userAddress, identity, x25519: x25519Key, mlkem768, vaultKek };
 }
 
 export async function deriveKeyTree(
@@ -128,6 +136,7 @@ export function zeroKeyTree(tree: CrypleKeyTree): void {
     tree.x25519.privateKey,
     tree.mlkem768.seed,
     tree.mlkem768.secretKey,
+    tree.vaultKek,
   );
 }
 

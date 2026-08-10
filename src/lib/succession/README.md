@@ -29,10 +29,13 @@ keys regardless of what is sent — so sending them adds a mismatch rejection pa
 fields, and nothing else. A test pins the exact body key set.
 
 `encrypted_label` is **opaque to this module**: it is passed through, validated only as non-empty.
-Seal it at the call site with `sealText` from [`@/lib/sealed`](../sealed/README.md) under the
-owner's vault key. That key is Decision A's `Cryple-Key-v1|vault-kek`, which has not landed in the
-backend spec yet — the same gap that blocks the DEK seam below. Until it does, the caller supplies
-whatever opaque string it can produce; this module does not choose a construction.
+Decision A landed the owner's vault KEK (`Cryple-Key-v1|vault-kek`, see [`lib/keys`](../keys/README.md)
+and [`lib/secrets`](../secrets/README.md)), but the ratified sealed-blob table covers only
+`secrets.wrapped_dek`, `secrets.ciphertext` and `recovery_vaults.encrypted_seed` —
+**`encrypted_label` is not in it.** Reusing the vault KEK here anyway would be exactly the kind of
+uncoordinated construction `storage-plan.md` §3.1.1 forbids, so this seam stays blocked
+([`lib/app` § The blocked heir label](../app/README.md#the-blocked-heir-label)) until the backend
+spec names a construction for this field specifically.
 
 `dropped_shares` is **absent when zero**, which today means always: enrolment keys are immutable,
 so a re-registration can never supersede the stored snapshot. `registerBeneficiary` still
@@ -69,23 +72,19 @@ userAddress)` therefore takes it as a parameter. Prefer **`resolveRecipient`**, 
 that beneficiary's username — wrapping under a wrong address produces a blob the heir can never
 open, and nothing server-side would catch it.
 
-## Inheritance shares — half built, one seam blocked
+## Inheritance shares
 
 The wrap is `usage = succession-dek`, sender = the owner's `user_address`, recipient = the heir's,
 recipient keys = the beneficiary's stored `public_key_*_snapshot`. Tests round-trip a real
 `pqxdhWrap` → `pqxdhUnwrap` and confirm the blob does **not** open under a substituted recipient
 address or a substituted usage label.
 
-**What is blocked is the step before it.** `wrapItemKeyForHeir` must first recover the item's DEK
-via `unwrapDek`, and the owner-side vault KEK is the one unresolved spec gap
-([AGENTS.md § Resolved questions](../../../AGENTS.md)). With the default seam that call rejects
-with `KekNotSpecifiedError`, so **assignment throws before it reaches the network** — a test
-asserts zero fetches. Pass a `dek` wrapper on the context and the whole path works; that is what
-the seam was for, and no call site changes when Decision A lands.
-
-**Task 22 is therefore complete except for its dependency on Task 12/13.** Everything downstream
-of the unwrap — the PQXDH wrap, the signature, the body, the upsert semantics — is built and
-tested against a stand-in wrapper.
+`wrapItemKeyForHeir` first recovers the item's DEK via `unwrapDek`, which — with no `dek` override
+on the context — resolves to `vaultKekDekWrapper(context.session.vaultKek)`
+([`lib/secrets`](../secrets/README.md)). This used to be the one unresolved spec gap; Decision A
+closed it, so the full owner-unwrap → PQXDH-rewrap path now runs against the real vault KEK by
+default. The `dek` override on `SuccessionContext` still exists as a test seam, not a production
+requirement.
 
 `share-assign` signs `beneficiary_id` then `item_id`, **in that order**; a test confirms the
 signature does not verify with the two swapped. `item_type` is `secret` and nothing else today.

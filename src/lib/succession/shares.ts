@@ -5,7 +5,7 @@ import { zeroBytes } from '@/lib/encoding';
 import { pqxdhWrap } from '@/lib/pqxdh';
 import {
   getSecret,
-  unspecifiedDekWrapper,
+  vaultKekDekWrapper,
   type DekWrapper,
   type SecretRecord,
   type SecretsContext,
@@ -30,7 +30,7 @@ export interface InheritanceShare {
 export type SuccessionContext = SecretsContext;
 
 function wrapper(context: SuccessionContext): DekWrapper {
-  return context.dek ?? unspecifiedDekWrapper;
+  return context.dek ?? vaultKekDekWrapper(context.session.vaultKek);
 }
 
 export async function wrapItemKeyForHeir(

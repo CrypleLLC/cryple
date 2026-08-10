@@ -67,9 +67,13 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
 
 - [x] **Task 11: Users domain.** `GET /users/me` (source of truth for `has_password`), `GET /users/lookup`, `GET /users/{uuid}/public-keys`, `POST /users/second-factor` (action `enable-second-factor`, signs the new token; its ambiguous `401` on retry is resolved via `GET /users/me`), `PUT /users/password` (rotate — needs the current token), `DELETE /users` (action `account-delete`). **No "disable PIN" affordance exists or ever will** — Paranoid → Standard is not a supported transition.
 
-- [x] **Task 12: DEK wrap seam.** Define `wrapDek(dek): string` / `unwrapDek(wrapped): dek` as the _only_ interface the secrets domain sees. ⚠️ **The owner-side KEK derivation is the one unresolved spec gap** (AGENTS.md § Resolved questions): `storage-plan.md` forbids inventing a KEK path and defers the derivation to `crypto/ECDSA.md`, where nothing has landed. The seam ships with a stub that throws; the real derivation is a backend-spec addition plus regenerated test vectors. **Do not pick a label or construction in this repo under any circumstances** — the server treats `wrapped_dek` as opaque, so a divergent choice fails silently, per item, forever. _Blocks Task 13 only._
+- [x] **Task 12: DEK wrap seam.** Define `wrapDek(dek): string` / `unwrapDek(wrapped): dek` as the _only_ interface the secrets domain sees. The seam shipped with a stub that threw `KekNotSpecifiedError`, because the owner-side KEK derivation was the one unresolved spec gap (`storage-plan.md` forbids inventing a KEK path and deferred the derivation to `crypto/ECDSA.md`). **Resolved 2026-08-10**: Decision A landed in `crypto/ECDSA.md` § Step 5 on 2026-08-08 (`vault_kek = HKDF-SHA512(seed, ∅, "Cryple-Key-v1|vault-kek", 32)`); the seam's default is now `vaultKekDekWrapper`, not the throwing stub. See Task 13.
 
-- [ ] **Task 13: Secrets domain** _(blocked on Task 12's spec resolution)_. Per-item flow: random 256-bit DEK → AES-256-GCM the payload → `wrapDek` → `POST /secrets {id, ciphertext, wrapped_dek, version}` with a **client-generated `id`** (that is what makes the POST retry-safe). Vault index from `GET /secrets?fields=meta` (unpaginated); hash the ciphertext you received rather than trusting `ciphertext_sha256`; single and batch delete via action `secret-delete` (batch = sorted de-duplicated ids; single = the one-element case; both need a JSON body). Budget ~700 KiB plaintext per item against the 1 MiB cap.
+- [x] **Task 13: Secrets domain.** Per-item flow: random 256-bit DEK → AES-256-GCM the payload → `wrapDek` → `POST /secrets {id, ciphertext, wrapped_dek, version}` with a **client-generated `id`** (that is what makes the POST retry-safe). Vault index from `GET /secrets?fields=meta` (unpaginated); hash the ciphertext you received rather than trusting `ciphertext_sha256`; single and batch delete via action `secret-delete` (batch = sorted de-duplicated ids; single = the one-element case; both need a JSON body). Budget ~700 KiB plaintext per item against the 1 MiB cap.
+  - `deriveVaultKek` added to `lib/keys` (`HKDF-SHA512`, info `Cryple-Key-v1|vault-kek`, `L=32`) and wired into `CrypleKeyTree`/`SessionKeystore.vaultKek`. `vaultKekDekWrapper` in `lib/secrets/dek.ts` seals/opens the DEK through the existing `sealed` blob format (`0x01 ‖ iv(12) ‖ ct ‖ tag(16)`), which Decision B ratified as-is — `lib/sealed` needed no changes.
+  - `wrapper(context)` in `lib/secrets/index.ts` (and the mirrored one in `lib/succession/shares.ts`) now defaults to `vaultKekDekWrapper(context.session.vaultKek)` instead of the throwing stub; `context.dek` remains as an explicit override seam for tests.
+  - `src/test/fixtures/test-vectors.json` refreshed from the backend (purely additive: `vault_kek` + `sealed_blob` objects, commit `06584ce`). New fixture coverage in `lib/keys/keys.test.ts` and `lib/secrets/secrets.test.ts`; `fakeDekWrapperForTestsOnly` deleted from both.
+  - **`encrypted_label` (Task 21/`lib/app/label.ts`) is intentionally still blocked** — `crypto/ECDSA.md` § Step 5 scopes the vault KEK to wrapping *other keys* only ("It never encrypts application data directly"), and the ratified sealed-blob table (Decision B) lists only `wrapped_dek`, `ciphertext` and `encrypted_seed`. Reusing it for a label is exactly the uncoordinated construction `storage-plan.md` §3.1.1 forbids, so this stays a separate open item, contrary to this file's earlier note under "Client work once `api-general` Tasks 64–67 land" below (written before Decision A's text was final).
 
 ## Milestone 3 — Recovery
 
@@ -91,7 +95,7 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
 
 - [x] **Task 21: Beneficiaries.** Register (action `beneficiary-register`; omit the snapshot fields and let the server copy the heir's enrolled keys — supplying them only adds a mismatch failure mode; re-registering refreshes and **drops that heir's wrapped shares**, surfaced from `dropped_shares`), list (`keys_rotated: true` means _the heir deleted their account_ — render "remove them and choose another", never a re-wrap prompt), delete (action `beneficiary-delete`, cascades their shares).
 
-- [x] **Task 22: Inheritance shares** — built, with its one blocked step behind the Task 12 seam. Assign: unwrap the item's DEK, PQXDH-wrap it to the heir's snapshot keys (`usage=succession-dek`), `POST /succession/shares` (action `share-assign`, args `beneficiary_id, item_id`). List per beneficiary; delete (action `share-delete`). `item_type` is `secret` only. **The `unwrapDek` call still rejects with `KekNotSpecifiedError`** until Decision A lands, so assignment throws before reaching the network; everything downstream of the unwrap is implemented and tested against a stand-in wrapper. No call site changes when the KEK ships.
+- [x] **Task 22: Inheritance shares.** Assign: unwrap the item's DEK, PQXDH-wrap it to the heir's snapshot keys (`usage=succession-dek`), `POST /succession/shares` (action `share-assign`, args `beneficiary_id, item_id`). List per beneficiary; delete (action `share-delete`). `item_type` is `secret` only. Assignment used to throw before reaching the network — `unwrapDek` rejected with `KekNotSpecifiedError` behind the Task 12 seam — until Decision A landed; `wrapItemKeyForHeir` now unwraps against the real vault KEK by default (no call site or test-seam shape changed, per the plan this seam was built to).
 
 - [x] **Task 23: Release votes and status.** Guardian: fetch the cycle **immediately before** signing `succession-release-vote` (args: owner's `user_address`, cycle — a cycle-_n_ signature is refused in cycle _n+1_). Owner: status renders only `monitoring` / `counting_down` (nothing writes the other states; `last_check_in` is not a live "last seen"); `GET /succession/votes` audited client-side by rebuilding `challenge:signed_timestamp:succession-release-vote:owner_address:release_cycle` per vote.
   - ⚠️ **Corrected while implementing**: this task said to read `release_cycle` from `GET /succession/status`. That endpoint is **owner-scoped** and reports the guardian's _own_ switch, so its cycle is the wrong number to sign. [front-end-endpoints.md](./front-end-endpoints.md) says so explicitly under both `POST /succession/votes` and `GET /succession/status`: guardians read `owner_release_cycle` from `GET /recovery/guardianships`. The guide wins on wire behaviour; the implementation follows it.
@@ -106,10 +110,11 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
     _additionally_ becomes the `Server_Auth_Token` in Paranoid Mode.
 
 - [x] **Task 25: App shell.** Vault list from the meta listing; guardian inbox (pending recovery sessions + pending PIN resets, ~1-minute poll); succession dashboard within the Task 23 constraints. Respect every boundary in AGENTS.md § Product boundaries — no heir screens, no session list, no key-rotation flow, no UI waiting on unreachable states, no check-in configuration (that is on-chain).
-  - Two screens surface blocked spec gaps rather than faking them: vault items cannot be opened or
-    created (`KekNotSpecifiedError`), and naming an heir is disabled (`LabelKeyNotSpecifiedError` —
-    `encrypted_label` needs a device-side sealing key that Decision A has not delivered). Listing,
-    the vault index, and heir removal all work. Both clear with Decision A.
+  - One screen still surfaces a blocked spec gap rather than faking it: naming an heir is disabled
+    (`LabelKeyNotSpecifiedError` — `encrypted_label` needs a device-side sealing key that Decision A
+    scopes out, see Task 13). Listing and heir removal work. Vault item create/open were also
+    blocked here (`KekNotSpecifiedError`) until Task 13 closed; the Vault screen now creates and
+    opens items for real (Task 34).
 
 - [x] **Task 26: Delete the obsolete `src/` scaffolding.** Everything in the AGENTS.md obsolete-code table goes, including `src/lib/crypto.ts` and its environment `console.log`s. Nothing from it is extended or copied. Done: `src/lib/crypto.ts`, `src/components/LoginForm.tsx` and `src/components/UserDashboard.tsx` are deleted and `src/app/page.tsx` is rewritten on the new session/phase model. Nothing in the obsolete-code table survives.
 
@@ -155,7 +160,12 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
   - `origin`, `enrolling` and `done` have no previous step, so `back` is a no-op rather than a half-cancelled enrolment.
   - One shared Back control below the step card, driven by `canGoBack`; `ImportStep` prefills from `state.mnemonic` so stepping back offers the phrase for correction.
 
-- [ ] **Task 34: Vault CRUD** Vault tab nees a button and form to add a new secret. This project used to have a component for that. secrets was displayed in table. There was a button to hidden values (turn them into asterisks).
+- [x] **Task 34: Vault CRUD** Vault tab nees a button and form to add a new secret. This project used to have a component for that. secrets was displayed in table. There was a button to hidden values (turn them into asterisks).
+  - `VaultScreen` now renders the index as a **table** (Name / Value / Updated / Actions) with an "Add a secret" form above it, wired to the real `createSecret` / `getSecret` / `openSecret` / `deleteSecret` calls — not a mock.
+  - Values reveal **per row** via a Show/Hide button rather than the old global asterisk toggle: each row lazy-fetches and caches its plaintext on first reveal, so re-hiding and re-showing doesn't refetch, and opening one item never fires requests for every row at once.
+  - The wire has no `name` field for a secret, only opaque `ciphertext`. New `SecretPayload` (`{ name, value }`) plus `encodeSecretPayload` / `decodeSecretPayload` in `lib/app/vault.ts` is the client-local JSON envelope encoded before sealing — a presentation convention, not a protocol change, same pattern as the Recovery Kit's `CRK1-` encoding. Malformed/foreign plaintext throws `MalformedSecretPayloadError` instead of showing a garbled field.
+  - **Add and Show now work.** They were written against `createSecret`/`openSecret` while those still rejected with `KekNotSpecifiedError` (Task 13 was unchecked at the time); Task 13 closed the KEK gap the same day, so both paths run for real against the vault KEK with no code change here. `VAULT_SEALED_NOTICE` / `isVaultSealed` were removed as dead code once the fallback stopped throwing.
+  - Not built: bulk delete, editing an existing item (the API is create-or-return by id; changing a value means delete-then-recreate), and any "show all" affordance.
 
 ## Cross-cutting rules (apply to every task)
 
@@ -176,7 +186,7 @@ Nothing ships, and no other milestone starts, until Task 3's fixture is green. A
                     24,25 (after their domains) → 26 → 27
 ```
 
-Milestone 2's Task 13 is the only externally blocked item (KEK spec, backend). Milestones 3 and 4 do not depend on it except Task 22's unwrap step — sequence around it rather than waiting.
+Milestone 2's Task 13 was the only externally blocked item (KEK spec, backend) and closed 2026-08-10. The only item still externally blocked is the `recovery-session` PQXDH binding (Tasks 18/19, see § Open items below).
 
 ## Backend spec decisions — taken 2026-08-06
 
@@ -191,26 +201,28 @@ weighed are in [proposals/opaque-blob-layouts.md](./proposals/opaque-blob-layout
 | C   | Ephemeral session key becomes **two** fields: `ephemeral_x25519_public`, `ephemeral_mlkem_public`   | `recovery-flow.md`                     | 18, 19         |
 | D   | `recovery-session` `info` binds the **`session_id`** in both address slots                          | `crypto/pqxdh.md` § Exception          | 18, 19         |
 
-**Nothing is unblocked until the backend side lands** — the specs are written, the vectors and the
-API change are not. Tracked as `api-general` Tasks 64–67. Until then the seams still throw:
-`src/lib/secrets/dek.ts` and `src/lib/recovery/session-crypto.ts`.
+**A and B landed on the backend 2026-08-08** (`api-general` Task 64, commit `06584ce`) and were
+consumed client-side on 2026-08-10 — see Task 13. **C and D have not**; those seams still throw:
+`src/lib/recovery/session-crypto.ts`.
 
-Decision B ratifies the layout `src/lib/secrets/codec.ts` and `src/lib/sealed/` already ship
-provisionally, so that code becomes final rather than changing.
+Decision B ratifies the layout `src/lib/secrets/codec.ts` and `src/lib/sealed/` already shipped
+provisionally — confirmed byte-for-byte against the ratified spec, so that code needed no changes.
 
 ### Client work once `api-general` Tasks 64–67 land
 
-- **A + B** → implement `DekWrapper` in `src/lib/secrets/dek.ts` and make it the default; refresh
-  `src/test/fixtures/test-vectors.json`; add KEK + sealed-blob assertions; delete
-  `fakeDekWrapperForTestsOnly`; close Task 13. Task 22 needs no change beyond that — its
-  assignment path is built and only its `unwrapDek` call is blocked. Decision A's vault key is
-  also what should seal `encrypted_label` (`succession`'s one pass-through field) — implement
-  `LabelSealer` in `src/lib/app/label.ts` at the same time and delete `LABEL_SEALED_NOTICE`, which
-  re-enables the "name an heir" form in `SuccessionScreen`.
+- **A + B — done (Task 13).** `DekWrapper` in `src/lib/secrets/dek.ts` implemented and made the
+  default; `src/test/fixtures/test-vectors.json` refreshed; KEK + sealed-blob assertions added;
+  `fakeDekWrapperForTestsOnly` deleted. **Correction to this note's original text below:**
+  Decision A's vault key does *not* also cover `encrypted_label` — `crypto/ECDSA.md` § Step 5's
+  ratified text scopes the vault KEK to wrapping *other keys* only ("never encrypts application
+  data directly"), and the sealed-blob table it shipped with covers only `wrapped_dek`,
+  `ciphertext` and `encrypted_seed`. `LabelSealer` / `LABEL_SEALED_NOTICE` are therefore still
+  unimplemented and blocked on a backend decision that has not been made for that field
+  specifically.
 - **C + D** → implement `RecoverySessionCrypto` in `src/lib/recovery/session-crypto.ts`; update the
   `POST /recovery/request` body to two fields; close Tasks 18 and 19.
 
-No call sites change in either case — that is what the seams were for.
+No call sites changed for A + B — that is what the seam was for.
 
 ## Dependency graph
 
@@ -223,26 +235,21 @@ No call sites change in either case — that is what the seams were for.
                     24,25 (after their domains) → 26 → 27
 ```
 
-Milestone 2's Task 13 is the only externally blocked item (KEK spec, backend). Milestones 3 and 4 do not depend on it except Task 22's unwrap step — sequence around it rather than waiting.
+Milestone 2's Task 13 was the only externally blocked item (KEK spec, backend) and closed 2026-08-10. The only item still externally blocked is the `recovery-session` PQXDH binding (Tasks 18/19, see § Open items below).
 
 ## Open items for the backend spec
 
-Both are cross-client byte contracts that this repo must not decide unilaterally. Neither is a
+These are cross-client byte contracts that this repo must not decide unilaterally. None is a
 question for the user — they are backend spec changes plus regenerated test vectors.
 
-A drafted proposal covering all three is in
+A drafted proposal covering the items below is in
 [proposals/opaque-blob-layouts.md](./proposals/opaque-blob-layouts.md) — a concrete option to
 review, not a decision taken here.
 
-1. **The owner-side KEK** that produces `wrapped_dek` (blocks Task 13). Confirmed unspecified;
-   `storage-plan.md` §3.1.1 forbids inventing it here and defers to `crypto/ECDSA.md`.
-2. **The item `ciphertext` byte layout.** `storage-plan.md` describes separate
-   `encrypted_payload` / `nonce` / `auth_tag` fields, but the API takes **one opaque
-   `ciphertext` string** — where the 12-byte IV sits inside it is specified nowhere. This is
-   cross-client because an heir parses the blob after a PQXDH `succession-dek` unwrap.
-   `src/lib/secrets/codec.ts` ships a provisional versioned layout (`0x01 ‖ iv(12) ‖ ct+tag`)
-   that rejects unknown version bytes, so a later ratified layout is detectable rather than
-   silently misparsed. It needs ratifying alongside the KEK.
+~~1. The owner-side KEK that produces `wrapped_dek`~~ and ~~2. the item `ciphertext` byte
+layout~~ — **both resolved** by Decision A/B, 2026-08-08; see Task 13 and § Backend spec
+decisions above. `LabelSealer` for `encrypted_label` remains a **separate, still-open** item —
+Decision A's ratified text explicitly does not cover it (Task 13's note explains why).
 
 3. **The `recovery-session` PQXDH binding** (blocks Task 18's unwrap, and Task 19). Two missing
    pieces: `POST /recovery/request` carries one opaque `ephemeral_public_key` where PQXDH needs

@@ -10,7 +10,7 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `Onboarding.tsx` | Task 24 — phrase, PIN, mode, enrolment |
 | `Unlock.tsx` | PIN unlock and the 3-attempt device wipe |
 | `AppShell.tsx` | Task 25 — the three-tab shell |
-| `VaultScreen.tsx` | Vault index from the meta listing |
+| `VaultScreen.tsx` | Vault index, add/reveal/hide/delete secrets (Task 34) |
 | `GuardiansScreen.tsx` | Guardians, recovery setup, Recovery Kit |
 | `GuardianInbox.tsx` | The merged guardian queue, 1-minute poll |
 | `SuccessionScreen.tsx` | Release status, vote audit, heirs |
@@ -82,10 +82,16 @@ recorded here rather than being visible in the code:
 
 ## What is visibly blocked
 
-Two screens surface unresolved backend spec gaps rather than hiding or faking them:
+One screen surfaces an unresolved backend spec gap rather than hiding or faking it:
 
-- **Vault items cannot be opened or created** (`KekNotSpecifiedError`). The index is real; the
-  contents are sealed.
 - **Naming an heir is disabled** (`LabelKeyNotSpecifiedError`). Listing and removing heirs work.
+  See [`src/lib/app`](../lib/app/README.md#the-blocked-heir-label) — Decision A's vault KEK
+  explicitly does not cover this field, so it stays blocked even though the vault itself no
+  longer is.
 
-Both resolve with Decision A. See [`src/lib/app`](../lib/app/README.md#the-blocked-heir-label).
+Vault items used to be blocked the same way (`KekNotSpecifiedError`) until Decision A landed
+2026-08-08 and was wired in 2026-08-10. `VaultScreen` was built the same way while it was still
+blocked — the real add/reveal/delete UI against the actual `@/lib/secrets` calls, rather than a
+disabled placeholder — so once the seam stopped throwing, Add and Show started working with no
+UI change. Values are revealed one row at a time (lazily fetched and cached in local state)
+rather than with a single "show all" toggle, so opening one item never fires N requests at once.

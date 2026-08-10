@@ -6,7 +6,7 @@ import { deriveKeyTreeFromSeed } from '@/lib/keys';
 import { bytesToBase64, hexToBytes } from '@/lib/encoding';
 import { buildActionPayload, verifyPayload } from '@/lib/signing';
 import { pqxdhUnwrap, parseBlob } from '@/lib/pqxdh';
-import { KekNotSpecifiedError, type DekWrapper, type SecretRecord } from '@/lib/secrets';
+import { vaultKekDekWrapper, type DekWrapper, type SecretRecord } from '@/lib/secrets';
 import {
   assignShare,
   BeneficiaryAccountClosedError,
@@ -102,7 +102,7 @@ function beneficiary(overrides: Partial<Beneficiary> = {}): Beneficiary {
   };
 }
 
-function secret(): SecretRecord {
+function secret(overrides: Partial<SecretRecord> = {}): SecretRecord {
   return {
     id: ITEM_ID,
     ciphertext: 'AQIDBA==',
@@ -110,6 +110,7 @@ function secret(): SecretRecord {
     version: 'v1',
     created_at: '2026-07-26T12:00:00Z',
     updated_at: '2026-07-26T12:00:00Z',
+    ...overrides,
   };
 }
 
@@ -128,28 +129,24 @@ function share(overrides: Partial<InheritanceShare> = {}): InheritanceShare {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('the owner-side unwrap is the blocked half', () => {
-  it('throws KekNotSpecifiedError rather than inventing a KEK', async () => {
+describe('the owner-side unwrap uses the real vault KEK by default', () => {
+  it('unwraps a wrapped_dek sealed under the session vault KEK, with no override', async () => {
     mockFetch({ status: 201, body: { data: share() } });
+    const wrapped_dek = await vaultKekDekWrapper(tree.vaultKek).wrapDek(DEK);
 
-    await expect(
-      wrapItemKeyForHeir(await newContext(), secret(), toRecipient(beneficiary(), HEIR_ADDRESS)),
-    ).rejects.toThrow(KekNotSpecifiedError);
-  });
+    const wrapped = await wrapItemKeyForHeir(
+      await newContext(),
+      secret({ wrapped_dek }),
+      toRecipient(beneficiary(), HEIR_ADDRESS),
+    );
 
-  it('never reaches the network when the seam throws', async () => {
-    const calls = mockFetch({ status: 201, body: { data: share() } });
+    const opened = await pqxdhUnwrap(
+      wrapped,
+      { x25519PrivateKey: tree.x25519.privateKey, mlkemSecretKey: tree.mlkem768.secretKey },
+      { usage: 'succession-dek', senderUserAddress: ownerAddress, recipientUserAddress: HEIR_ADDRESS },
+    );
 
-    await expect(
-      assignShare(
-        await newContext(),
-        beneficiary(),
-        toRecipient(beneficiary(), HEIR_ADDRESS),
-        secret(),
-      ),
-    ).rejects.toThrow(KekNotSpecifiedError);
-
-    expect(calls).toHaveLength(0);
+    expect(opened).toEqual(DEK);
   });
 });
 

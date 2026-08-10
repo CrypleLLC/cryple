@@ -3,58 +3,61 @@
 Per-item encryption and the `/secrets` endpoints. Tasks 12 and 13 of
 [tasks.md](../../../tasks.md).
 
-> ## ⚠️ This domain cannot round-trip yet
->
-> **The owner-side KEK that produces `wrapped_dek` is unspecified**, so `wrapDek` /
-> `unwrapDek` ship as a stub that throws `KekNotSpecifiedError`. Everything else — id
-> generation, payload sealing, transport, signing, the batch delete — is built and tested, and
-> the derivation slots into one module without touching a call site.
->
-> **Task 13 is not complete and must not be checked off** until the KEK lands.
+## The vault KEK (Decision A)
 
-## Why the seam is empty, and must stay empty
+`wrapDek` / `unwrapDek` used to ship as a stub that threw `KekNotSpecifiedError`: the owner-side
+KEK that produces `wrapped_dek` was unspecified, and three sources agreed it had to stay that
+way rather than be invented here — the frozen key tree derived no symmetric wrapping key,
+[`storage-plan.md` §3.1.1](../../../../api-general/.docs/storage-plan.md) said outright *"do
+not invent a KEK path here,"* and the server treats `wrapped_dek` as fully opaque, so a
+divergent client choice would fail silently, per item, forever.
 
-Three sources agree, and none of them is a matter of taste:
+**Resolved 2026-08-08** in `crypto/ECDSA.md` § Step 5 (backend Task 64): another HKDF leaf under
+the existing `Cryple-Key-v1|…` scheme.
 
-- The frozen key tree derives exactly four things — `user_address`, P-256, X25519, ML-KEM —
-  and **no symmetric wrapping key**. PQXDH scopes itself to wrapping *for someone else*.
-- [`storage-plan.md` §3.1.1](../../../../api-general/.docs/storage-plan.md) says it outright:
-  *"do not invent a KEK path here — if the vault needs a dedicated wrapping key, its
-  derivation belongs in that spec [`crypto/ECDSA.md`], with test vectors."*
-- The server treats `wrapped_dek` as **fully opaque** ("Must be non-empty"), so nothing
-  server-side will ever catch a divergent client derivation. **It fails silently, per item,
-  forever** — and surfaces at inheritance release, years later.
+```
+vault_kek = HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|vault-kek", L=32)
+```
 
-The resolution is a one-paragraph addition to `crypto/ECDSA.md` plus regenerated test vectors,
-made **in the backend repo**. The obvious shape is another HKDF leaf under the existing
-`Cryple-Key-v1|…` labelling scheme, but **the label and construction are the backend spec's to
-choose, never this client's.**
+`deriveVaultKek` lives in [`lib/keys`](../keys/README.md) alongside the other two HKDF leaves,
+and is exposed on the session as `SessionKeystore.vaultKek`. `vaultKekDekWrapper(vaultKek)` in
+`dek.ts` is the real `DekWrapper`: `wrapDek`/`unwrapDek` seal/open the DEK through the existing
+sealed-blob codec (`sealPayload`/`openPayload`, i.e. `@/lib/sealed`'s `sealBlob`/`openBlob`).
 
-When it lands: implement `DekWrapper` in `dek.ts`, make it the default, add the vectors to the
-fixture test. Nothing else changes.
+**Scope stays narrow, per the ratified spec text.** The vault KEK "only ever wraps other keys...
+[and] never encrypts application data directly." That is why it wraps the per-item DEK and
+nothing else — in particular, it is **not** the key for `beneficiaries.encrypted_label`
+(`succession`'s pass-through field), which stays blocked; see
+[`lib/succession` § Beneficiaries](../succession/README.md#beneficiaries) and
+[`lib/app` § The blocked heir label](../app/README.md#the-blocked-heir-label).
 
-## The second, related gap — read before shipping
+`wrapper(context)` (in `index.ts`, and its mirror in
+[`lib/succession/shares.ts`](../succession/README.md)) defaults to
+`vaultKekDekWrapper(context.session.vaultKek)`. `context.dek` is still an optional override —
+kept as a test seam, not because production ever needs a second implementation.
+
+## The ciphertext byte layout (Decision B)
 
 `storage-plan.md` describes an item as separate `encrypted_payload`, `nonce` and `auth_tag`
-columns, but the **actual API takes one opaque `ciphertext` string**. How the 12-byte IV packs
-into that string is therefore **not specified anywhere**.
+columns, but the **actual API takes one opaque `ciphertext` string**, and how the 12-byte IV
+packs into that string used to be unspecified anywhere — a cross-client contract, exactly like
+the KEK, since an heir's device unwraps the DEK via PQXDH (`usage=succession-dek`) and must then
+parse the same ciphertext.
 
-That matters beyond this client: an heir's device unwraps the DEK via PQXDH
-(`usage=succession-dek`) and must then parse the ciphertext, so the layout is a **cross-client
-contract**, exactly like the KEK.
-
-`codec.ts` implements a provisional layout, chosen to match the house style of the frozen
-PQXDH blob:
+`codec.ts` shipped a provisional layout ahead of ratification, chosen to match the house style
+of the frozen PQXDH blob:
 
 ```
 ciphertext = base64( 0x01 ‖ iv(12) ‖ AES-256-GCM(dek, iv, plaintext) ‖ tag(16) )
 ```
 
-- It leads with a **version byte** and `openPayload` **rejects an unknown one** rather than
-  guessing — so if the backend ratifies a different layout, old blobs are detectable instead
-  of being silently misparsed.
-- **This is a local choice awaiting ratification, not a protocol decision.** It belongs in the
-  same backend spec change as the KEK. Until then, treat it as provisional.
+**Ratified 2026-08-08** as `crypto/ECDSA.md` § Sealed Blob Format (Decision B) — byte-for-byte
+what was already here, so `codec.ts` and `@/lib/sealed` needed no changes, only confirmation
+against the regenerated `sealed_blob` test vector. The same envelope also now covers
+`recovery_vaults.encrypted_seed`.
+
+It still leads with a **version byte**, and `openPayload` still **rejects an unknown one** rather
+than guessing — a future layout change stays detectable instead of silently misparsed.
 
 ## Per-item flow
 
@@ -77,9 +80,9 @@ The DEK is fresh per item and zeroed in a `finally` on every path.
 | `deleteSecrets` | `DELETE /secrets` | `secret-delete`, batch |
 | `hashReceivedCiphertext` | — | See below |
 
-`SecretsContext` extends the shared `AuthedContext` with an optional `dek: DekWrapper`.
-Omitted, it is the throwing stub — production code gets the throw, and the tests inject a
-clearly-named fake to exercise everything around it.
+`SecretsContext` extends the shared `AuthedContext` with an optional `dek: DekWrapper`. Omitted,
+it defaults to `vaultKekDekWrapper(context.session.vaultKek)` — the real wrapper. Tests still use
+the override to exercise the transport/signing paths independently of the vault KEK.
 
 ## Rules this domain is built to
 
@@ -118,7 +121,10 @@ malformed bodies.
 
 ## Tests
 
-`secrets.test.ts` asserts the seam throws a named error naming the spec, that a secrets call
-with no wrapper hits it, the codec's version byte and its rejection of unknown versions, fresh
-IVs, that the plaintext never appears in a request body, `201`/`200`, the plaintext budget,
-canonical-id enforcement, and that the batch signature is over the sorted de-duplicated set.
+`secrets.test.ts` asserts: the vault KEK matches the fixture's `hkdf_info_label` and
+`vault_kek_base64`; `vaultKekDekWrapper` unwraps the fixture `sealed_blob` vector and round-trips
+a fresh DEK with a fresh IV each call; `createSecret` without a `context.dek` override produces a
+`wrapped_dek` in the sealed-blob layout; an explicit `context.dek` override still takes
+precedence; the codec's version byte and its rejection of unknown versions; fresh IVs; that the
+plaintext never appears in a request body; `201`/`200`; the plaintext budget; canonical-id
+enforcement; and that the batch signature is over the sorted de-duplicated set.

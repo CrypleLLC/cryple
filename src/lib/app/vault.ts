@@ -1,9 +1,4 @@
-import {
-  hashReceivedCiphertext,
-  KekNotSpecifiedError,
-  type SecretMetaRecord,
-  type SecretRecord,
-} from '@/lib/secrets';
+import { hashReceivedCiphertext, type SecretMetaRecord, type SecretRecord } from '@/lib/secrets';
 
 export interface VaultEntry {
   id: string;
@@ -40,13 +35,37 @@ export async function checkIntegrity(
     : { matches: false, hash, reported: entry.reportedHash };
 }
 
-export const VAULT_SEALED_NOTICE =
-  'Vault items cannot be opened or created in this build: the key that wraps each item is not ' +
-  'specified yet. The index below is real — it comes from the server — but item contents stay ' +
-  'sealed until that derivation lands.';
+export interface SecretPayload {
+  name: string;
+  value: string;
+}
 
-export function isVaultSealed(error: unknown): boolean {
-  return error instanceof KekNotSpecifiedError;
+export class MalformedSecretPayloadError extends Error {
+  constructor() {
+    super('This item was not written by this vault UI and cannot be displayed.');
+    this.name = 'MalformedSecretPayloadError';
+  }
+}
+
+export function encodeSecretPayload(payload: SecretPayload): string {
+  return JSON.stringify(payload);
+}
+
+export function decodeSecretPayload(plaintext: string): SecretPayload {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(plaintext);
+  } catch {
+    throw new MalformedSecretPayloadError();
+  }
+
+  const name = (parsed as Partial<SecretPayload> | null)?.name;
+  const value = (parsed as Partial<SecretPayload> | null)?.value;
+  if (typeof name !== 'string' || typeof value !== 'string') {
+    throw new MalformedSecretPayloadError();
+  }
+
+  return { name, value };
 }
 
 export function formatBytes(bytes: number): string {
