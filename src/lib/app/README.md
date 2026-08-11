@@ -11,6 +11,7 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | `mode-hint.ts` | The locally remembered Standard/Paranoid hint |
 | `inbox.ts` | Merging the two guardian queues into one list |
 | `vault.ts` | The vault index view model, received-ciphertext integrity check, and the local secret name/value format |
+| `notes.ts` | The notes file-grid view model — title, thumbnail, selection, character budget and autosave state |
 | `succession-view.ts` | Release status, vote audit and heir view models |
 | `recovery-kit.ts` | The printable share-0 Recovery Kit |
 | `label.ts` | The heir-label sealing seam (blocked, see below) |
@@ -218,6 +219,90 @@ reaches the server and no other party parses it.
 didn't write (or a future format change) fails loudly instead of showing the wrong field as a
 name or a value. Both directions round-trip losslessly by construction; there is no normalisation
 to lose.
+
+## The notes file grid
+
+`buildNoteTiles` is the notes counterpart of `buildVaultRows`: full `NoteRecord`s paired with
+their decrypted plaintext, sorted newest first, and a note that would not decrypt becomes a tile
+titled `UNREADABLE_NOTE_TITLE` with `readable: false` instead of an exception. Size is measured
+from the ciphertext **received**, for the same reason `buildVaultRows` does it.
+
+### A note has no title field, and does not need one
+
+Unlike a secret, a note is stored as **raw text with no JSON wrapper**. There is no
+`{ name, value }` convention here and there should not be one:
+
+- `noteTitle` names the file after its **first non-empty line**, the way Apple Notes and most
+  OS note apps do. Nothing to parse means nothing to reject, so a note written by any other
+  client still opens and still gets a sensible name.
+- It also keeps the 5000-character product limit honest. A JSON envelope would spend part of the
+  user's visible budget on punctuation and escaping, so the counter in the editor would
+  disagree with what the user typed — worst on exactly the notes closest to the limit.
+- `noteThumbnail` returns the content itself, line breaks preserved, collapsing runs of three or
+  more blank lines so a miniature is not mostly whitespace, and truncating at
+  `NOTE_THUMBNAIL_MAX_CHARACTERS`. The tile renders real text rather than a generic file icon.
+
+Both truncate on **code points**, not UTF-16 units, so an emoji cannot be cut in half.
+
+### Selecting notes for a batch delete
+
+`toggleNoteSelection` is an ordinary immutable toggle. `retainSelectable(selected, present)` is
+the one worth explaining: it intersects the selection with the ids still in the list, and the
+list screen runs it on **every reload**.
+
+Without it, an id can outlive the note it points at — deleted in another tab, or left over from
+a failed batch — and stay checked in a UI that no longer draws it. The next "Delete (3)" would
+then be signed over an id the user cannot see. `note-delete` binds the id it signs, so this is
+not a security hole; it is a correctness and honesty one, and pruning on reload is cheaper than
+reasoning about when it matters.
+
+`batchDeleteSummary` returns `string | undefined` — **`undefined` when `deleted === requested`**.
+Silence is the right report for a delete that worked: the notes are visibly gone.
+
+It speaks only to a shortfall, and it calls that shortfall **"already gone", never "try again"**.
+`DELETE /notes` scopes its `WHERE` to the owner in SQL, so an id that does not match is an id
+that is no longer there — deleted from another device, most likely. Telling the user to retry
+would be telling them to redo something that cannot succeed and does not need to.
+`batchDeleteConfirmation` carries the consequence the server performs but never reports: that
+deleting a note also removes it from anyone set to inherit it.
+
+### The save gate
+
+**There is no Save button.** The editor autosaves `NOTE_AUTOSAVE_DELAY_MS` (2s) after the user
+stops typing, so the two functions below are what stand in for a button the user can no longer
+press — one deciding whether a write happens at all, the other telling them what happened.
+
+`isNoteSavable(draft, saved)` is the write predicate: non-empty after trimming, different from
+what is stored, and within the limit. It matters more under autosave than it did under a button.
+The "different from what is stored" clause is what keeps a `PUT` from firing every two seconds
+while a note sits open and untouched, and every `PUT` re-seals the entire note, so a no-op save
+is not free.
+
+`noteSaveState({ draft, saved, saving })` is the indicator, and it reports six states rather than
+a boolean because autosave has to *narrate itself* — with no button to press, "nothing is
+happening" and "your work is safe" look identical unless the UI says which:
+
+| State | Label | When |
+| --- | --- | --- |
+| `blank` | *(nothing)* | A new note nobody has typed in — say nothing rather than "Unsaved" |
+| `editing` | Unsaved changes | The 2s timer is counting down |
+| `saving` | Saving… | A write is in flight |
+| `saved` | Saved | The draft matches what was persisted |
+| `over-limit` | Too long to save | Past 5000 characters |
+| `emptied` | Nothing to save — use Delete to remove this note | An existing note cleared to nothing |
+
+Two of those exist only because autosave made them reachable. **`emptied`** is the one a Save
+button hid: clearing a stored note's text leaves it permanently unsavable, and without a
+dedicated state the UI would sit on "Unsaved changes" forever, waiting for a save that can never
+come. **`over-limit` deliberately outranks `saving`** — an in-flight write is not the thing the
+user has to act on.
+
+A test pins `isNoteSavable(draft, saved) === (noteSaveState(...) === 'editing')`, which is the
+invariant that keeps the indicator honest: the one state that says work is outstanding is
+exactly the one autosave is allowed to write in.
+
+`noteCharactersLeft` deliberately **goes negative rather than clamping**, so the editor can say
+how far over the limit a paste landed instead of just refusing.
 
 ## The Recovery Kit
 

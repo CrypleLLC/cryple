@@ -46,6 +46,12 @@ export const ACTIONS = {
     signer: 'owner',
     variadic: true,
   },
+  'note-delete': {
+    args: ['note_id'],
+    secondFactor: true,
+    signer: 'owner',
+    variadic: true,
+  },
   'beneficiary-register': {
     args: ['beneficiary_username'],
     secondFactor: true,

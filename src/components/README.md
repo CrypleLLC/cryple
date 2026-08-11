@@ -12,6 +12,7 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `AppShell.tsx` | Task 25 — the sidebar shell and navigation registry |
 | `VaultScreen.tsx` | Vault index, add/delete secrets (Task 34) |
 | `VaultReveal.tsx` | The vault's global show/hide-values state and its top-bar button |
+| `NotesScreen.tsx` | The notes file grid and the full-screen note editor |
 | `GuardiansScreen.tsx` | Guardians, recovery setup, Recovery Kit |
 | `GuardianInbox.tsx` | The merged guardian queue, 1-minute poll |
 | `SuccessionScreen.tsx` | Release status, vote audit, heirs |
@@ -27,9 +28,10 @@ buttons, and a constrained content column. Below the `md` breakpoint the sidebar
 sticky top header with a horizontally scrolling nav row.
 
 Navigation is one registry, `NAV_ITEMS` in `AppShell.tsx`. Each entry is
-`{ id, label, description, icon, screen, actions? }`; adding a section (notes and a document
-editor are planned) means adding one entry and its screen component — the sidebar, the mobile
-nav and the top-bar heading all render from the same array. `actions` is the optional slot for a
+`{ id, label, description, icon, screen, actions? }`; adding a section (a document editor is still
+planned) means adding one entry and its screen component — the sidebar, the mobile nav and the
+top-bar heading all render from the same array. Notes was added exactly that way, as one entry
+between Vault and Guardians. `actions` is the optional slot for a
 component rendered in the top bar beside Lock / Log out, for controls that belong to the whole
 screen rather than to one panel; the Vault's global reveal toggle is the first of them. State
 shared between such a control and its screen lives in a provider wrapping the shell, as
@@ -153,3 +155,119 @@ An item that will not decrypt is rendered as `UNREADABLE_SECRET_NAME` and keeps 
 of failing the whole list, since one blob written by another client must not blank the vault.
 `buildVaultRows` in [`lib/app`](../lib/app/README.md) does that classification, so it is tested
 without a DOM.
+
+## Notes is the one screen with no panel
+
+`NotesScreen` is a section like Vault or Guardians — same `NAV_ITEMS` entry, same top bar — but
+it deliberately **does not use `Card`**. The files render straight into the content column with
+no panel border around them, because the console panel idiom exists to group controls, and a
+file browser's content *is* the grouping. A border there would read as a second, redundant frame
+around a grid that already has visible objects in it.
+
+The tiles themselves are not borderless. Each is a page-shaped thumbnail (`aspect-[3/4]`) with a
+shadow and a hairline ring, carrying the note's real first ~420 characters at 9px under a
+bottom fade, with the title and date beneath it as a filename. That reads as a stack of paper
+rather than as a list of rows — the ring belongs to the object, not to the section. A note that
+will not decrypt shows the notes glyph instead of content, keeping its tile.
+
+### Selecting files
+
+The grid supports a multi-select for batch delete, entered either from the **Select** button in
+the toolbar above the grid or by ticking a checkbox directly — the checkbox is invisible until
+the tile is hovered, then persistent once selection mode is on, which is what keeps the default
+view clean while still working on touch, where there is no hover.
+
+While selecting, a **tile click toggles instead of opening**. That is the OS file-manager idiom,
+and without it a batch of ten means ten precise hits on a 20px checkbox.
+
+The checkbox is a **sibling** of the tile button, not a child: the tile is already a `<button>`,
+and nesting one inside it is invalid HTML that browsers silently reflow. Positioning it against
+the `<li>` (`group relative`) keeps both independently clickable and independently focusable. It
+is a `role="checkbox"` button with `aria-checked` rather than a native input, so its appearance
+comes from the same design tokens as everything else; the selected tile also takes a
+`ring-2 ring-brand-500` in place of its hairline, so selection is legible without relying on the
+20px control alone.
+
+The toolbar is borderless like the rest of the section, and doubles as the count readout —
+`12 notes` normally, `3 selected` while selecting, in an `aria-live` region. The new-note FAB
+**hides during selection**, so the corner does not offer "create" and "delete" at once.
+
+Deleting asks first, through the same confirmation `Notice` a single delete uses, and then
+reports only if the server deleted fewer notes than asked —
+[`batchDeleteSummary`](../lib/app/README.md#selecting-notes-for-a-batch-delete) returns nothing on
+a clean run, because the notes are visibly gone. `DELETE /notes` takes the whole selection under
+**one** signature, so a batch of twenty costs one signed action rather than twenty; the sorting
+rule that signature depends on is in
+[`lib/notes`](../lib/notes/README.md#deletenotes--one-signature-for-the-whole-selection).
+
+The selection is pruned against the reloaded list on every load, so a note deleted elsewhere
+cannot stay checked in a grid that no longer draws it.
+
+**One screen, two views, no route.** `NotesScreen` holds a `view` union
+(`{mode:'list'} | {mode:'note', id?}`) and swaps what the section body renders; there is no
+router involved, matching the rest of the shell. Opening a tile replaces the grid with the
+editor, whose own header carries the back arrow, the live title (the first line of the draft)
+and the actions. Going back reloads the list.
+
+The **new-note button is `fixed bottom-6 right-6`**, not a header action, and it renders only in
+list view. It opens a blank editor immediately rather than prompting for a name — the first line
+becomes the name, so there is nothing to ask.
+
+Editing is a plain textarea with no border or ring, on the page background, so the note looks
+like a page rather than a form field.
+
+### Autosave, and the four things that keep it honest
+
+**There is no Save button.** Writing happens two seconds after the user stops typing, and the
+header carries a status word (`noteSaveState` in [`lib/app`](../lib/app/README.md#the-save-gate))
+where the button used to be, in an `aria-live="polite"` region so the change is announced rather
+than only seen. Below `sm` the status moves next to the character counter, which is the only
+place there is room for it.
+
+The debounce is one effect, not a stored timer:
+
+```tsx
+useEffect(() => {
+  if (unreadable || !isNoteSavable(draft, saved)) return;
+  const timer = setTimeout(() => void save(draft), NOTE_AUTOSAVE_DELAY_MS);
+  return () => clearTimeout(timer);
+}, [draft, saved, unreadable, save]);
+```
+
+Every keystroke changes `draft`, so React's cleanup cancels the previous timer — that *is* the
+debounce. It also gives the trailing edge for free: when a save finishes, `saved` changes, the
+effect re-runs, and if the user typed during the write the guard is true again and a fresh timer
+starts. A failed save leaves all three dependencies untouched, so it does **not** reschedule
+itself; the error notice stands and the next keystroke retries. That is deliberate — the API
+guide is explicit that auth fails closed and must not be hammered.
+
+Four things this depends on, none of them optional:
+
+1. **The note's UUID is generated once**, when the blank editor mounts, and passed to every save.
+   Autosave turns "`POST /notes` without an `id` is not idempotent" from a footnote into a live
+   duplicate-note bug. `saveNote` in [`lib/notes`](../lib/notes/README.md#savenote--one-call-the-autosave-loop-can-fire-repeatedly)
+   also answers a `200` create-or-return with a `PUT`, because create-or-return would otherwise
+   silently discard everything typed after a timed-out first save.
+2. **`inFlight` is a ref, not state**, so the check and the set happen in the same tick. Two
+   overlapping writes to a not-yet-created note would both `POST`.
+3. **`onClose` and `onSaved` are `useCallback`-stable** in the parent. Inline arrows would give
+   the effect a new `save` identity on every parent render, resetting the countdown — an
+   autosave that never fires while the user is still typing is the failure mode, and it is
+   invisible in testing.
+4. **Back is disabled while a write is in flight**, and otherwise flushes: `close()` awaits a
+   final `save` before calling `onClose`. Between the two, no keystroke can be dropped by
+   leaving the screen mid-debounce.
+
+The screen holds the returned `NoteRecord`, so every save after the first is a `PUT` that reuses
+that record's DEK — the component never constructs a `wrapped_dek` itself, which is what keeps
+heirs' wrapped keys valid (see
+[`lib/notes`](../lib/notes/README.md#the-dek-must-survive-the-edit)).
+
+Delete is the only notes action needing the seed key, and it is **two-step**: the button reveals
+a confirmation that says the deletion also removes the note from anyone set to inherit it,
+because the server destroys those `inheritance_shares` rows in the same transaction and the
+response does not report how many went with it. Vault's row Delete is one-step by comparison;
+this one guards a longer piece of writing.
+
+A note that will not decrypt opens read-only, with **saving disabled**, so a re-seal cannot
+overwrite content this device could not read in the first place.

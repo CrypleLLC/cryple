@@ -118,3 +118,44 @@ export function CheckIcon(props: IconProps) {
     </Icon>
   );
 }
+
+export function NotesIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" />
+      <path d="M14 3v4a1 1 0 0 0 1 1h4" />
+      <path d="M8.5 13h7" />
+      <path d="M8.5 16.5h4.5" />
+    </Icon>
+  );
+}
+
+export function PlusIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </Icon>
+  );
+}
+
+export function ArrowLeftIcon(props: IconProps) {
+  return (
+    <Icon strokeWidth={1.7} className="h-5 w-5 shrink-0" {...props}>
+      <path d="M19 12H5" />
+      <path d="m11 18-6-6 6-6" />
+    </Icon>
+  );
+}
+
+export function TrashIcon(props: IconProps) {
+  return (
+    <Icon strokeWidth={1.7} className="h-4 w-4 shrink-0" {...props}>
+      <path d="M4 7h16" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M6 7h12l-.8 12.1a1 1 0 0 1-1 .9H7.8a1 1 0 0 1-1-.9L6 7Z" />
+      <path d="M9.5 7V5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v2" />
+    </Icon>
+  );
+}
