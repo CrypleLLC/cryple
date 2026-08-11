@@ -38,3 +38,64 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
 }
+
+.note-surface {
+  position: relative;
+  line-height: 1.65;
+  outline: none;
+}
+
+.note-surface[data-empty='true']::after {
+  content: attr(data-placeholder);
+  position: absolute;
+  inset: 0 0 auto 0;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.note-surface > [data-line] {
+  min-height: 1.65em;
+}
+
+.note-surface > [data-line='title'] {
+  font-size: 1.4em;
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 0.6em 0 0.2em;
+}
+
+.note-surface > [data-line='title']:first-child {
+  margin-top: 0;
+}
+
+.note-surface > [data-line='topic'],
+.note-surface > [data-line='task'] {
+  position: relative;
+  padding-left: 1.7em;
+}
+
+.note-surface > [data-line='topic']::before {
+  content: '•';
+  position: absolute;
+  left: 0.45em;
+  color: #94a3b8;
+}
+
+.note-surface > [data-line='task']::before {
+  content: '☐';
+  position: absolute;
+  left: 0.2em;
+  cursor: pointer;
+  color: #94a3b8;
+}
+
+.note-surface > [data-line='task'][data-checked='true']::before {
+  content: '☑';
+  color: #667eea;
+}
+
+.note-surface > [data-line='task'][data-checked='true'] {
+  color: #94a3b8;
+  text-decoration: line-through;
+}
+

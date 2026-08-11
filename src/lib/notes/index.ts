@@ -1,5 +1,6 @@
 import { assertCanonicalUuid, collectPages, request, type PageRequest } from '@/lib/api';
 import { normalizeActionArgs, signActionEnvelope } from '@/lib/signing';
+import { toPlainText } from '@/lib/note-format';
 import { requireToken, type AuthedContext } from '@/lib/context';
 import { sha256Hex, utf8ToBytes, zeroBytes } from '@/lib/encoding';
 import {
@@ -42,7 +43,7 @@ function wrapper(context: NotesContext): DekWrapper {
 }
 
 export function noteCharacterCount(text: string): number {
-  return Array.from(text).length;
+  return Array.from(toPlainText(text)).length;
 }
 
 function assertWithinCharacterLimit(text: string): string {

@@ -1,27 +1,20 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { deleteNote, deleteNotes, listNotes, openNote, saveNote, type NoteRecord } from '@/lib/notes';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { deleteNotes, listNotes, openNote, type NoteRecord } from '@/lib/notes';
 import {
   batchDeleteConfirmation,
   batchDeleteSummary,
   buildNoteTiles,
-  isNoteSavable,
-  isNoteWithinLimit,
-  noteCharactersLeft,
   noteCountLabel,
-  noteSaveState,
-  noteTitle,
   retainSelectable,
   toggleNoteSelection,
-  NOTE_AUTOSAVE_DELAY_MS,
-  NOTE_SAVE_LABELS,
-  UNTITLED_NOTE,
   type NoteTile,
   type OpenedNote,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
-import { ArrowLeftIcon, CheckIcon, NotesIcon, PlusIcon, TrashIcon } from './icons';
+import NoteEditor from './NoteEditor';
+import { CheckIcon, NotesIcon, PlusIcon, TrashIcon } from './icons';
 import { Button, Empty, Notice, Spinner } from './ui';
 
 type View = { mode: 'list' } | { mode: 'note'; id?: string };
@@ -116,7 +109,9 @@ export default function NotesScreen() {
   if (view.mode === 'note') {
     const opened = view.id === undefined ? undefined : notes?.find((n) => n.record.id === view.id);
 
-    return <NoteEditor opened={opened} onClose={closeEditor} onSaved={noteSaved} />;
+    return (
+      <NoteEditor opened={opened} onClose={closeEditor} onSaved={noteSaved} />
+    );
   }
 
   return (
@@ -285,191 +280,6 @@ function NoteFile({
         <CheckIcon className="h-3.5 w-3.5 shrink-0" />
       </button>
     </li>
-  );
-}
-
-function NoteEditor({
-  opened,
-  onClose,
-  onSaved,
-}: {
-  opened: OpenedNote | undefined;
-  onClose: () => void;
-  onSaved: (record: NoteRecord, plaintext: string) => void;
-}) {
-  const context = useAuthedContext();
-  const { reportError } = useCryple();
-
-  const [record, setRecord] = useState(opened?.record);
-  const [saved, setSaved] = useState(opened?.plaintext);
-  const [draft, setDraft] = useState(opened?.plaintext ?? '');
-  const [message, setMessage] = useState<string>();
-  const [saving, setSaving] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-
-  const [noteId] = useState(() => opened?.record.id ?? crypto.randomUUID());
-  const inFlight = useRef(false);
-
-  const area = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => area.current?.focus(), []);
-
-  const unreadable = opened !== undefined && opened.plaintext === undefined;
-  const left = noteCharactersLeft(draft);
-  const status = noteSaveState({ draft, saved, saving });
-
-  const save = useCallback(
-    async (text: string) => {
-      if (inFlight.current) {
-        return;
-      }
-      inFlight.current = true;
-      setSaving(true);
-
-      try {
-        const stored = await saveNote(context, text, { id: noteId, record });
-
-        setRecord(stored);
-        setSaved(text);
-        setMessage(undefined);
-        onSaved(stored, text);
-      } catch (error) {
-        setMessage(reportError(error));
-      } finally {
-        inFlight.current = false;
-        setSaving(false);
-      }
-    },
-    [context, noteId, onSaved, record, reportError],
-  );
-
-  useEffect(() => {
-    if (unreadable || !isNoteSavable(draft, saved)) {
-      return;
-    }
-    const timer = setTimeout(() => void save(draft), NOTE_AUTOSAVE_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [draft, saved, unreadable, save]);
-
-  async function close() {
-    if (!unreadable && isNoteSavable(draft, saved)) {
-      await save(draft);
-    }
-    onClose();
-  }
-
-  async function remove() {
-    if (record === undefined) {
-      onClose();
-      return;
-    }
-
-    setBusy(true);
-    try {
-      await deleteNote(context, record.id);
-      onClose();
-    } catch (error) {
-      setMessage(reportError(error));
-      setConfirmingDelete(false);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          aria-label="Back to notes"
-          title="Back to notes"
-          disabled={busy || saving}
-          onClick={() => void close()}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-        >
-          <ArrowLeftIcon />
-        </button>
-
-        <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900 dark:text-slate-100">
-          {draft.trim().length === 0 ? UNTITLED_NOTE : noteTitle(draft)}
-        </h2>
-
-        <div className="flex shrink-0 items-center gap-3">
-          <span
-            aria-live="polite"
-            className={`hidden text-xs sm:inline ${
-              status === 'over-limit'
-                ? 'text-red-600 dark:text-red-400'
-                : 'text-slate-500 dark:text-slate-400'
-            }`}
-          >
-            {NOTE_SAVE_LABELS[status]}
-          </span>
-          {record !== undefined ? (
-            <Button
-              variant="danger"
-              disabled={busy || saving}
-              title="Delete this note"
-              onClick={() => setConfirmingDelete(true)}
-            >
-              <TrashIcon />
-              <span className="hidden sm:inline">Delete</span>
-            </Button>
-          ) : null}
-        </div>
-      </div>
-
-      {message ? <Notice tone="danger">{message}</Notice> : null}
-
-      {unreadable ? (
-        <Notice tone="warning">
-          This note cannot be decrypted with this account&apos;s keys. Its contents are not shown,
-          and saving is disabled so nothing overwrites them.
-        </Notice>
-      ) : null}
-
-      {confirmingDelete ? (
-        <Notice tone="danger">
-          <p>
-            Deleting this note is permanent, and it also removes it from anyone who was set to
-            inherit it.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button variant="danger" disabled={busy} onClick={() => void remove()}>
-              Delete note
-            </Button>
-            <Button variant="secondary" disabled={busy} onClick={() => setConfirmingDelete(false)}>
-              Keep it
-            </Button>
-          </div>
-        </Notice>
-      ) : null}
-
-      <textarea
-        ref={area}
-        value={draft}
-        readOnly={unreadable}
-        spellCheck
-        placeholder="Write your note. The first line becomes its name."
-        onChange={(event) => setDraft(event.target.value)}
-        className="min-h-[60vh] w-full resize-none bg-transparent text-sm leading-relaxed text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-600"
-      />
-
-      <p
-        className={`text-xs ${
-          isNoteWithinLimit(draft)
-            ? 'text-slate-500 dark:text-slate-400'
-            : 'text-red-600 dark:text-red-400'
-        }`}
-      >
-        {left >= 0
-          ? `${left.toLocaleString()} characters left`
-          : `${Math.abs(left).toLocaleString()} characters over the limit`}
-        <span className="sm:hidden">
-          {NOTE_SAVE_LABELS[status] ? ` · ${NOTE_SAVE_LABELS[status]}` : ''}
-        </span>
-      </p>
-    </div>
   );
 }
 

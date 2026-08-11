@@ -40,15 +40,23 @@ If a note's DEK ever genuinely needs rotating, every affected share must be re-a
 ## Two different limits, and only one of them is real
 
 `MAX_NOTE_CHARACTERS = 5000` is the **product** rule and it is enforced only here — the server
-never sees plaintext and cannot count characters. It counts **code points**
-(`Array.from(text).length`), so a note of 5000 emoji is allowed rather than rejected as 20,000
-bytes.
+never sees plaintext and cannot count characters. It counts **code points**, so a note of 5000
+emoji is allowed rather than rejected as 20,000 bytes, and it counts them over
+`toPlainText(stored)` rather than the stored string: the editor is WYSIWYG, so the line markers
+are invisible and charging the user for them would make the counter drop for no visible reason.
+That is the one place this domain reaches into
+[`lib/note-format`](../note-format/README.md) — the rule is about what a person wrote, so it has
+to be measured in what a person sees.
 
 `MAX_CIPHERTEXT_CHARACTERS = 32768` mirrors the server's `service.MaxCiphertextChars`, the
 ceiling on the base64 ciphertext string. It is derived from the worst case of the rule above
-(5000 four-byte UTF-8 characters seal to 26,708 base64 chars), so a client that respects the
-5000-character rule can never hit it — checking it locally only converts a bug into a legible
-error instead of an opaque `400 BAD_REQUEST`.
+(5000 four-byte UTF-8 characters seal to 26,708 base64 chars) — checking it locally converts a
+bug into a legible error instead of an opaque `400 BAD_REQUEST`.
+
+Since the visible count ignores markers, it is now the ceiling — not the character rule — that
+bounds what actually gets stored. A pathological document (thousands of one-character checklist
+lines) could carry enough marker overhead to approach 32,768 while reading as under 5,000, so
+this check is what makes the friendlier count safe rather than merely nicer.
 
 Both are checked before any network call. **Do not tighten either to "enforce" the other**;
 encrypted length is a function of the plaintext's encoding, and a tighter bound rejects

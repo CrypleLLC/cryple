@@ -1,4 +1,5 @@
 import { noteCharacterCount, MAX_NOTE_CHARACTERS, type NoteRecord } from '@/lib/notes';
+import { blockPlainText, parseBlocks, toDisplayText, toPlainText } from '@/lib/note-format';
 
 export const UNTITLED_NOTE = 'Untitled note';
 export const UNREADABLE_NOTE_TITLE = 'Unreadable note';
@@ -15,12 +16,15 @@ function truncate(text: string, limit: number): string {
 }
 
 export function noteTitle(text: string): string {
-  const first = text.split('\n').find((line) => line.trim().length > 0);
-  return first === undefined ? UNTITLED_NOTE : truncate(first.trim(), NOTE_TITLE_MAX_CHARACTERS);
+  const first = parseBlocks(text)
+    .map((block) => blockPlainText(block).trim())
+    .find((line) => line.length > 0);
+
+  return first === undefined ? UNTITLED_NOTE : truncate(first, NOTE_TITLE_MAX_CHARACTERS);
 }
 
 export function noteThumbnail(text: string): string {
-  const collapsed = text.replace(/\n{3,}/g, '\n\n').trim();
+  const collapsed = toDisplayText(text).replace(/\n{3,}/g, '\n\n').trim();
   return truncate(collapsed, NOTE_THUMBNAIL_MAX_CHARACTERS);
 }
 
@@ -32,8 +36,12 @@ export function isNoteWithinLimit(text: string): boolean {
   return noteCharactersLeft(text) >= 0;
 }
 
+export function isNoteEmpty(text: string): boolean {
+  return toPlainText(text).trim().length === 0;
+}
+
 export function isNoteSavable(text: string, saved: string | undefined): boolean {
-  return text.trim().length > 0 && text !== saved && isNoteWithinLimit(text);
+  return !isNoteEmpty(text) && text !== saved && isNoteWithinLimit(text);
 }
 
 export const NOTE_AUTOSAVE_DELAY_MS = 2000;
@@ -62,7 +70,7 @@ export function noteSaveState(input: {
   if (saving) {
     return 'saving';
   }
-  if (draft.trim().length === 0) {
+  if (isNoteEmpty(draft)) {
     return saved === undefined ? 'blank' : 'emptied';
   }
   return draft === saved ? 'saved' : 'editing';

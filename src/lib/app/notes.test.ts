@@ -50,6 +50,16 @@ describe('noteTitle', () => {
     expect(noteTitle('   \n\t\n')).toBe(UNTITLED_NOTE);
   });
 
+  it('names the file after the title line without its marker', () => {
+    expect(noteTitle('# Letter to Ana\n\nHello,')).toBe('Letter to Ana');
+    expect(noteTitle('- [ ] call the bank')).toBe('call the bank');
+    expect(noteTitle('**Bold** opening')).toBe('Bold opening');
+  });
+
+  it('skips a line whose only content was a marker', () => {
+    expect(noteTitle('# \n- \nreal content')).toBe('real content');
+  });
+
   it('truncates a long first line instead of letting it break the grid', () => {
     const title = noteTitle('x'.repeat(200));
     expect(Array.from(title)).toHaveLength(NOTE_TITLE_MAX_CHARACTERS + 1);
@@ -60,6 +70,13 @@ describe('noteTitle', () => {
 describe('noteThumbnail', () => {
   it('shows the real content, line breaks included', () => {
     expect(noteThumbnail('Title\nfirst line\nsecond line')).toBe('Title\nfirst line\nsecond line');
+  });
+
+  it('renders structure as glyphs rather than leaking markup into the tile', () => {
+    expect(noteThumbnail('# Plans\n- [x] flights\n- [ ] pack\n- passport')).toBe(
+      'Plans\n☑ flights\n☐ pack\n• passport',
+    );
+    expect(noteThumbnail('See **you** in *June*')).toBe('See you in June');
   });
 
   it('collapses long runs of blank lines so the miniature is not mostly empty', () => {
