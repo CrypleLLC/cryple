@@ -1,0 +1,120 @@
+import type { ReactNode, SVGProps } from 'react';
+
+export type IconProps = SVGProps<SVGSVGElement>;
+
+function Icon({ children, ...props }: IconProps & { children: ReactNode }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-5 w-5 shrink-0"
+      {...props}
+    >
+      {children}
+    </svg>
+  );
+}
+
+export function VaultIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2.5" />
+      <circle cx="12" cy="12" r="3.5" />
+      <path d="M12 8.5V7.2" />
+      <path d="M12 16.8v-1.3" />
+      <path d="M15.5 12h1.3" />
+      <path d="M7.2 12h1.3" />
+    </Icon>
+  );
+}
+
+export function GuardiansIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3.5 5 6.2v4.9c0 4.2 2.9 7.5 7 9.4 4.1-1.9 7-5.2 7-9.4V6.2L12 3.5Z" />
+      <path d="m9.2 11.8 2 2 3.6-3.8" />
+    </Icon>
+  );
+}
+
+export function SuccessionIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M3.8 19.5c.6-3 2.7-4.7 5.2-4.7s4.6 1.7 5.2 4.7" />
+      <circle cx="17" cy="10.2" r="2.4" />
+      <path d="M15.6 14.9c2.4.2 4.1 1.6 4.6 4" />
+    </Icon>
+  );
+}
+
+export function SecurityIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="5" y="10.5" width="14" height="9.5" rx="2.5" />
+      <path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7" />
+      <path d="M12 14.5v2" />
+    </Icon>
+  );
+}
+
+export function LockSessionIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="5" y="10.5" width="14" height="9.5" rx="2.5" />
+      <path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7" />
+    </Icon>
+  );
+}
+
+export function LogOutIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M14 4H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7" />
+      <path d="m17 8 4 4-4 4" />
+      <path d="M21 12H10" />
+    </Icon>
+  );
+}
+
+export function EyeIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M2.5 12S6 5.8 12 5.8 21.5 12 21.5 12 18 18.2 12 18.2 2.5 12 2.5 12Z" />
+      <circle cx="12" cy="12" r="2.8" />
+    </Icon>
+  );
+}
+
+export function EyeOffIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M9.9 6.1a8.5 8.5 0 0 1 2.1-.3c6 0 9.5 6.2 9.5 6.2a16 16 0 0 1-2.7 3.4" />
+      <path d="M6.4 7.9A16 16 0 0 0 2.5 12S6 18.2 12 18.2c1.4 0 2.7-.3 3.8-.9" />
+      <path d="M10 10a2.8 2.8 0 0 0 3.9 3.9" />
+      <path d="m4 4 16 16" />
+    </Icon>
+  );
+}
+
+export function ClipboardIcon(props: IconProps) {
+  return (
+    <Icon strokeWidth={1.7} className="h-4 w-4 shrink-0" {...props}>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v1" />
+    </Icon>
+  );
+}
+
+export function CheckIcon(props: IconProps) {
+  return (
+    <Icon strokeWidth={1.7} className="h-4 w-4 shrink-0" {...props}>
+      <path d="m5 13 4 4 10-10" />
+    </Icon>
+  );
+}

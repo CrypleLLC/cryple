@@ -103,9 +103,14 @@ export default function GuardianInbox() {
             ? 'Nothing needs you right now. This refreshes every minute.'
             : `${waiting} request${waiting === 1 ? '' : 's'} waiting on you.`
       }
+      flush
     >
-      {message ? <Notice tone="danger">{message}</Notice> : null}
-      {notice ? <Notice tone="success">{notice}</Notice> : null}
+      {message || notice ? (
+        <div className="space-y-3 px-5 pt-4">
+          {message ? <Notice tone="danger">{message}</Notice> : null}
+          {notice ? <Notice tone="success">{notice}</Notice> : null}
+        </div>
+      ) : null}
 
       {items === undefined ? (
         <Spinner />
@@ -117,7 +122,7 @@ export default function GuardianInbox() {
             const expired = hasExpired(item);
 
             return (
-              <li key={`${item.kind}-${item.id}`} className="flex items-center justify-between gap-4 py-3">
+              <li key={`${item.kind}-${item.id}`} className="flex items-center justify-between gap-4 px-5 py-3">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
                     {item.headline}

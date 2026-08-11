@@ -6,7 +6,7 @@ import { createSeedVault } from '@/lib/pin';
 import { enableSecondFactor } from '@/lib/users';
 import { checkUpgrade, SECOND_FACTOR_COPY, writeModeHint } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
-import { Button, Card, Field, Notice } from './ui';
+import { Button, Card, Field, Notice, PanelGrid, TextArea } from './ui';
 
 export default function SecurityScreen() {
   const context = useAuthedContext();
@@ -72,51 +72,46 @@ export default function SecurityScreen() {
   }
 
   return (
-    <Card
-      title={SECOND_FACTOR_COPY.offered.title}
-      subtitle={SECOND_FACTOR_COPY.offered.summary}
-    >
-      <div className="space-y-4">
-        {message ? <Notice tone="danger">{message}</Notice> : null}
-        <Notice tone="warning">{SECOND_FACTOR_COPY.offered.oneWayDoor}</Notice>
+    <PanelGrid>
+      <Card
+        title={SECOND_FACTOR_COPY.offered.title}
+        subtitle={SECOND_FACTOR_COPY.offered.summary}
+      >
+        <div className="space-y-4">
+          {message ? <Notice tone="danger">{message}</Notice> : null}
+          <Notice tone="warning">{SECOND_FACTOR_COPY.offered.oneWayDoor}</Notice>
 
-        <label className="block">
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-            Recovery phrase
-          </span>
-          <textarea
-            className="mt-1 h-28 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+          <TextArea
+            label="Recovery phrase"
             value={mnemonic}
             autoComplete="off"
             spellCheck={false}
+            hint={SECOND_FACTOR_COPY.offered.phrasePrompt}
             onChange={(event) => setMnemonic(event.target.value)}
           />
-          <span className="mt-1 block text-xs text-slate-500">
-            {SECOND_FACTOR_COPY.offered.phrasePrompt}
-          </span>
-        </label>
 
-        <Field
-          label="New PIN"
-          type="password"
-          inputMode="numeric"
-          maxLength={6}
-          value={pin}
-          onChange={(event) => setPin(event.target.value)}
-        />
-        <Field
-          label="Confirm PIN"
-          type="password"
-          inputMode="numeric"
-          maxLength={6}
-          value={confirmation}
-          onChange={(event) => setConfirmation(event.target.value)}
-        />
+          <Field
+            label="New PIN"
+            type="password"
+            inputMode="numeric"
+            maxLength={6}
+            value={pin}
+            onChange={(event) => setPin(event.target.value)}
+          />
+          <Field
+            label="Confirm PIN"
+            type="password"
+            inputMode="numeric"
+            maxLength={6}
+            value={confirmation}
+            onChange={(event) => setConfirmation(event.target.value)}
+          />
 
-        <Button disabled={busy} onClick={() => void upgrade()}>
-          {busy ? 'Turning it on…' : 'Turn on PIN protection'}
-        </Button>
-      </div>
-    </Card>
+          <Button disabled={busy} onClick={() => void upgrade()}>
+            {busy ? 'Turning it on…' : 'Turn on PIN protection'}
+          </Button>
+        </div>
+      </Card>
+    </PanelGrid>
   );
 }
