@@ -229,18 +229,31 @@ from the ciphertext **received**, for the same reason `buildVaultRows` does it.
 
 ### A note has no title field, and does not need one
 
-Unlike a secret, a note is stored as **raw text with no JSON wrapper**. There is no
+Unlike a secret, a note is stored as **plain text with no JSON wrapper** — since the editor gained
+formatting it is a small markdown subset defined in
+[`lib/note-format`](../note-format/README.md), but still one plain string, and a note containing no
+formatting is byte-for-byte what the user typed. There is no
 `{ name, value }` convention here and there should not be one:
 
 - `noteTitle` names the file after its **first non-empty line**, the way Apple Notes and most
   OS note apps do. Nothing to parse means nothing to reject, so a note written by any other
   client still opens and still gets a sensible name.
-- It also keeps the 5000-character product limit honest. A JSON envelope would spend part of the
-  user's visible budget on punctuation and escaping, so the counter in the editor would
-  disagree with what the user typed — worst on exactly the notes closest to the limit.
+- Since the editor became WYSIWYG, everything here reads the note through
+  [`lib/note-format`](../note-format/README.md) rather than the raw string: the name is the first
+  line's **plain text** (`# Letter to Ana` → `Letter to Ana`), and a line whose only content was a
+  marker is skipped rather than becoming a blank name. The format's shape did not change — a note
+  with no formatting still reads exactly as before.
+- `isNoteEmpty` likewise asks whether the note *looks* empty, not whether the string is. A
+  document of nothing but empty list lines is visibly blank, and treating it as content would
+  spend a `PUT` every two seconds on a note with nothing in it.
+- Both keep the 5000-character limit honest — it counts what the user can see, never the markers.
+  A JSON envelope would have spent part of that visible budget on punctuation and escaping,
+  worst on exactly the notes closest to the limit.
 - `noteThumbnail` returns the content itself, line breaks preserved, collapsing runs of three or
   more blank lines so a miniature is not mostly whitespace, and truncating at
   `NOTE_THUMBNAIL_MAX_CHARACTERS`. The tile renders real text rather than a generic file icon.
+  Structure survives as glyphs (`•`, `☐`, `☑`) rather than as raw markup — a miniature showing
+  `- [x] flights` would be advertising syntax instead of content.
 
 Both truncate on **code points**, not UTF-16 units, so an emoji cannot be cut in half.
 

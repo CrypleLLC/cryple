@@ -12,7 +12,10 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `AppShell.tsx` | Task 25 — the sidebar shell and navigation registry |
 | `VaultScreen.tsx` | Vault index, add/delete secrets (Task 34) |
 | `VaultReveal.tsx` | The vault's global show/hide-values state and its top-bar button |
-| `NotesScreen.tsx` | The notes file grid and the full-screen note editor |
+| `NotesScreen.tsx` | The notes file grid, selection and batch delete |
+| `NoteEditor.tsx` | One note open — autosave, delete, WYSIWYG formatting |
+| `NoteEditorToolbar.tsx` | The editor's formatting controls |
+| `note-surface.ts` | DOM ↔ note document, for the `contentEditable` surface |
 | `GuardiansScreen.tsx` | Guardians, recovery setup, Recovery Kit |
 | `GuardianInbox.tsx` | The merged guardian queue, 1-minute poll |
 | `SuccessionScreen.tsx` | Release status, vote audit, heirs |
@@ -213,8 +216,73 @@ The **new-note button is `fixed bottom-6 right-6`**, not a header action, and it
 list view. It opens a blank editor immediately rather than prompting for a name — the first line
 becomes the name, so there is nothing to ask.
 
-Editing is a plain textarea with no border or ring, on the page background, so the note looks
-like a page rather than a form field.
+Editing lives in **`NoteEditor.tsx`**, its own component rather than a helper inside the grid
+screen, with `NoteEditorToolbar.tsx` beside it. The two screens share nothing but props: the grid
+knows how to list and select, the editor knows how to open one note. Every formatting rule sits
+further out again, in [`lib/note-format`](../lib/note-format/README.md), so the editor decides
+*when* to apply a change and never *what* the change is.
+
+### The editing surface
+
+The writing surface is **WYSIWYG**: a `contentEditable` div with no border or ring, on the page
+background. Bold text is bold, a title is a real heading, a checklist has real tick boxes. The
+user never sees a `#` or a `**` — that spelling is only how the note serializes.
+
+`note-surface.ts` is the DOM half, and it is deliberately the *only* untested file in the
+feature: everything decidable without a DOM lives in
+[`lib/note-format`](../lib/note-format/README.md), which is why that module has 30 tests and this
+one has none (the repo's Vitest is node-environment by design). What is left here is three
+functions — read the surface into blocks, find the block at the caret, find the blocks a
+selection spans.
+
+The surface holds **one `<div data-line="…">` per line**, styled entirely from that attribute by
+CSS in [`globals.css`](../app/globals.css). Bullets and tick boxes are `::before`
+pseudo-elements rather than nodes, so the caret cannot land inside one and serialization never
+has to skip one. Ticking a box is a single `data-checked` flip — the text and the caret do not
+move.
+
+Five things this depends on, each of which breaks the editor if it is wrong:
+
+1. **React must never own the surface's children.** The initial HTML is assigned imperatively in
+   a mount effect; the JSX has no children and no `dangerouslySetInnerHTML`. This is not
+   defensive style — with `dangerouslySetInnerHTML` React 19 re-applies the HTML on *every*
+   render, and since every keystroke calls `setDraft`, the document snapped back to its opening
+   content on each key. It was found by driving the real thing in a browser, not by any test.
+2. **`onMouseDown` is prevented on every tool button.** Otherwise mousedown moves focus out of
+   the surface and collapses the selection *before* the click handler runs, so Bold would style
+   nothing.
+3. **Bold and italic go through `document.execCommand`.** It is deprecated and has no
+   replacement; the alternative is hand-rolled range splitting across partially-selected nodes.
+   Browsers disagree on what it emits, so `note-surface` reads `b`/`strong`/`font-weight` and
+   `i`/`em`/`font-style` alike when serializing.
+4. **Enter is mostly left to the browser.** Chrome clones the current block, so a list continues
+   as a list — which is what you want. The handler only corrects two cases: a fresh task line is
+   forced to unticked, and pressing Enter on an *empty* topic or task line exits the list instead
+   of extending it.
+5. **Paste is forced to plain text.** Without it, pasted HTML would inject arbitrary elements and
+   styles into a document whose serializer expects a flat block list.
+
+### The toolbar
+
+Three groups: line types (Title / Topic / Checklist), inline styles (Bold / Italic), and font size
+(A− / A+ with the current size between them). No font picker and no size field — the scale steps
+from 12 to 24, and the buttons disable at each end rather than appearing to do nothing.
+
+Title and Topic show as pressed via `aria-pressed`, tracked from the block under the caret.
+Checklist is a cycle (open → done → off), so it is not a binary state and its tooltip says so.
+
+**A− / A+ size the selection, or the current line when nothing is selected** — size is inline
+formatting stored in the note, exactly like bold, not a setting for the whole document. The number
+between the buttons is the size *at the caret*, refreshed by the same `sync` that tracks the line
+type, so stepping twice actually walks 14 → 16 → 18.
+
+Applying it leans on the browser's own range splitting, because a selection can start and end
+mid-node: `execCommand('fontSize', …, '7')` with `styleWithCSS` produces a sentinel
+`font-size: xxx-large` wrapper, which `applyFontSize` then rewrites to the real px value. The
+selection is restored **inside** the new spans (`setStart(span, 0)`), not around them — anchoring
+outside leaves the caret in the parent, where the size lookup finds nothing, and the toolbar reads
+the default forever while every press recomputes from 14. That was a real bug, caught by driving
+the browser.
 
 ### Autosave, and the four things that keep it honest
 

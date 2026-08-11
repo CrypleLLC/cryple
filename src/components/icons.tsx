@@ -148,6 +148,40 @@ export function ArrowLeftIcon(props: IconProps) {
   );
 }
 
+export function TitleIcon(props: IconProps) {
+  return (
+    <Icon strokeWidth={2} {...props}>
+      <path d="M6 5v14" />
+      <path d="M18 5v14" />
+      <path d="M6 12h12" />
+    </Icon>
+  );
+}
+
+export function TopicIcon(props: IconProps) {
+  return (
+    <Icon strokeWidth={1.7} {...props}>
+      <circle cx="5" cy="7" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="5" cy="12" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="5" cy="17" r="1.1" fill="currentColor" stroke="none" />
+      <path d="M10 7h9" />
+      <path d="M10 12h9" />
+      <path d="M10 17h9" />
+    </Icon>
+  );
+}
+
+export function TaskListIcon(props: IconProps) {
+  return (
+    <Icon strokeWidth={1.7} {...props}>
+      <path d="m3.5 7 1.4 1.4L7.8 5.5" />
+      <path d="m3.5 16 1.4 1.4 2.9-2.9" />
+      <path d="M11 7h9" />
+      <path d="M11 16h9" />
+    </Icon>
+  );
+}
+
 export function TrashIcon(props: IconProps) {
   return (
     <Icon strokeWidth={1.7} className="h-4 w-4 shrink-0" {...props}>
