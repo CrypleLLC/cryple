@@ -6,6 +6,7 @@ import { hasSeedVault } from '@/lib/pin';
 import { sessionExits, type SessionExit, type SessionExitId } from '@/lib/app';
 import { useCryple } from './CrypleProvider';
 import GuardiansScreen from './GuardiansScreen';
+import NotesScreen from './NotesScreen';
 import SecurityScreen from './SecurityScreen';
 import SuccessionScreen from './SuccessionScreen';
 import VaultScreen from './VaultScreen';
@@ -14,6 +15,7 @@ import {
   GuardiansIcon,
   LockSessionIcon,
   LogOutIcon,
+  NotesIcon,
   SecurityIcon,
   SuccessionIcon,
   VaultIcon,
@@ -38,6 +40,13 @@ const NAV_ITEMS = [
     icon: VaultIcon,
     screen: VaultScreen,
     actions: VaultRevealAction,
+  },
+  {
+    id: 'notes',
+    label: 'Notes',
+    description: 'Letters and instructions you write, encrypted before they leave this device.',
+    icon: NotesIcon,
+    screen: NotesScreen,
   },
   {
     id: 'guardians',

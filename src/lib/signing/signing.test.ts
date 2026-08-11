@@ -185,8 +185,26 @@ describe('secret-delete is the one batchable action', () => {
 });
 
 describe('the action table matches the authoritative spec', () => {
-  it('covers all 18 actions', () => {
-    expect(Object.keys(ACTIONS)).toHaveLength(18);
+  it('covers all 19 actions', () => {
+    expect(Object.keys(ACTIONS)).toHaveLength(19);
+  });
+
+  it('makes note-delete batchable, like secret-delete', () => {
+    expect(ACTIONS['note-delete']).toMatchObject({
+      args: ['note_id'],
+      secondFactor: true,
+      signer: 'owner',
+      variadic: true,
+    });
+  });
+
+  it('normalizes note-delete ids the way the server rebuilds them — sorted and de-duplicated', () => {
+    const a = '0c892e57-93cf-423a-a9e9-fee5a9f87681';
+    const b = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
+    const c = 'ba7816bf-8f01-4fea-9411-2b4c3f5a1e77';
+
+    expect(normalizeActionArgs('note-delete', [c, a, b, a])).toEqual([a, b, c]);
+    expect(() => normalizeActionArgs('note-delete', [])).toThrow(/at least one/);
   });
 
   it('encodes the three structural second-factor carve-outs', () => {
