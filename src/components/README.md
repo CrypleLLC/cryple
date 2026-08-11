@@ -9,13 +9,52 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `CrypleProvider.tsx` | Session custody, phase machine, error translation |
 | `Onboarding.tsx` | Task 24 — phrase, PIN, mode, enrolment |
 | `Unlock.tsx` | PIN unlock and the 3-attempt device wipe |
-| `AppShell.tsx` | Task 25 — the three-tab shell |
-| `VaultScreen.tsx` | Vault index, add/reveal/hide/delete secrets (Task 34) |
+| `AppShell.tsx` | Task 25 — the sidebar shell and navigation registry |
+| `VaultScreen.tsx` | Vault index, add/delete secrets (Task 34) |
+| `VaultReveal.tsx` | The vault's global show/hide-values state and its top-bar button |
 | `GuardiansScreen.tsx` | Guardians, recovery setup, Recovery Kit |
 | `GuardianInbox.tsx` | The merged guardian queue, 1-minute poll |
 | `SuccessionScreen.tsx` | Release status, vote audit, heirs |
 | `RecoveryKitCard.tsx` | The printable share-0 surface |
-| `ui.tsx` | Card / Button / Field / Notice primitives |
+| `ui.tsx` | Card / Button / Field / TextArea / Badge / Notice primitives |
+| `icons.tsx` | The stroke-icon set shared by navigation and primitives |
+
+## Layout and design system
+
+The shell is a Drive-style dashboard: a fixed left sidebar with the logo, the navigation and the
+account summary, a sticky top bar carrying the current section's title and the session-exit
+buttons, and a constrained content column. Below the `md` breakpoint the sidebar folds into a
+sticky top header with a horizontally scrolling nav row.
+
+Navigation is one registry, `NAV_ITEMS` in `AppShell.tsx`. Each entry is
+`{ id, label, description, icon, screen, actions? }`; adding a section (notes and a document
+editor are planned) means adding one entry and its screen component — the sidebar, the mobile
+nav and the top-bar heading all render from the same array. `actions` is the optional slot for a
+component rendered in the top bar beside Lock / Log out, for controls that belong to the whole
+screen rather than to one panel; the Vault's global reveal toggle is the first of them. State
+shared between such a control and its screen lives in a provider wrapping the shell, as
+`VaultReveal.tsx` does, since the header sits outside the screen's tree.
+
+Content panels follow the GCP/AWS console idiom rather than floating cards: the page background
+matches the panel background, so a panel is delineated only by its 1px border and its header
+strip, with no shadow and small corner radii. `Card` takes a `flush` prop for table and list
+content, which then runs edge-to-edge inside the panel (rows carry their own horizontal padding),
+the way console tables do. The content column is full-width with a small gutter, not a centered
+column. Panels that do not need the full width sit inside a `PanelGrid` — a two-column grid from
+`md` up, a single stacked column on mobile. Grid items stretch, so neighbours in the same row
+share a height and their borders line up regardless of how much content each holds. A lone panel
+occupies half the content width and two sit side by side. Guardians puts all four of its panels
+in one grid; Succession keeps "Release status"
+outside it at full width and grids the rest; Vault keeps its table full width and grids the form.
+Wide tables and dashboards stay outside a grid.
+
+The brand color is `#667eea`, defined once as the `brand` scale in
+[`globals.css`](../app/globals.css) via Tailwind's `@theme`. It is used sparingly — primary
+buttons, the active nav item, focus rings, the avatar and the Paranoid-mode badge — over a
+neutral slate surface, in the manner of Drive/Proton. Destructive buttons are outlined rather
+than solid so rows of actions stay calm. Every interactive primitive carries a
+`focus-visible` brand ring. All colors have dark-mode variants keyed off
+`prefers-color-scheme`.
 
 ## Session custody
 
@@ -93,5 +132,24 @@ Vault items used to be blocked the same way (`KekNotSpecifiedError`) until Decis
 2026-08-08 and was wired in 2026-08-10. `VaultScreen` was built the same way while it was still
 blocked — the real add/reveal/delete UI against the actual `@/lib/secrets` calls, rather than a
 disabled placeholder — so once the seam stopped throwing, Add and Show started working with no
-UI change. Values are revealed one row at a time (lazily fetched and cached in local state)
-rather than with a single "show all" toggle, so opening one item never fires N requests at once.
+UI change.
+
+## Why the vault list downloads every payload
+
+**Names are ciphertext.** A secret's plaintext is one `{name, value}` JSON blob, so the server
+holds no name field to list — `GET /secrets?fields=meta` returns sizes and timestamps and
+nothing a person can read. Showing names in the index therefore means opening every item, and
+the list loads through `listSecrets` — the single unpaginated `GET /secrets` the endpoint guide
+calls "the heaviest response the API produces" — rather than the meta listing plus one
+`GET /secrets/{id}` per row. One request beats N, and the values are then already in memory.
+
+Hiding is consequently presentational only: the global toggle in the top bar flips a boolean,
+never a fetch, so it is instant in both directions and costs nothing to use. Names stay visible
+at all times; only values mask, and they mask to a fixed-width `MASKED_VALUE` so the rendering
+does not leak the length. Copy stays available while values are hidden — the point of hiding is
+shoulder-surfing, not withholding the value from its owner.
+
+An item that will not decrypt is rendered as `UNREADABLE_SECRET_NAME` and keeps its row instead
+of failing the whole list, since one blob written by another client must not blank the vault.
+`buildVaultRows` in [`lib/app`](../lib/app/README.md) does that classification, so it is tested
+without a DOM.

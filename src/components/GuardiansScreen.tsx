@@ -20,7 +20,7 @@ import type { RecoveryKitDetails } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
 import GuardianInbox from './GuardianInbox';
 import RecoveryKitCard from './RecoveryKitCard';
-import { Button, Card, Empty, Field, Notice, Spinner } from './ui';
+import { Button, Card, Empty, Field, Notice, PanelGrid, Spinner } from './ui';
 
 interface KitState {
   share: Uint8Array;
@@ -155,123 +155,128 @@ export default function GuardiansScreen() {
       {message ? <Notice tone="danger">{message}</Notice> : null}
       {notice ? <Notice tone="success">{notice}</Notice> : null}
 
-      <GuardianInbox />
+      <PanelGrid>
+        <GuardianInbox />
 
-      <Card
-        title="Your guardians"
-        subtitle={`${summary.activeGuardians} active · ${summary.effectiveQuorum} needed to recover`}
-      >
-        {summary.raisesBarWithoutParticipant ? (
-          <Notice tone="warning">
-            You have asked for {summary.configuredThreshold} approvals but only{' '}
-            {summary.activeGuardians} guardian
-            {summary.activeGuardians === 1 ? '' : 's'} can give one. Until more accept, recovery
-            needs {summary.effectiveQuorum}.
-          </Notice>
-        ) : null}
-
-        {guardians === undefined ? (
-          <Spinner />
-        ) : guardians.length === 0 ? (
-          <Empty>You have not asked anyone to be a guardian yet.</Empty>
-        ) : (
-          <ul className="mt-4 divide-y divide-slate-200 dark:divide-slate-800">
-            {guardians.map((guardian) => (
-              <li key={guardian.id} className="flex items-center justify-between gap-4 py-3">
-                <div>
-                  <p className="text-sm font-medium">{guardian.username}</p>
-                  <p className="text-xs text-slate-500">
-                    {guardian.status === 'active'
-                      ? guardian.has_share
-                        ? 'Active · holds a share'
-                        : 'Active · no share yet'
-                      : guardian.status === 'pending_invite'
-                        ? 'Waiting for them to accept'
-                        : 'Revoked'}
-                  </p>
-                </div>
-                {guardian.status !== 'revoked' ? (
-                  <Button variant="danger" disabled={busy} onClick={() => void revoke(guardian)}>
-                    Remove
-                  </Button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
-
-      <Card title="Invite a guardian" subtitle="Enter their Cryple username.">
-        <div className="space-y-4">
-          <Field
-            label="Username"
-            value={username}
-            autoComplete="off"
-            onChange={(event) => setUsername(event.target.value)}
-          />
-          <Button disabled={busy || username.trim().length === 0} onClick={() => void invite()}>
-            Send invitation
-          </Button>
-        </div>
-      </Card>
-
-      <Card
-        title="Set up recovery"
-        subtitle="Splits a recovery key between you and your guardians. Re-run it whenever your guardians change."
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            You hold one share yourself, so {active.length} active guardian
-            {active.length === 1 ? '' : 's'} makes {totalShares} shares in total.
-          </p>
-
-          <Field
-            label="Approvals needed to recover"
-            type="number"
-            min={1}
-            max={totalShares}
-            value={threshold}
-            onChange={(event) => setThreshold(Number(event.target.value))}
-          />
-
-          {active.map((guardian) => (
-            <Field
-              key={guardian.id}
-              label={`Account address for ${guardian.username}`}
-              value={addresses[guardian.id] ?? ''}
-              autoComplete="off"
-              spellCheck={false}
-              hint="64 hex characters. Their share is wrapped to this address, so it is checked against their username first."
-              onChange={(event) =>
-                setAddresses((current) => ({ ...current, [guardian.id]: event.target.value }))
-              }
-            />
-          ))}
-
-          {soleGuardianRisk ? (
-            <Notice tone="danger">
-              This person can recover your vault on their own. Only choose someone you fully trust.
-            </Notice>
+        <Card
+          title="Your guardians"
+          subtitle={`${summary.activeGuardians} active · ${summary.effectiveQuorum} needed to recover`}
+          flush
+        >
+          {summary.raisesBarWithoutParticipant ? (
+            <div className="px-5 pt-4">
+              <Notice tone="warning">
+                You have asked for {summary.configuredThreshold} approvals but only{' '}
+                {summary.activeGuardians} guardian
+                {summary.activeGuardians === 1 ? '' : 's'} can give one. Until more accept, recovery
+                needs {summary.effectiveQuorum}.
+              </Notice>
+            </div>
           ) : null}
 
-          <Field
-            label="Confirm your PIN"
-            type="password"
-            inputMode="numeric"
-            maxLength={6}
-            value={pin}
-            hint="Setting up recovery re-reads your recovery phrase from this device."
-            onChange={(event) => setPin(event.target.value)}
-          />
+          {guardians === undefined ? (
+            <Spinner />
+          ) : guardians.length === 0 ? (
+            <Empty>You have not asked anyone to be a guardian yet.</Empty>
+          ) : (
+            <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+              {guardians.map((guardian) => (
+                <li key={guardian.id} className="flex items-center justify-between gap-4 px-5 py-3">
+                  <div>
+                    <p className="text-sm font-medium">{guardian.username}</p>
+                    <p className="text-xs text-slate-500">
+                      {guardian.status === 'active'
+                        ? guardian.has_share
+                          ? 'Active · holds a share'
+                          : 'Active · no share yet'
+                        : guardian.status === 'pending_invite'
+                          ? 'Waiting for them to accept'
+                          : 'Revoked'}
+                    </p>
+                  </div>
+                  {guardian.status !== 'revoked' ? (
+                    <Button variant="danger" disabled={busy} onClick={() => void revoke(guardian)}>
+                      Remove
+                    </Button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
 
-          <Button
-            disabled={busy || pin.length === 0 || active.length === 0}
-            onClick={() => void configureRecovery()}
-          >
-            {busy ? 'Working…' : 'Set up recovery'}
-          </Button>
-        </div>
-      </Card>
+        <Card title="Invite a guardian" subtitle="Enter their Cryple username.">
+          <div className="space-y-4">
+            <Field
+              label="Username"
+              value={username}
+              autoComplete="off"
+              onChange={(event) => setUsername(event.target.value)}
+            />
+            <Button disabled={busy || username.trim().length === 0} onClick={() => void invite()}>
+              Send invitation
+            </Button>
+          </div>
+        </Card>
+
+        <Card
+          title="Set up recovery"
+          subtitle="Splits a recovery key between you and your guardians. Re-run it whenever your guardians change."
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              You hold one share yourself, so {active.length} active guardian
+              {active.length === 1 ? '' : 's'} makes {totalShares} shares in total.
+            </p>
+
+            <Field
+              label="Approvals needed to recover"
+              type="number"
+              min={1}
+              max={totalShares}
+              value={threshold}
+              onChange={(event) => setThreshold(Number(event.target.value))}
+            />
+
+            {active.map((guardian) => (
+              <Field
+                key={guardian.id}
+                label={`Account address for ${guardian.username}`}
+                value={addresses[guardian.id] ?? ''}
+                autoComplete="off"
+                spellCheck={false}
+                hint="64 hex characters. Their share is wrapped to this address, so it is checked against their username first."
+                onChange={(event) =>
+                  setAddresses((current) => ({ ...current, [guardian.id]: event.target.value }))
+                }
+              />
+            ))}
+
+            {soleGuardianRisk ? (
+              <Notice tone="danger">
+                This person can recover your vault on their own. Only choose someone you fully trust.
+              </Notice>
+            ) : null}
+
+            <Field
+              label="Confirm your PIN"
+              type="password"
+              inputMode="numeric"
+              maxLength={6}
+              value={pin}
+              hint="Setting up recovery re-reads your recovery phrase from this device."
+              onChange={(event) => setPin(event.target.value)}
+            />
+
+            <Button
+              disabled={busy || pin.length === 0 || active.length === 0}
+              onClick={() => void configureRecovery()}
+            >
+              {busy ? 'Working…' : 'Set up recovery'}
+            </Button>
+          </div>
+        </Card>
+      </PanelGrid>
     </div>
   );
 }

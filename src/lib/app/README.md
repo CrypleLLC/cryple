@@ -193,6 +193,14 @@ Task 30 was about.
 `ciphertext_sha256` rather than trusting the reported digest — a server-reported hash of
 server-held bytes proves nothing.
 
+`buildVaultRows` is what the list screen renders. It takes full `SecretRecord`s each paired with
+its decrypted plaintext — the name is inside the payload, so a list showing names has to open
+every item — and returns rows sorted newest first. A missing or unparseable plaintext becomes a
+row named `UNREADABLE_SECRET_NAME` with `readable: false` rather than an exception, so one blob
+written by another client cannot blank the whole vault; the caller decides what such a row may
+do (this UI offers Delete but not Copy). Row size is measured from the ciphertext **received**,
+matching `checkIntegrity`'s stance rather than trusting `ciphertext_bytes`.
+
 Item bodies used to be unopenable — `unwrapDek` rejected with `KekNotSpecifiedError` until
 Decision A landed — and `VAULT_SEALED_NOTICE` / `isVaultSealed` existed so the UI said so rather
 than showing a crash. Both were removed once the seam stopped throwing; see

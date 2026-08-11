@@ -17,7 +17,7 @@ import {
   type OnboardingState,
 } from '@/lib/app';
 import { useCryple } from './CrypleProvider';
-import { Button, Card, CopyButton, Field, Notice } from './ui';
+import { Button, Card, CopyButton, Field, Notice, TextArea } from './ui';
 
 export default function Onboarding() {
   const { enrol } = useCryple();
@@ -226,8 +226,8 @@ function ImportStep({ state, dispatch }: { state: OnboardingState; dispatch: Dis
   return (
     <Card title="Enter your recovery phrase" subtitle="12 or 24 words, separated by spaces.">
       <div className="space-y-4">
-        <textarea
-          className="h-28 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+        <TextArea
+          label="Recovery phrase"
           value={text}
           autoComplete="off"
           spellCheck={false}

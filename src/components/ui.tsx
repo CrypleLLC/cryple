@@ -1,46 +1,65 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
+import type {
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  ReactNode,
+  TextareaHTMLAttributes,
+} from 'react';
+import { CheckIcon, ClipboardIcon } from './icons';
+
+export function PanelGrid({ children }: { children: ReactNode }) {
+  return <div className="grid gap-6 md:grid-cols-2">{children}</div>;
+}
 
 export function Card({
   title,
   subtitle,
+  flush = false,
   children,
 }: {
   title?: string;
   subtitle?: string;
+  flush?: boolean;
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white/70 p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
-      {title ? (
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
+    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+      {title || subtitle ? (
+        <header className="border-b border-slate-200 px-5 py-4 dark:border-slate-800">
+          {title ? (
+            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
+          ) : null}
+          {subtitle ? (
+            <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
+          ) : null}
+        </header>
       ) : null}
-      {subtitle ? (
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{subtitle}</p>
-      ) : null}
-      <div className={title || subtitle ? 'mt-4' : ''}>{children}</div>
+      <div className={flush ? '' : 'p-5'}>{children}</div>
     </section>
   );
 }
+
+const BUTTON_VARIANTS = {
+  primary:
+    'bg-brand-500 text-white shadow-sm hover:bg-brand-600 active:bg-brand-700 disabled:bg-brand-300 dark:disabled:bg-brand-900 dark:disabled:text-slate-500',
+  secondary:
+    'border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-slate-100',
+  danger:
+    'border border-red-200 bg-white text-red-600 shadow-sm hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-red-950',
+} as const;
+
+export type ButtonVariant = keyof typeof BUTTON_VARIANTS;
 
 export function Button({
   variant = 'primary',
   className = '',
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'danger' }) {
-  const styles = {
-    primary:
-      'bg-slate-900 text-white hover:bg-slate-700 disabled:bg-slate-400 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white',
-    secondary:
-      'border border-slate-300 text-slate-800 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800',
-    danger: 'bg-red-600 text-white hover:bg-red-500 disabled:bg-red-300',
-  }[variant];
-
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
   return (
     <button
-      className={`rounded-lg px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed ${styles} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 focus-visible:ring-offset-1 disabled:cursor-not-allowed ${BUTTON_VARIANTS[variant]} ${className}`}
       {...props}
     />
   );
@@ -70,7 +89,7 @@ export function CopyButton({
       disabled={disabled}
       title={label}
       aria-label={copied ? copiedLabel : label}
-      className={`inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 ${className}`}
+      className={`inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 ${className}`}
       onClick={() => {
         void navigator.clipboard?.writeText(value);
         setCopied(true);
@@ -78,46 +97,18 @@ export function CopyButton({
         timer.current = setTimeout(() => setCopied(false), 2000);
       }}
     >
-      {copied ? <CheckIcon /> : <ClipboardIcon />}
+      {copied ? <CheckIcon className="h-4 w-4 text-emerald-600" /> : <ClipboardIcon />}
       <span>{copied ? copiedLabel : label}</span>
     </button>
   );
 }
 
-function ClipboardIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.7}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-4 w-4"
-    >
-      <rect x="9" y="9" width="11" height="11" rx="2" />
-      <path d="M5 15H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v1" />
-    </svg>
-  );
-}
+const INPUT_CLASS =
+  'mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500';
 
-function CheckIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.7}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-4 w-4"
-    >
-      <path d="m5 13 4 4 10-10" />
-    </svg>
-  );
-}
+const LABEL_CLASS = 'text-sm font-medium text-slate-700 dark:text-slate-300';
+
+const HINT_CLASS = 'mt-1.5 block text-xs text-slate-500 dark:text-slate-400';
 
 export function Field({
   label,
@@ -126,13 +117,48 @@ export function Field({
 }: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string }) {
   return (
     <label className="block">
-      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</span>
-      <input
-        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-        {...props}
-      />
-      {hint ? <span className="mt-1 block text-xs text-slate-500">{hint}</span> : null}
+      <span className={LABEL_CLASS}>{label}</span>
+      <input className={INPUT_CLASS} {...props} />
+      {hint ? <span className={HINT_CLASS}>{hint}</span> : null}
     </label>
+  );
+}
+
+export function TextArea({
+  label,
+  hint,
+  className = '',
+  ...props
+}: TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string; hint?: string }) {
+  return (
+    <label className="block">
+      <span className={LABEL_CLASS}>{label}</span>
+      <textarea className={`${INPUT_CLASS} h-28 resize-y font-mono ${className}`} {...props} />
+      {hint ? <span className={HINT_CLASS}>{hint}</span> : null}
+    </label>
+  );
+}
+
+export function Badge({
+  tone = 'neutral',
+  children,
+}: {
+  tone?: 'neutral' | 'brand';
+  children: ReactNode;
+}) {
+  const styles = {
+    neutral:
+      'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+    brand:
+      'bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300',
+  }[tone];
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${styles}`}
+    >
+      {children}
+    </span>
   );
 }
 
@@ -144,13 +170,13 @@ export function Notice({
   children: ReactNode;
 }) {
   const styles = {
-    info: 'border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300',
+    info: 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300',
     warning:
-      'border-amber-400 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200',
+      'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200',
     danger:
-      'border-red-400 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950 dark:text-red-200',
+      'border-red-200 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950 dark:text-red-200',
     success:
-      'border-emerald-400 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200',
+      'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200',
   }[tone];
 
   return <div className={`rounded-lg border px-4 py-3 text-sm ${styles}`}>{children}</div>;
@@ -158,7 +184,7 @@ export function Notice({
 
 export function Empty({ children }: { children: ReactNode }) {
   return (
-    <p className="rounded-lg border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700">
+    <p className="px-5 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
       {children}
     </p>
   );
@@ -167,7 +193,7 @@ export function Empty({ children }: { children: ReactNode }) {
 export function Spinner() {
   return (
     <div className="flex justify-center py-10">
-      <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900 dark:border-slate-700 dark:border-t-slate-100" />
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-brand-500 dark:border-slate-700 dark:border-t-brand-400" />
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   buildInbox,
   buildReleaseView,
   buildVaultIndex,
+  buildVaultRows,
   checkIntegrity,
   checkUpgrade,
   decodeRecoveryKitShare,
@@ -30,6 +31,7 @@ import {
   RecoveryKitParseError,
   renderRecoveryKit,
   sessionExits,
+  UNREADABLE_SECRET_NAME,
 } from './index';
 
 const tree = await deriveKeyTreeFromSeed(hexToBytes(vectors.seed_and_user_address.seed_hex));
@@ -292,6 +294,69 @@ describe('the vault index', () => {
     ]);
 
     expect(index.map((entry) => entry.id)).toEqual(['new', 'old']);
+  });
+
+  describe('the opened rows the list renders', () => {
+    function record(overrides: Partial<SecretRecord> = {}): SecretRecord {
+      return {
+        id: '0c892e57-93cf-423a-a9e9-fee5a9f87681',
+        ciphertext: 'AQIDBA==',
+        wrapped_dek: 'x',
+        version: 'v1',
+        created_at: '2026-07-26T12:00:00Z',
+        updated_at: '2026-07-26T12:00:00Z',
+        ...overrides,
+      };
+    }
+
+    it('carries the name and value out of the decrypted payload, newest first', () => {
+      const rows = buildVaultRows([
+        {
+          record: record({ id: 'old', updated_at: '2026-07-20T12:00:00Z' }),
+          plaintext: encodeSecretPayload({ name: 'older', value: 'a' }),
+        },
+        {
+          record: record({ id: 'new', updated_at: '2026-07-28T12:00:00Z' }),
+          plaintext: encodeSecretPayload({ name: 'newer', value: 'b' }),
+        },
+      ]);
+
+      expect(rows.map((row) => [row.id, row.name, row.value])).toEqual([
+        ['new', 'newer', 'b'],
+        ['old', 'older', 'a'],
+      ]);
+      expect(rows.every((row) => row.readable)).toBe(true);
+    });
+
+    it('sizes each row from the ciphertext it received', () => {
+      const [row] = buildVaultRows([
+        {
+          record: record({ ciphertext: 'AAAA' }),
+          plaintext: encodeSecretPayload({ name: 'n', value: 'v' }),
+        },
+      ]);
+
+      expect(row.bytes).toBe(4);
+    });
+
+    it('keeps an item that will not decrypt in the list instead of dropping the whole vault', () => {
+      const rows = buildVaultRows([
+        { record: record({ id: 'broken' }) },
+        {
+          record: record({ id: 'fine', updated_at: '2026-07-28T12:00:00Z' }),
+          plaintext: encodeSecretPayload({ name: 'fine', value: 'v' }),
+        },
+      ]);
+
+      expect(rows.map((row) => row.id)).toEqual(['fine', 'broken']);
+      expect(rows[1]).toMatchObject({ name: UNREADABLE_SECRET_NAME, value: '', readable: false });
+    });
+
+    it('treats a payload this UI did not write as unreadable rather than throwing', () => {
+      const [row] = buildVaultRows([{ record: record(), plaintext: 'not json' }]);
+
+      expect(row).toMatchObject({ name: UNREADABLE_SECRET_NAME, readable: false });
+    });
   });
 
   it('hashes the ciphertext it received rather than trusting the reported digest', async () => {

@@ -68,6 +68,55 @@ export function decodeSecretPayload(plaintext: string): SecretPayload {
   return { name, value };
 }
 
+export const UNREADABLE_SECRET_NAME = 'Unreadable item';
+
+export const MASKED_VALUE = '••••••••';
+
+export interface VaultRow {
+  id: string;
+  name: string;
+  value: string;
+  bytes: number;
+  version: string;
+  updatedAt: string;
+  readable: boolean;
+}
+
+export interface OpenedSecret {
+  record: SecretRecord;
+  plaintext?: string;
+}
+
+export function buildVaultRows(opened: readonly OpenedSecret[]): VaultRow[] {
+  return opened
+    .map((entry) => toVaultRow(entry))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+function toVaultRow({ record, plaintext }: OpenedSecret): VaultRow {
+  const row = {
+    id: record.id,
+    bytes: receivedBytes(record.ciphertext),
+    version: record.version,
+    updatedAt: record.updated_at,
+  };
+
+  if (plaintext === undefined) {
+    return { ...row, name: UNREADABLE_SECRET_NAME, value: '', readable: false };
+  }
+
+  try {
+    const payload = decodeSecretPayload(plaintext);
+    return { ...row, name: payload.name, value: payload.value, readable: true };
+  } catch {
+    return { ...row, name: UNREADABLE_SECRET_NAME, value: '', readable: false };
+  }
+}
+
+function receivedBytes(ciphertext: string): number {
+  return new TextEncoder().encode(ciphertext).length;
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) {
     return `${bytes} B`;
