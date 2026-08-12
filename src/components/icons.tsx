@@ -130,6 +130,18 @@ export function NotesIcon(props: IconProps) {
   );
 }
 
+export function DocumentsIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M15 2.5H8A2.5 2.5 0 0 0 5.5 5v14A2.5 2.5 0 0 0 8 21.5h8a2.5 2.5 0 0 0 2.5-2.5V6L15 2.5Z" />
+      <path d="M14.5 2.5V6a1 1 0 0 0 1 1h3" />
+      <path d="M9 11h6" />
+      <path d="M9 14.5h6" />
+      <path d="M9 18h3.5" />
+    </Icon>
+  );
+}
+
 export function PlusIcon(props: IconProps) {
   return (
     <Icon {...props}>

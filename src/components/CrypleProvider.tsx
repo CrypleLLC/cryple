@@ -13,9 +13,11 @@ import { ApiError, TokenStore, userMessageFor } from '@/lib/api';
 import { signOut as dropToken } from '@/lib/auth';
 import { createSeedVault, hasSeedVault, wipeSeedVault } from '@/lib/pin';
 import { SessionKeystore } from '@/lib/session';
+import { requestSession, serveSession } from '@/lib/session/handoff';
 import type { AuthedContext } from '@/lib/context';
 import type { AccountRecord } from '@/lib/users';
 import {
+  adoptHandoffSession,
   clearModeHint,
   enrolAccount,
   readModeHint,
@@ -71,8 +73,44 @@ export function CrypleProvider({ children }: { children: ReactNode }) {
   const [account, setAccount] = useState<AccountRecord>();
 
   useEffect(() => {
-    setPhase(hasSeedVault() ? 'locked' : 'onboarding');
-  }, []);
+    let cancelled = false;
+
+    const adopt = async () => {
+      const offer = await requestSession();
+
+      if (offer !== undefined && !cancelled) {
+        try {
+          const booted = await adoptHandoffSession({ session, tokens, offer, hint: readModeHint() });
+          if (!cancelled) {
+            setAccount(booted.account);
+            setPhase('ready');
+            return;
+          }
+        } catch {
+          session.lock();
+        }
+      }
+
+      if (!cancelled) {
+        setPhase(hasSeedVault() ? 'locked' : 'onboarding');
+      }
+    };
+
+    void adopt();
+    return () => {
+      cancelled = true;
+    };
+  }, [session, tokens]);
+
+  useEffect(
+    () =>
+      serveSession(() =>
+        session.isUnlocked
+          ? { material: session.exportForHandoff(), token: tokens.get() }
+          : undefined,
+      ),
+    [session, tokens],
+  );
 
   useEffect(
     () =>

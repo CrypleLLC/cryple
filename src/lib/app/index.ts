@@ -6,6 +6,7 @@ export * from './second-factor';
 export * from './inbox';
 export * from './vault';
 export * from './notes';
+export * from './documents';
 export * from './label';
 export * from './succession-view';
 export * from './recovery-kit';
