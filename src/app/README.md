@@ -6,9 +6,25 @@ in [`src/components`](../components/README.md) and every testable decision in
 
 | File | Role |
 | --- | --- |
-| `layout.tsx` | The root layout, fonts and `metadata` |
-| `page.tsx` | Phase switch: loading, onboarding, locked, ready |
-| `globals.css` | Tailwind import, the `brand` colour scale, light/dark surface tokens |
+| `layout.tsx` | The root layout, fonts, `metadata`, and the shared `AppProviders` |
+| `page.tsx` | The dashboard, behind `SessionGate` |
+| `docs/[id]/page.tsx` | One document, behind `SessionGate` — the editor route |
+| `globals.css` | Tailwind import, the `brand` colour scale, light/dark surface tokens, `.cryple-prose` |
+
+## Why the provider moved into the layout
+
+Documents open in their own browser tab, so `/` and `/docs/[id]` are separate entry points that
+both need a session. `CrypleProvider` therefore mounts once in `layout.tsx` (via the
+`AppProviders` client boundary) and each route wraps its own content in `SessionGate`, which
+renders the loading / onboarding / locked screens and passes through only when the session is
+ready.
+
+A newly opened tab is always locked — key material lives in memory, per JS context. It recovers
+without a prompt by asking already-unlocked tabs over a same-origin `BroadcastChannel`; see
+[`lib/session`](../lib/session/README.md).
+
+The editor route is code-split: TipTap and Yjs load on `/docs/[id]` and, lazily, on the dashboard's
+Documents tab. The dashboard's own first load does not pay for them.
 | `icon.svg` · `icon.png` · `apple-icon.png` | The browser-tab and home-screen icon set |
 
 ## The icon set

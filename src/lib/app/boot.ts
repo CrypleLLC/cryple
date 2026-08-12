@@ -1,7 +1,8 @@
 import { AuthRejectedError, signIn, signUp } from '@/lib/auth';
-import { GENERIC_AUTH_FAILURE, type TokenStore } from '@/lib/api';
+import { ApiError, GENERIC_AUTH_FAILURE, isJwtExpired, type TokenStore } from '@/lib/api';
 import { getMe, type AccountRecord } from '@/lib/users';
 import type { SessionKeystore } from '@/lib/session';
+import type { HandoffOffer } from '@/lib/session/handoff';
 import { readModeHint, signInAttemptOrder, writeModeHint, type ModeHint } from './mode-hint';
 
 export interface BootOptions {
@@ -57,6 +58,30 @@ export async function signInWithModeDetection(options: BootOptions): Promise<Boo
   }
 
   throw new SignInFailedError(lastDiagnostic);
+}
+
+export interface AdoptOptions extends BootOptions {
+  offer: HandoffOffer;
+}
+
+export async function adoptHandoffSession(options: AdoptOptions): Promise<BootResult> {
+  const { session, tokens, offer, timeoutMs } = options;
+
+  await session.adoptHandoff(offer.material);
+
+  if (offer.token !== undefined && !isJwtExpired(offer.token)) {
+    tokens.set(offer.token);
+    try {
+      return await confirmMode(session, tokens, timeoutMs);
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.code !== 'UNAUTHORIZED') {
+        throw error;
+      }
+      tokens.clear();
+    }
+  }
+
+  return signInWithModeDetection({ session, tokens, timeoutMs, hint: options.hint });
 }
 
 export interface EnrolOptions extends BootOptions {

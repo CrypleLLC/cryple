@@ -100,6 +100,38 @@ This is a **local** lock only. It does not end the API session: the JWT's own 24
 the session and there is no revocation endpoint. Re-unlocking after an idle lock does not
 require a new sign-in unless the JWT has also expired.
 
+## Cross-tab handoff — `handoff.ts`
+
+Key material lives in memory, per JS context. A **new browser tab is therefore always locked**,
+even on the same origin, and that is the ordinary case now that documents open in their own tab
+(`/docs/[id]`).
+
+Prompting for a PIN in every document tab would be the wrong answer twice over: it costs a
+600,000-iteration PBKDF2 each time, and it re-introduces the per-prompt design this module exists
+to avoid. So a fresh tab asks the tabs that are already unlocked:
+
+```ts
+serveSession(() => …)   // an unlocked tab answers requests, for as long as it is mounted
+await requestSession()  // a new tab asks, and gives up after HANDOFF_TIMEOUT_MS
+```
+
+The offer carries the **64-byte seed** (hex), the `Server_Auth_Token` and the current JWT.
+`adoptHandoff` rebuilds the tree with `deriveKeyTreeFromSeed` — no PBKDF2, no prompt. When nobody
+answers within the window, the app falls through to the normal `Unlock` screen unchanged.
+
+Two properties make this safe to do at all:
+
+- **`BroadcastChannel` is same-origin.** Only pages on this origin can join, so the material never
+  crosses an origin boundary and never touches the network. This is the same blast radius an XSS
+  on this origin already has; it is not a new one.
+- **Nonce-matched.** A reply is accepted only against the `crypto.randomUUID()` the requester
+  broadcast, so a stale offer on the channel cannot be adopted.
+
+The JWT in the offer is an optimization, not the authority. `adoptHandoffSession`
+([`lib/app/boot.ts`](../app/README.md)) confirms the account with `GET /users/me` and falls back
+to a full signature sign-in if the token is expired or refused — the account's mode is always read
+from `has_password`, never from the offering tab's cached state.
+
 ## Never
 
 - Nothing here touches `localStorage` or `sessionStorage`. The only persisted artifact in

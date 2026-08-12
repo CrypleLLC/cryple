@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, type ComponentType } from 'react';
+import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import { hasSeedVault } from '@/lib/pin';
 import { sessionExits, type SessionExit, type SessionExitId } from '@/lib/app';
@@ -12,6 +13,7 @@ import SuccessionScreen from './SuccessionScreen';
 import VaultScreen from './VaultScreen';
 import { VaultRevealAction, VaultRevealProvider } from './VaultReveal';
 import {
+  DocumentsIcon,
   GuardiansIcon,
   LockSessionIcon,
   LogOutIcon,
@@ -21,7 +23,11 @@ import {
   VaultIcon,
   type IconProps,
 } from './icons';
-import { Badge, Button, Notice } from './ui';
+import { Badge, Button, Notice, Spinner } from './ui';
+
+const DocumentsScreen = dynamic(() => import('./DocumentsScreen'), {
+  loading: () => <Spinner />,
+});
 
 interface NavItem {
   id: string;
@@ -47,6 +53,13 @@ const NAV_ITEMS = [
     description: 'Letters and instructions you write, encrypted before they leave this device.',
     icon: NotesIcon,
     screen: NotesScreen,
+  },
+  {
+    id: 'documents',
+    label: 'Documents',
+    description: 'Long-form writing, encrypted here and synced across your devices.',
+    icon: DocumentsIcon,
+    screen: DocumentsScreen,
   },
   {
     id: 'guardians',

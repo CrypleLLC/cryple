@@ -27,6 +27,7 @@ export interface RequestOptions {
   query?: Record<string, string | number | boolean | undefined>;
   timeoutMs?: number;
   signal?: AbortSignal;
+  maxBodyBytes?: number;
 }
 
 export function getBaseUrl(): string {
@@ -50,14 +51,14 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
   return url.toString();
 }
 
-function serializeBody(body: unknown): string | undefined {
+function serializeBody(body: unknown, limit: number): string | undefined {
   if (body === undefined) {
     return undefined;
   }
   const serialized = JSON.stringify(body);
   const bytes = new TextEncoder().encode(serialized).length;
-  if (bytes > MAX_BODY_BYTES) {
-    throw new RequestTooLargeError(bytes, MAX_BODY_BYTES);
+  if (bytes > limit) {
+    throw new RequestTooLargeError(bytes, limit);
   }
   return serialized;
 }
@@ -73,11 +74,20 @@ function resolveSignal(
 export async function request<T = unknown>(
   options: RequestOptions,
 ): Promise<ApiResponse<T>> {
-  const { method, path, body, token, query, timeoutMs = DEFAULT_TIMEOUT_MS, signal } = options;
+  const {
+    method,
+    path,
+    body,
+    token,
+    query,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    signal,
+    maxBodyBytes = MAX_BODY_BYTES,
+  } = options;
 
   const endpoint = `${method} ${path}`;
   const url = buildUrl(path, query);
-  const serialized = serializeBody(body);
+  const serialized = serializeBody(body, maxBodyBytes);
 
   const headers: Record<string, string> = {};
   if (serialized !== undefined) {

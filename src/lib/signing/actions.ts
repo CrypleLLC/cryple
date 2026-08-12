@@ -52,6 +52,12 @@ export const ACTIONS = {
     signer: 'owner',
     variadic: true,
   },
+  'document-delete': {
+    args: ['document_id'],
+    secondFactor: true,
+    signer: 'owner',
+    variadic: true,
+  },
   'beneficiary-register': {
     args: ['beneficiary_username'],
     secondFactor: true,

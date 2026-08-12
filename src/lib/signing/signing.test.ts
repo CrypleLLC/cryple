@@ -185,8 +185,17 @@ describe('secret-delete is the one batchable action', () => {
 });
 
 describe('the action table matches the authoritative spec', () => {
-  it('covers all 19 actions', () => {
-    expect(Object.keys(ACTIONS)).toHaveLength(19);
+  it('covers all 20 actions', () => {
+    expect(Object.keys(ACTIONS)).toHaveLength(20);
+  });
+
+  it('makes document-delete batchable, like secret-delete and note-delete', () => {
+    expect(ACTIONS['document-delete']).toMatchObject({
+      args: ['document_id'],
+      secondFactor: true,
+      signer: 'owner',
+      variadic: true,
+    });
   });
 
   it('makes note-delete batchable, like secret-delete', () => {

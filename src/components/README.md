@@ -6,7 +6,9 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 
 | File | Role |
 | --- | --- |
-| `CrypleProvider.tsx` | Session custody, phase machine, error translation |
+| `CrypleProvider.tsx` | Session custody, phase machine, error translation, cross-tab handoff |
+| `AppProviders.tsx` | Mounts `CrypleProvider` in the root layout so every route shares one session |
+| `SessionGate.tsx` | The loading / onboarding / locked / ready switch, wrapped around each route |
 | `Onboarding.tsx` | Task 24 — phrase, PIN, mode, enrolment |
 | `Unlock.tsx` | PIN unlock and the 3-attempt device wipe |
 | `AppShell.tsx` | Task 25 — the sidebar shell and navigation registry |
@@ -16,6 +18,11 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `NoteEditor.tsx` | One note open — autosave, delete, WYSIWYG formatting |
 | `NoteEditorToolbar.tsx` | The editor's formatting controls |
 | `note-surface.ts` | DOM ↔ note document, for the `contentEditable` surface |
+| `DocumentsScreen.tsx` | The documents grid — opens each document in its own tab |
+| `documents/DocumentWorkspace.tsx` | The `/docs/[id]` page: title, toolbar, page canvas, save status |
+| `documents/DocumentToolbar.tsx` | The TipTap formatting toolbar |
+| `documents/useDocumentSync.ts` | Binds `DocumentSync` to a component's lifetime |
+| `documents/extensions.ts` | The TipTap extension set, bound to the document's `Y.Doc` |
 | `GuardiansScreen.tsx` | Guardians, recovery setup, Recovery Kit |
 | `GuardianInbox.tsx` | The merged guardian queue, 1-minute poll |
 | `SuccessionScreen.tsx` | Release status, vote audit, heirs |

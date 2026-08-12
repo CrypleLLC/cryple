@@ -1,6 +1,7 @@
-import { bytesToHex, zeroBytes } from '@/lib/encoding';
+import { bytesToHex, hexToBytes, zeroBytes } from '@/lib/encoding';
 import {
   deriveKeyTree,
+  deriveKeyTreeFromSeed,
   zeroKeyTree,
   type CrypleKeyTree,
 } from '@/lib/keys';
@@ -25,6 +26,11 @@ export interface SessionKeystoreOptions {
 interface SessionState {
   tree: CrypleKeyTree;
   serverAuthToken?: Uint8Array;
+}
+
+export interface SessionHandoffMaterial {
+  seedHex: string;
+  serverAuthToken?: string;
 }
 
 export class SessionKeystore {
@@ -72,6 +78,34 @@ export class SessionKeystore {
     this.state = { tree, serverAuthToken };
     this.touch();
     return tree.userAddress;
+  }
+
+  exportForHandoff(): SessionHandoffMaterial {
+    const state = this.require();
+    return {
+      seedHex: bytesToHex(state.tree.seed),
+      serverAuthToken: this.serverAuthToken(),
+    };
+  }
+
+  async adoptHandoff(material: SessionHandoffMaterial): Promise<string> {
+    this.lock();
+
+    const seed = hexToBytes(material.seedHex);
+    try {
+      const tree = await deriveKeyTreeFromSeed(seed);
+      this.state = {
+        tree,
+        serverAuthToken:
+          material.serverAuthToken === undefined
+            ? undefined
+            : hexToBytes(material.serverAuthToken),
+      };
+      this.touch();
+      return tree.userAddress;
+    } finally {
+      zeroBytes(seed);
+    }
   }
 
   async rekeySecondFactor(pin: string): Promise<void> {

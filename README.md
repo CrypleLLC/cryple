@@ -29,7 +29,7 @@ decisions.
 ### Your recovery phrase is the account
 
 When you start, the app generates a phrase of 12 or 24 ordinary English words. That phrase is not
-a password you can reset. It *is* the account. Every key Cryple uses is calculated from it, the
+a password you can reset. It _is_ the account. Every key Cryple uses is calculated from it, the
 same way every time, on any device.
 
 That has a good consequence and a hard one. The good one: type the phrase into a new browser and
@@ -61,7 +61,7 @@ You choose how signing in works, once, when you set up:
 - **Standard** — your recovery phrase alone. No PIN anywhere. Nothing about your account is kept
   on the device, so you type your phrase again whenever the session ends: on every reload, and
   after fifteen idle minutes.
-- **Paranoid** — a 6-digit PIN *and* your phrase, both required, the PIN checked by the server.
+- **Paranoid** — a 6-digit PIN _and_ your phrase, both required, the PIN checked by the server.
   That same PIN also encrypts a copy of your phrase in this browser, so day to day you unlock with
   six digits instead of twenty-four words.
 
@@ -88,7 +88,7 @@ they agreed. Until then they count for nothing. Accepting cannot be undone from 
 you can remove a guardian.
 
 The app takes a recovery key, encrypts your phrase with it, then splits that key into pieces using
-a scheme where any *k* of *n* pieces rebuild it and anything fewer reveals **nothing at all**. Not
+a scheme where any _k_ of _n_ pieces rebuild it and anything fewer reveals **nothing at all**. Not
 a partial answer, not a head start. Two pieces of a three-piece, three-required split are as
 useless as zero.
 
@@ -131,67 +131,6 @@ So whenever Cryple encrypts something for another person — a guardian's piece,
 classical choice; the other is a post-quantum standard. An attacker has to break **both**. If
 either survives, your data stays sealed.
 
-## What the app actually does
-
-Four screens.
-
-**Setting up.** Generate a new phrase or type in an existing one. The app checks the phrase's
-built-in checksum before doing anything with it, so a typo is caught immediately rather than
-silently creating a different empty account. It asks you to confirm a few words back before
-continuing. Then you choose your mode: Standard finishes there, and Paranoid asks for the PIN it
-needs. Every step has a Back that returns to the one before it, so a wrong turn costs one click
-rather than starting over.
-
-**Unlocking.** Paranoid accounts: your PIN, once per session, with wrong-attempt warnings counting
-down before the local copy is erased. Standard accounts have no local copy to unlock — they start
-from the recovery phrase each time.
-
-**Leaving.** Two exits, differing only in what this device keeps. **Lock** ends the session and
-keeps the encrypted copy of your phrase, so your PIN brings you back — Paranoid accounts only,
-since Standard ones store nothing to keep. **Log out** ends the session and removes that copy, so
-coming back needs the phrase itself. Neither touches your vault, your guardians or your heirs, and
-neither can reach other devices: there is no revocation endpoint anywhere in this API, so logging
-out is exactly "delete my own copy of the token" and nothing more.
-
-**Security.** Turn on PIN protection if you started in Standard mode. You confirm your recovery
-phrase — this device is not keeping one yet, and your new PIN is what will encrypt it — choose the
-PIN, and the account becomes Paranoid. That is also what gives you the Lock option. It is one-way:
-there is no button to turn it back off.
-
-**Vault.** Your items, newest first. The app verifies what it received rather than trusting the
-server's word about it.
-
-**Guardians.** Invite people, see how many have actually accepted, configure your threshold, and
-produce your Recovery Kit. This screen is also your inbox for the other direction: when somebody
-asks *you* to be their guardian, or someone who already named you needs help recovering or needs to
-reset their PIN, the request appears here for you to accept or approve.
-
-**Succession.** Whether a release has been requested, which guardians voted, and who inherits.
-Every guardian vote is verified in your browser against that guardian's own key — the app rebuilds
-what should have been signed rather than trusting the server's account of it.
-
-## Current state
-
-Honest summary: **you cannot yet store or open vault items.** The recovery, guardian and
-succession machinery is built and tested; the vault contents are waiting on one unfinished
-decision in the protocol specification.
-
-| Area | State |
-| --- | --- |
-| Setup, unlock, PIN, both modes | Working |
-| Guardians, recovery setup, Recovery Kit, recovery and PIN-reset requests | Working |
-| Succession: release status, vote verification, listing and removing heirs | Working |
-| Storing or opening a vault item | Blocked |
-| Naming a new heir | Blocked |
-
-Both blocked items need the same thing: the specification has not yet fixed how your device
-derives the key that seals your own data. Rather than invent one, the code raises a clear error —
-a guessed answer here would produce data that silently cannot be opened later, which is the worst
-possible outcome for a vault meant to be read in twenty years. See
-[tasks.md](./tasks.md) for the tracking detail.
-
-This is pre-release software. Do not put anything irreplaceable in it yet.
-
 ## Running it locally
 
 Requires Node and a running instance of the [Cryple API](../api-general).
@@ -229,23 +168,23 @@ constants, [front-end-guide.md](./front-end-guide.md) and
 
 There are no comments in the code. Each module carries a `README.md` that explains it.
 
-| Module | What it owns |
-| --- | --- |
-| [`lib/keys`](./src/lib/keys/README.md) | Recovery phrase to the full key tree |
-| [`lib/encoding`](./src/lib/encoding/README.md) | hex, base64 and key-format conversions |
-| [`lib/pin`](./src/lib/pin/README.md) | The second factor, the local vault, the wipe policy |
-| [`lib/session`](./src/lib/session/README.md) | In-memory key custody |
-| [`lib/api`](./src/lib/api/README.md) | Transport, error codes, pagination, tokens |
-| [`lib/signing`](./src/lib/signing/README.md) | Request signatures and the action table |
-| [`lib/auth`](./src/lib/auth/README.md) | Sign-up, sign-in, restoring on a new device |
-| [`lib/users`](./src/lib/users/README.md) | Account, mode, public keys |
-| [`lib/pqxdh`](./src/lib/pqxdh/README.md) | Hybrid post-quantum encryption for another person |
-| [`lib/sealed`](./src/lib/sealed/README.md) | The versioned encrypted-blob format |
-| [`lib/secrets`](./src/lib/secrets/README.md) | Vault items |
-| [`lib/recovery`](./src/lib/recovery/README.md) | Guardians, key splitting, recovery, PIN reset |
-| [`lib/succession`](./src/lib/succession/README.md) | Heirs, inherited keys, release votes |
-| [`lib/app`](./src/lib/app/README.md) | Product logic behind the interface |
-| [`components`](./src/components/README.md) | The React screens |
+| Module                                             | What it owns                                        |
+| -------------------------------------------------- | --------------------------------------------------- |
+| [`lib/keys`](./src/lib/keys/README.md)             | Recovery phrase to the full key tree                |
+| [`lib/encoding`](./src/lib/encoding/README.md)     | hex, base64 and key-format conversions              |
+| [`lib/pin`](./src/lib/pin/README.md)               | The second factor, the local vault, the wipe policy |
+| [`lib/session`](./src/lib/session/README.md)       | In-memory key custody                               |
+| [`lib/api`](./src/lib/api/README.md)               | Transport, error codes, pagination, tokens          |
+| [`lib/signing`](./src/lib/signing/README.md)       | Request signatures and the action table             |
+| [`lib/auth`](./src/lib/auth/README.md)             | Sign-up, sign-in, restoring on a new device         |
+| [`lib/users`](./src/lib/users/README.md)           | Account, mode, public keys                          |
+| [`lib/pqxdh`](./src/lib/pqxdh/README.md)           | Hybrid post-quantum encryption for another person   |
+| [`lib/sealed`](./src/lib/sealed/README.md)         | The versioned encrypted-blob format                 |
+| [`lib/secrets`](./src/lib/secrets/README.md)       | Vault items                                         |
+| [`lib/recovery`](./src/lib/recovery/README.md)     | Guardians, key splitting, recovery, PIN reset       |
+| [`lib/succession`](./src/lib/succession/README.md) | Heirs, inherited keys, release votes                |
+| [`lib/app`](./src/lib/app/README.md)               | Product logic behind the interface                  |
+| [`components`](./src/components/README.md)         | The React screens                                   |
 
 The test suite includes a fixture that reproduces every key derivation against values generated by
 the backend. No backend test reads that file, so this suite is the only cross-client check that
