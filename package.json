@@ -12,6 +12,7 @@
     "lint:fix": "eslint --fix"
   },
   "dependencies": {
+    "@floating-ui/dom": "^1.8.0",
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^1.8.0",
     "@noble/post-quantum": "^0.6.1",
