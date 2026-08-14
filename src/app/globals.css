@@ -3,6 +3,11 @@
 :root {
   --background: #f8fafc;
   --foreground: #0f172a;
+  --staging-banner-h: 0px;
+}
+
+html[data-staging] {
+  --staging-banner-h: 2.25rem;
 }
 
 @theme inline {
@@ -37,6 +42,73 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+.staging-banner {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  height: var(--staging-banner-h);
+  overflow: hidden;
+  white-space: nowrap;
+  background: #dc2626;
+  color: #fff;
+}
+
+.staging-banner__announce {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.staging-banner__track {
+  display: flex;
+  width: max-content;
+  height: 100%;
+  animation: staging-banner-walk 220s linear infinite;
+}
+
+.staging-banner__group {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.staging-banner__group span {
+  display: flex;
+  align-items: center;
+  padding: 0 3rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+@keyframes staging-banner-walk {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .staging-banner__track {
+    animation: none;
+  }
+
+  .staging-banner__group:nth-of-type(2) {
+    display: none;
+  }
+
+  .staging-banner__group span:not(:first-child) {
+    display: none;
+  }
 }
 
 .note-surface {
