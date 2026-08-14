@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import AppProviders from "@/components/AppProviders";
+import StagingBanner from "@/components/StagingBanner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -23,11 +24,14 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const isStaging = process.env.NODE_ENV === "development";
+
   return (
-    <html lang="en">
+    <html lang="en" data-staging={isStaging ? "" : undefined}>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <StagingBanner />
         <AppProviders>{children}</AppProviders>
       </body>
     </html>
