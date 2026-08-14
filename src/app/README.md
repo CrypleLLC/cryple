@@ -4,37 +4,17 @@ The Next.js App Router entry point. Routing and page-level assets only — the R
 in [`src/components`](../components/README.md) and every testable decision in
 [`src/lib/app`](../lib/app/README.md).
 
-| File | Role |
-| --- | --- |
-| `layout.tsx` | The root layout, fonts, `metadata`, the shared `AppProviders`, and `StagingBanner` |
-| `page.tsx` | The dashboard, behind `SessionGate` |
-| `docs/[id]/page.tsx` | One document, behind `SessionGate` — the editor route |
-| `globals.css` | Tailwind import, the `brand` colour scale, light/dark surface tokens, `.cryple-prose`, the `.staging-banner` marquee |
+| File                 | Role                                                                                                                 |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `layout.tsx`         | The root layout, fonts, `metadata`, the shared `AppProviders`, and `StagingBanner`                                   |
+| `page.tsx`           | The dashboard, behind `SessionGate`                                                                                  |
+| `docs/[id]/page.tsx` | One document, behind `SessionGate` — the editor route                                                                |
+| `globals.css`        | Tailwind import, the `brand` colour scale, light/dark surface tokens, `.cryple-prose`, the `.staging-banner` marquee |
 
 ## The staging banner
 
 `StagingBanner` (in [`src/components`](../components/README.md)) renders only when
-`process.env.NODE_ENV === 'development'` — Next.js hard-codes `NODE_ENV` to `'development'` or
-`'production'` at build time (`node_modules/next/dist/build/define-env.js`), so a deployment-time
-value like `'staging'` is never observable from application code, even if the process environment
-sets it. `'development'` is the only non-production value Next actually threads through, which is
-why the banner keys off it instead.
-
-`layout.tsx` derives the same flag once and stamps `data-staging` on `<html>`, which drives a
-`--staging-banner-h` CSS variable ([`globals.css`](./globals.css)). `AppShell`'s sticky sidebar and
-top bars, and the document editor's sticky header, read that variable for their `top` offset —
-without it, they would stick to the viewport's true top and hide behind the fixed-height banner
-once the page scrolls. The variable is `0px` whenever the banner is absent, so nothing shifts
-outside development.
-
-The marquee track is two `.staging-banner__group` blocks, each repeating the message ten times,
-animated with `translateX` from `0` to `-50%`. A single pair of repeats is not enough — once a
-message narrower than the viewport scrolls past, the animation reaches the end of the track before
-the loop resets, leaving a visible blank stretch. Ten repeats per group keeps a group wider than
-any realistic viewport, so the visible window is always inside real content and the `-50%` reset
-lines up pixel-for-pixel with the start, with no gap. The actual warning text is announced once
-through a visually-hidden `.staging-banner__announce` (`role="status"`); the animated copies are
-`aria-hidden`, since a screen reader repeating the sentence twenty times would be useless.
+`process.env.NEXT_PUBLIC_ENV === 'development'`
 
 ## Why the provider moved into the layout
 
@@ -62,11 +42,11 @@ do not add another `favicon.ico`.
 
 Three files, because they answer three different requests:
 
-| File | Size | Why it exists |
-| --- | --- | --- |
-| `icon.svg` | vector | What modern browsers actually use — crisp at every zoom and DPI |
-| `icon.png` | 32×32 | Fallback for clients that will not take an SVG favicon |
-| `apple-icon.png` | 180×180 | iOS home screen, which ignores the other two |
+| File             | Size    | Why it exists                                                   |
+| ---------------- | ------- | --------------------------------------------------------------- |
+| `icon.svg`       | vector  | What modern browsers actually use — crisp at every zoom and DPI |
+| `icon.png`       | 32×32   | Fallback for clients that will not take an SVG favicon          |
+| `apple-icon.png` | 180×180 | iOS home screen, which ignores the other two                    |
 
 `icon.png` is **tuned to the 32-pixel grid rather than downscaled** from the 500×500 logo: the
 bars are 6px tall on integer rows (18–23 and 26–31), the arch is `r=15` outer and `r=8` inner

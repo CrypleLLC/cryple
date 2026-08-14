@@ -24,7 +24,7 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const isStaging = process.env.NODE_ENV === "development";
+  const isStaging = process.env.NEXT_PUBLIC_ENV === "development";
 
   return (
     <html lang="en" data-staging={isStaging ? "" : undefined}>

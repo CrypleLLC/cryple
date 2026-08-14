@@ -1,7 +1,7 @@
 const REPEATS_PER_GROUP = 10;
 
 export default function StagingBanner() {
-  if (process.env.NODE_ENV !== 'development') return null;
+  if (process.env.NEXT_PUBLIC_ENV !== 'development') return null;
 
   const message =
     'This is a test version of our app. Do not use with real data. Any data at this environment can be lost at any time.';
