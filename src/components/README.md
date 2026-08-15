@@ -29,6 +29,7 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `RecoveryKitCard.tsx` | The printable share-0 surface |
 | `ui.tsx` | Card / Button / Field / TextArea / Badge / Notice primitives |
 | `icons.tsx` | The stroke-icon set shared by navigation and primitives |
+| `StagingBanner.tsx` | The walking red warning banner, dev-only — see [`app`](../app/README.md#the-staging-banner) |
 
 ## Layout and design system
 

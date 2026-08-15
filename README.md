@@ -166,8 +166,6 @@ precedence order when documents disagree: the frozen specifications win on byte 
 constants, [front-end-guide.md](./front-end-guide.md) and
 [front-end-endpoints.md](./front-end-endpoints.md) win on the wire contract.
 
-There are no comments in the code. Each module carries a `README.md` that explains it.
-
 | Module                                             | What it owns                                        |
 | -------------------------------------------------- | --------------------------------------------------- |
 | [`lib/keys`](./src/lib/keys/README.md)             | Recovery phrase to the full key tree                |

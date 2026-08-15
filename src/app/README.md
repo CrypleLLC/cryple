@@ -4,12 +4,17 @@ The Next.js App Router entry point. Routing and page-level assets only — the R
 in [`src/components`](../components/README.md) and every testable decision in
 [`src/lib/app`](../lib/app/README.md).
 
-| File | Role |
-| --- | --- |
-| `layout.tsx` | The root layout, fonts, `metadata`, and the shared `AppProviders` |
-| `page.tsx` | The dashboard, behind `SessionGate` |
-| `docs/[id]/page.tsx` | One document, behind `SessionGate` — the editor route |
-| `globals.css` | Tailwind import, the `brand` colour scale, light/dark surface tokens, `.cryple-prose` |
+| File                 | Role                                                                                                                 |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `layout.tsx`         | The root layout, fonts, `metadata`, the shared `AppProviders`, and `StagingBanner`                                   |
+| `page.tsx`           | The dashboard, behind `SessionGate`                                                                                  |
+| `docs/[id]/page.tsx` | One document, behind `SessionGate` — the editor route                                                                |
+| `globals.css`        | Tailwind import, the `brand` colour scale, light/dark surface tokens, `.cryple-prose`, the `.staging-banner` marquee |
+
+## The staging banner
+
+`StagingBanner` (in [`src/components`](../components/README.md)) renders only when
+`process.env.NEXT_PUBLIC_ENV === 'development'`
 
 ## Why the provider moved into the layout
 
@@ -37,11 +42,11 @@ do not add another `favicon.ico`.
 
 Three files, because they answer three different requests:
 
-| File | Size | Why it exists |
-| --- | --- | --- |
-| `icon.svg` | vector | What modern browsers actually use — crisp at every zoom and DPI |
-| `icon.png` | 32×32 | Fallback for clients that will not take an SVG favicon |
-| `apple-icon.png` | 180×180 | iOS home screen, which ignores the other two |
+| File             | Size    | Why it exists                                                   |
+| ---------------- | ------- | --------------------------------------------------------------- |
+| `icon.svg`       | vector  | What modern browsers actually use — crisp at every zoom and DPI |
+| `icon.png`       | 32×32   | Fallback for clients that will not take an SVG favicon          |
+| `apple-icon.png` | 180×180 | iOS home screen, which ignores the other two                    |
 
 `icon.png` is **tuned to the 32-pixel grid rather than downscaled** from the 500×500 logo: the
 bars are 6px tall on integer rows (18–23 and 26–31), the arch is `r=15` outer and `r=8` inner

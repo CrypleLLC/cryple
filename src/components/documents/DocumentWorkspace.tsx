@@ -57,7 +57,7 @@ function DocumentSurface({ doc, state }: { doc: YDoc; state: SyncState }) {
 
   return (
     <main className="min-h-screen bg-slate-100 dark:bg-slate-950">
-      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+      <header className="sticky top-[var(--staging-banner-h)] z-10 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
         <div className="flex items-center gap-3 px-3 pt-2.5">
           <Link href="/" aria-label="Back to your vault" className="shrink-0">
             <Image src="/cryple-logo.png" alt="Cryple" width={28} height={28} priority />
