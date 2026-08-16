@@ -138,10 +138,19 @@ cycle fails. Verification never throws — a malformed signature or key yields `
 ## What this module does not do
 
 - **No heir screens**, per the boundary above.
-- **No UI for `released` or `cancelled`.** `getReleaseStatus` types only `monitoring` and
-  `counting_down`; nothing in this API writes the others, and `released_at` is never set.
-- **`last_check_in` is not a live "last seen".** Until the chain indexer ships it is the row
-  creation time, and the thresholds are database defaults. Do not render it as a heartbeat.
+- **No UI for `released` or `cancelled` on the off-chain half.** `ReleaseStatus` types only
+  `monitoring` and `counting_down`, and a `CHECK` on the column now enforces that. Release lives on
+  `chain.status`, which is typed separately as `ChainStatus`.
+- **`chain.status` carries one value the contract does not define: `unknown`.** It means the API
+  could not read its chain mirror — an infrastructure fault, not a fact about the switch. It is
+  surfaced as `ReleaseView.chainUnavailable` so a screen can say "retry" rather than "not set up".
+  Never treat it as permission for anything.
+- **Everything inside `chain` is unix seconds; everything outside it is RFC 3339.** `chain` values
+  are block timestamps the API copies rather than reformats. `buildReleaseView` converts them in
+  one place, `fromUnixSeconds`, so no caller picks the wrong parser.
+- **`chain.last_check_in` is optional.** It appears once the smart account has been configured
+  on-chain, and is absent before that. It is a real heartbeat now, not a row-creation date, but an
+  absent one must not render as a date.
 - **No check-in or switch configuration.** `inactivity_threshold_days` and the quorum are
   **on-chain owner actions**; this endpoint is a read-only mirror.
 - `trigger_started_at` is typed `string | undefined` and tested with `in` — never `| null`.

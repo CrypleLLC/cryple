@@ -337,6 +337,31 @@ cannot reissue it.
 the kit is surfaced from the Guardians screen rather than during first-run onboarding. Onboarding
 covers phrase, PIN and mode; there is nothing to put in a kit before a guardian exists.
 
+## The succession dashboard reads two statuses, not one
+
+`GET /succession/status` answers with two different facts and `buildReleaseView`
+keeps them apart. `status` is the **off-chain guardian countdown** and only ever
+reads `monitoring` or `counting_down`. `chain.status` is the **contract's own
+state**, and it is the only one that can say `released` — anything gating "can
+this inheritance be opened" reads that one.
+
+**Every timestamp inside `chain` is unix seconds; everything outside it is
+RFC 3339.** The `chain` values are block timestamps the API copies rather than
+reformats, so feeding one to a date parser expecting ISO 8601 yields
+`Invalid Date`. `fromUnixSeconds` is the single conversion point, so no caller
+picks the wrong parser.
+
+**`chain.status: 'unknown'` is not a contract state.** It means the API could
+not read its chain mirror — an infrastructure fault, not a fact about the
+switch. It surfaces as `ReleaseView.chainUnavailable` so a screen can say
+"retry" instead of "not set up", and it must never be treated as permission for
+anything. `indexed` is `false` for both `unknown` and `unconfigured`, so branch
+on `chain.status` when the difference matters.
+
+`lastCheckIn` is therefore optional and has three renderings: a date, "not
+configured on-chain" when the smart account has never been configured, and
+"unavailable" during an outage.
+
 ## The blocked heir label
 
 `registerBeneficiary` needs a non-empty `encrypted_label` — the owner's private note about an

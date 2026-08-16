@@ -210,7 +210,7 @@ Derived from the guide and the specs; these are the ones a client gets wrong by 
 - **No heir-facing screens.** Nothing lets a named beneficiary discover, accept, decline or claim an inheritance. Before release that is permanent by design; after release the routes are unbuilt and their paths unsettled.
 - **No "sign out all devices" / session list.** The API has no revocation. Logout means deleting your own copy of the token.
 - **No key rotation flow, and no "disable PIN".** Rotation is a protocol change (backend Task 63), not an endpoint. `keys_rotated: true` means the heir *deleted their account* — surface "remove them and choose another", never a re-wrap prompt.
-- **No UI waiting on `released`, `cancelled` (release trigger) or `completed` (recovery session).** No code path writes them; they need a chain indexer that does not exist. `GET /succession/status` only ever reads `monitoring` or `counting_down`, and `last_check_in` is not a live "last seen".
+- **No UI waiting on `cancelled` (release trigger) or `completed` (recovery session).** No code path writes them. Release is different: the chain indexer shipped 2026-08-16, so `GET /succession/status` now carries a `chain` object whose `chain.status` reaches `released`. The top-level `status` is still only `monitoring` or `counting_down` — the two are separate facts and merging them is a bug. See [`src/lib/app/README.md`](./src/lib/app/README.md).
 - **Check-in / dead-man's-switch configuration is on-chain**, not in this API.
 - **Nothing from `.docs/storage-plan.md`.** The file vault is postponed post-MVP; it is the one `.docs` file that is not a build target.
 
