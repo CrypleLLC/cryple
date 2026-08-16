@@ -126,9 +126,12 @@ recorded here rather than being visible in the code:
 - **No session list or "sign out all devices".**
 - **No key-rotation flow.** `keys_rotated: true` renders "this heir closed their account — remove
   them and choose another", never a re-wrap prompt.
-- **No UI waiting on `released`, `cancelled` or `completed`.** The succession dashboard renders
-  only `monitoring` and `counting_down`, and `last_check_in` is labelled as a record-creation date,
-  not a live "last seen".
+- **No UI waiting on `released`, `cancelled` or `completed` in the off-chain status.** The
+  succession dashboard renders only `monitoring` and `counting_down` there. Release is reported on
+  `chain.status`, which the dashboard reads but does not yet act on — the heir path is Task 54.
+- **Last check-in has three renderings, not one.** A date when the chain has one, "Not configured
+  on-chain" when the smart account has never been configured, and "Unavailable" when the API could
+  not read its mirror. The third is an outage on our side and must never read as the second.
 - **No check-in or dead-man's-switch configuration.** Both are on-chain owner actions; the screen
   says so instead of offering controls that would silently do nothing.
 

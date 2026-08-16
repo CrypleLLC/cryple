@@ -8,14 +8,38 @@ import { SuccessionValidationError } from './errors';
 export const REACHABLE_RELEASE_STATUSES = ['monitoring', 'counting_down'] as const;
 export type ReleaseStatus = (typeof REACHABLE_RELEASE_STATUSES)[number];
 
+export const CONTRACT_CHAIN_STATUSES = [
+  'unconfigured',
+  'active',
+  'contest',
+  'released',
+] as const;
+
+export type ChainStatus = (typeof CONTRACT_CHAIN_STATUSES)[number] | 'unknown';
+
+export interface ChainStatusRecord {
+  indexed: boolean;
+  smart_account_address: string;
+  status: ChainStatus;
+  last_check_in?: number;
+  inactivity_period_seconds?: number;
+  contest_period_seconds?: number;
+  triggerable_at?: number;
+  triggered_at?: number;
+  releasable_at?: number;
+  released_at?: number;
+  guardian_root?: string;
+  guardian_threshold?: number;
+}
+
 export interface ReleaseStatusRecord {
   status: ReleaseStatus;
   votes: number;
   required_votes: number;
   release_cycle: number;
   inactivity_threshold_days: number;
-  last_check_in: string;
   trigger_started_at?: string;
+  chain: ChainStatusRecord;
 }
 
 export interface ReleaseVote {

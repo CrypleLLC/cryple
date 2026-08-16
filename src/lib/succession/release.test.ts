@@ -89,7 +89,14 @@ function status(overrides: Partial<ReleaseStatusRecord> = {}): ReleaseStatusReco
     required_votes: 1,
     release_cycle: 1,
     inactivity_threshold_days: 180,
-    last_check_in: '2026-07-26T12:00:00Z',
+    chain: {
+      indexed: true,
+      smart_account_address: '0x4dcb2c4a8d8b42f58522ed7e116bb33fc75843b1',
+      status: 'active',
+      last_check_in: 1785110400,
+      inactivity_period_seconds: 600,
+      triggerable_at: 1785111000,
+    },
     ...overrides,
   };
 }

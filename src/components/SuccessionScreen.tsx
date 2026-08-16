@@ -13,6 +13,7 @@ import {
   auditVotes,
   buildBeneficiaryViews,
   buildReleaseView,
+  CHAIN_UNAVAILABLE_CAVEAT,
   CONFIGURATION_CAVEAT,
   LABEL_SEALED_NOTICE,
   LAST_CHECK_IN_CAVEAT,
@@ -115,12 +116,19 @@ export default function SuccessionScreen() {
                 <dd>{release.inactivityThresholdDays} days</dd>
               </div>
               <div>
-                <dt className="text-slate-500">Record created</dt>
-                <dd>{release.lastCheckIn.toLocaleDateString()}</dd>
+                <dt className="text-slate-500">Last check-in</dt>
+                <dd>
+                  {release.chainUnavailable
+                    ? 'Unavailable'
+                    : (release.lastCheckIn?.toLocaleDateString() ?? 'Not configured on-chain')}
+                </dd>
               </div>
             </dl>
 
             <p className="text-xs text-slate-500">{LAST_CHECK_IN_CAVEAT}</p>
+            {release.chainUnavailable && (
+              <p className="text-xs text-slate-500">{CHAIN_UNAVAILABLE_CAVEAT}</p>
+            )}
             <p className="text-xs text-slate-500">{CONFIGURATION_CAVEAT}</p>
           </div>
         )}
