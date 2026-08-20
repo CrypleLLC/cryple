@@ -75,3 +75,14 @@ export async function loadDocumentSummaries(
   await Promise.all(workers);
   return results;
 }
+
+export async function compactForAnchor(context: DocumentsContext, id: string): Promise<void> {
+  const sync = new DocumentSync(id, apiTransport(context), { pollIntervalMs: 0, debounceMs: 0 });
+
+  try {
+    await sync.open();
+    await sync.compact();
+  } finally {
+    await sync.close();
+  }
+}

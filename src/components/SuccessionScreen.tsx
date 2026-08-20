@@ -8,6 +8,7 @@ import {
   listReleaseVotes,
   registerBeneficiary,
   type Beneficiary,
+  type ReleaseStatusRecord,
 } from '@/lib/succession';
 import {
   auditVotes,
@@ -22,6 +23,7 @@ import {
   type ReleaseView,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
+import HeartbeatCard from './HeartbeatCard';
 import { Button, Card, Empty, Field, Notice, PanelGrid, Spinner } from './ui';
 
 export default function SuccessionScreen() {
@@ -29,6 +31,7 @@ export default function SuccessionScreen() {
   const { reportError } = useCryple();
 
   const [release, setRelease] = useState<ReleaseView>();
+  const [statusRecord, setStatusRecord] = useState<ReleaseStatusRecord>();
   const [audit, setAudit] = useState<AuditedVotes>();
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>();
   const [username, setUsername] = useState('');
@@ -45,6 +48,7 @@ export default function SuccessionScreen() {
       ]);
 
       setRelease(buildReleaseView(status));
+      setStatusRecord(status);
       setAudit(auditVotes(votes));
       setBeneficiaries(heirs);
       setMessage(undefined);
@@ -90,6 +94,10 @@ export default function SuccessionScreen() {
   return (
     <div className="space-y-6">
       {message ? <Notice tone="danger">{message}</Notice> : null}
+
+      {statusRecord ? (
+        <HeartbeatCard status={statusRecord} onCheckedIn={() => void load()} />
+      ) : null}
 
       <Card title="Release status">
         {release === undefined ? (

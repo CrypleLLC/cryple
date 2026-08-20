@@ -173,6 +173,10 @@ export class SessionKeystore {
     return this.require().tree.identity.publicKeySpkiBase64;
   }
 
+  get identityPublicKeyUncompressed(): Uint8Array {
+    return this.require().tree.identity.publicKeyUncompressed;
+  }
+
   get x25519PrivateKey(): Uint8Array {
     return this.require().tree.x25519.privateKey;
   }

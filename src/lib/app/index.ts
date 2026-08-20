@@ -10,3 +10,5 @@ export * from './documents';
 export * from './label';
 export * from './succession-view';
 export * from './recovery-kit';
+export * from './heartbeat';
+export * from './anchoring';
