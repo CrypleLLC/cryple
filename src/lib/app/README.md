@@ -362,6 +362,54 @@ on `chain.status` when the difference matters.
 configured on-chain" when the smart account has never been configured, and
 "unavailable" during an outage.
 
+## Choosing what an heir inherits
+
+`inheritance.ts` is the model behind the "Set inheritance" modal. It is pure apart from one
+loader, so the rules below are unit-tested rather than only reachable through a component.
+
+### The list has to decrypt, because no title is on the wire
+
+A vault item's title is not a field. A secret's name lives inside the `SecretPayload` JSON
+([§ The secret name/value format](#the-secret-namevalue-format)), a note's title is the first
+non-empty line of its plaintext ([§ A note has no title field](#a-note-has-no-title-field-and-does-not-need-one)),
+and a document's title lives inside the CRDT. So building this list opens every item, exactly as
+the Vault, Notes and Documents screens already do — `loadInheritanceCandidates` composes their
+loaders rather than adding a fourth fetch path.
+
+**An item that fails to open is listed and not selectable.** It keeps its place with an
+"Unreadable …" title rather than vanishing, because a silently shorter list is how an owner
+believes they left an heir something they did not. Assigning it would be worse still: the wrapped
+DEK would be re-wrapped without ever being verified as openable, producing a share no heir can
+use. `assignable: false` is the same fact under both readings.
+
+A candidate carries its `wrappedDek`, which the field list in the task did not ask for. The load
+already had it in hand, so the alternative is a second fetch per item at save time — and carrying
+it makes the save a local computation, so a partial failure in Task 38 is only ever a failed
+request, never a failed re-read.
+
+### Sorted by type, then title — the same order the tree uses
+
+Type order is `document, note, secret`, taken from `lib/succession`'s `ITEM_TYPES`, which is
+`lib/vaultmerkle`'s leaf order. The list a person reads and the leaves that get hashed are then
+in the same sequence, which is one fewer thing to hold in your head when reading an anchor pass
+beside a modal. Titles compare case-insensitively and ties break on id, so the order is stable
+across reloads.
+
+### Nothing here unassigns
+
+`itemsToAssign(candidates, selected, current)` returns **only** the checked items the heir does
+not already hold. Three exclusions, and each has a reason worth keeping:
+
+- **already held** — the wire upserts on `(beneficiary_id, item_id)`, so re-assigning is harmless
+  but burns a PQXDH encapsulation to rewrite a share that is already correct;
+- **not assignable** — see above, even when its key is passed in;
+- **not checked** — an unchecked box means "not chosen in this pass", **never "revoke"**.
+
+That last one is the load-bearing rule. The modal opens with every box clear (Task 38), so if an
+unchecked box meant removal, the first save would strip an heir of everything they had been left.
+Removal is a deliberate single-item action in the heir's tab, and there is deliberately no
+function here that produces one.
+
 ## The blocked heir label
 
 `registerBeneficiary` needs a non-empty `encrypted_label` — the owner's private note about an

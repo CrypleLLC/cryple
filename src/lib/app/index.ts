@@ -12,3 +12,5 @@ export * from './succession-view';
 export * from './recovery-kit';
 export * from './heartbeat';
 export * from './anchoring';
+export * from './inheritance';
+export * from './modal';

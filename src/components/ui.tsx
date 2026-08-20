@@ -1,13 +1,20 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
+  KeyboardEvent as ReactKeyboardEvent,
   ReactNode,
   TextareaHTMLAttributes,
 } from 'react';
-import { CheckIcon, ClipboardIcon } from './icons';
+import {
+  FOCUSABLE_SELECTOR,
+  isBackdropDismissal,
+  scrollLockTransition,
+  trapAction,
+} from '@/lib/app';
+import { CheckIcon, ClipboardIcon, CloseIcon } from './icons';
 
 export function PanelGrid({ children }: { children: ReactNode }) {
   return <div className="grid gap-6 md:grid-cols-2">{children}</div>;
@@ -188,6 +195,129 @@ export function Empty({ children }: { children: ReactNode }) {
       {children}
     </p>
   );
+}
+
+export function Modal({
+  title,
+  subtitle,
+  onClose,
+  footer,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  footer?: ReactNode;
+  children: ReactNode;
+}) {
+  const titleId = useId();
+  const dialog = useRef<HTMLDivElement>(null);
+  const pressedOnBackdrop = useRef(false);
+
+  useEffect(() => {
+    const trigger = document.activeElement as HTMLElement | null;
+
+    if (scrollLockTransition(openModals, 1) === 'lock') {
+      document.body.style.overflow = 'hidden';
+    }
+    openModals += 1;
+
+    // Focus the first control, or the dialog itself when it has none — either way
+    // the next Tab starts inside, and a screen reader announces the dialog rather
+    // than whatever was behind it.
+    const first = tabbables(dialog.current)[0] ?? dialog.current;
+    first?.focus();
+
+    return () => {
+      openModals -= 1;
+      if (scrollLockTransition(openModals + 1, -1) === 'unlock') {
+        document.body.style.overflow = '';
+      }
+      trigger?.focus();
+    };
+  }, []);
+
+  function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    const elements = tabbables(dialog.current);
+    const action = trapAction(event, {
+      count: elements.length,
+      active: elements.indexOf(document.activeElement as HTMLElement),
+    });
+
+    if (action.kind === 'pass') {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (action.kind === 'close') {
+      onClose();
+    }
+    if (action.kind === 'focus') {
+      elements[action.index]?.focus();
+    }
+  }
+
+  return (
+    <div
+      role="presentation"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+      onMouseDown={(event) => {
+        pressedOnBackdrop.current = event.target === event.currentTarget;
+      }}
+      onClick={(event) => {
+        if (isBackdropDismissal(pressedOnBackdrop.current, event.target === event.currentTarget)) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        ref={dialog}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl outline-none dark:border-slate-800 dark:bg-slate-950"
+      >
+        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-slate-800">
+          <div>
+            <h2
+              id={titleId}
+              className="text-base font-semibold text-slate-900 dark:text-slate-100"
+            >
+              {title}
+            </h2>
+            {subtitle ? (
+              <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={onClose}
+            className="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+          >
+            <CloseIcon />
+          </button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+
+        {footer ? (
+          <footer className="shrink-0 border-t border-slate-200 px-5 py-4 dark:border-slate-800">
+            {footer}
+          </footer>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+let openModals = 0;
+
+function tabbables(root: HTMLElement | null): HTMLElement[] {
+  return root === null ? [] : Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
 }
 
 export function Spinner() {

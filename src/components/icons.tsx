@@ -151,6 +151,15 @@ export function PlusIcon(props: IconProps) {
   );
 }
 
+export function CloseIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M6 6l12 12" />
+      <path d="M18 6l-12 12" />
+    </Icon>
+  );
+}
+
 export function ArrowLeftIcon(props: IconProps) {
   return (
     <Icon strokeWidth={1.7} className="h-5 w-5 shrink-0" {...props}>

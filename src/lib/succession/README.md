@@ -13,7 +13,7 @@ path is real but unbuilt and its paths are unsettled. Do not add heir-facing scr
 | `registerBeneficiary` | `POST /succession/beneficiaries` 🔒 | `beneficiary-register`, upsert |
 | `listBeneficiaries` | `GET /succession/beneficiaries` 🔒 | paginated; the only place `share_count` / `keys_rotated` are real |
 | `deleteBeneficiary` | `DELETE /succession/beneficiaries/{id}` 🔒 | `beneficiary-delete`, cascades every share |
-| `assignShare` / `assignSecretById` | `POST /succession/shares` 🔒 | `share-assign`, upsert |
+| `assignShare` / `assignSecretById` | `POST /succession/shares` 🔒 | `share-assign`, upsert; any of the three item types |
 | `listShares` | `GET /succession/beneficiaries/{id}/shares` 🔒 | paginated |
 | `deleteShare` | `DELETE /succession/shares/{id}` 🔒 | `share-delete` |
 | `castReleaseVote` | `POST /succession/votes` 🔒 | guardian-scoped, `succession-release-vote` |
@@ -87,8 +87,34 @@ default. The `dek` override on `SuccessionContext` still exists as a test seam, 
 requirement.
 
 `share-assign` signs `beneficiary_id` then `item_id`, **in that order**; a test confirms the
-signature does not verify with the two swapped. `item_type` is `secret` and nothing else today.
-Re-assigning the same `(beneficiary, item)` pair is an upsert — `created` is `false` on the `200`.
+signature does not verify with the two swapped. Re-assigning the same `(beneficiary, item)` pair is
+an upsert — `created` is `false` on the `200`.
+
+### All three item types, one path
+
+An heir can be left a **secret, a note or a document**. `assignShare` takes an `InheritableItem`
+(`{ type, id, wrappedDek }`) rather than a record from any one domain, because the three are
+identical where it matters: each carries a `wrapped_dek` sealed under the same vault KEK, so
+unwrap → PQXDH-rewrap → `POST /succession/shares` is one function with `item_type` as data.
+`inheritableSecret` / `inheritableNote` / `inheritableDocument` build one from each record; the
+caller supplies the record it already holds.
+
+`ITEM_TYPES` is sorted `document, note, secret` — the order
+[`lib/vaultmerkle`](../vaultmerkle/README.md) sorts leaves in, so the two lists read as the one set
+they are. `assertItemType` rejects anything else **before the request is built**, mirroring the
+server's `unsupported item_type`; a test asserts nothing reaches the network.
+
+**A document's DEK seals its snapshot *and* every delta**, so this one wrapped key is the whole
+assignment however long the log grows — nothing extra is stored per delta. What that does *not*
+cover is verification: the anchored Merkle leaf commits to the snapshot alone, so an heir receives
+the deltas past `snapshot_seq` unproven. That is the heir client's problem to render honestly, and
+it is documented on the API side under `/succession/inheritances/…`
+([front-end-endpoints.md](../../../front-end-endpoints.md)).
+
+**One id space, three tables.** The server's uniqueness constraint is
+`(beneficiary_id, item_id)` with no `item_type` in it, so one heir cannot hold two items that share
+an id even when they are a note and a secret. Ids are random UUIDs, so this is theoretical — but it
+is why `findItemAssignments` matches on `item_id` alone and is still correct.
 
 ### Deleting an item shrinks someone's inheritance
 

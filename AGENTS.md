@@ -207,7 +207,7 @@ Derived from the guide and the specs; these are the ones a client gets wrong by 
 
 ## Product boundaries — do not build these
 
-- **No heir-facing screens.** Nothing lets a named beneficiary discover, accept, decline or claim an inheritance. Before release that is permanent by design; after release the routes are unbuilt and their paths unsettled.
+- **No heir-facing screens *in this client yet*.** Nothing here lets a named beneficiary discover, accept, decline or claim an inheritance. Before release that stays permanent by design — the API omits an unreleased inheritance from `GET /succession/inheritances` entirely, so there is nothing to render. **After release the routes now exist** (`api-general` Task 54, `/succession/inheritances/…`), and building the claim flow against them is web-app Task 41. Until it ships, an heir has no way in through this client.
 - **No "sign out all devices" / session list.** The API has no revocation. Logout means deleting your own copy of the token.
 - **No key rotation flow, and no "disable PIN".** Rotation is a protocol change (backend Task 63), not an endpoint. `keys_rotated: true` means the heir *deleted their account* — surface "remove them and choose another", never a re-wrap prompt.
 - **No UI waiting on `cancelled` (release trigger) or `completed` (recovery session).** No code path writes them. Release is different: the chain indexer shipped 2026-08-16, so `GET /succession/status` now carries a `chain` object whose `chain.status` reaches `released`. The top-level `status` is still only `monitoring` or `counting_down` — the two are separate facts and merging them is a bug. See [`src/lib/app/README.md`](./src/lib/app/README.md).

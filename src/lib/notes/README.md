@@ -182,12 +182,16 @@ exported separately for any caller that only needs the index.
 - A note rejected for being oversized is **indistinguishable on the wire** from one rejected for
   a missing field: both are `400 {"code":"BAD_REQUEST"}`.
 
-## Not built here
+## Assigning a note to an heir
 
-**Assigning a note to an heir.** The API accepts `"item_type": "note"` on
-`POST /succession/shares` and verifies ownership through `NoteOwnership.NoteExists`, but
-[`lib/succession`](../succession/README.md)'s `ITEM_TYPES` is still `['secret']` and
-`assignShare` takes a `SecretRecord`. Widening it is a succession change, not a notes one.
+Built in [`lib/succession`](../succession/README.md), not here: `inheritableNote(note)` turns a
+`NoteRecord` into the `{ type, id, wrappedDek }` shape `assignShare` takes, and the note's
+`wrapped_dek` is unwrapped and re-wrapped to the heir's PQXDH keys like any other item.
+
+The consequence for this module is the **DEK-reuse contract on edit**: editing a note keeps its
+id and its DEK, so a share assigned to an heir stays valid across every edit. Rotating a note's
+DEK would silently invalidate it — which is why `updateNote` sends back the same `wrapped_dek`
+it was given, and why the tests pin that in both directions.
 
 ## Tests
 
