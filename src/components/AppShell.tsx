@@ -8,6 +8,7 @@ import { sessionExits, type SessionExit, type SessionExitId } from '@/lib/app';
 import { useCryple } from './CrypleProvider';
 import GuardiansScreen from './GuardiansScreen';
 import NotesScreen from './NotesScreen';
+import InheritanceScreen from './InheritanceScreen';
 import SecurityScreen from './SecurityScreen';
 import SuccessionScreen from './SuccessionScreen';
 import VaultScreen from './VaultScreen';
@@ -18,6 +19,7 @@ import {
   LockSessionIcon,
   LogOutIcon,
   NotesIcon,
+  InheritanceIcon,
   SecurityIcon,
   SuccessionIcon,
   VaultIcon,
@@ -74,6 +76,13 @@ const NAV_ITEMS = [
     description: 'What happens to your vault when you are gone.',
     icon: SuccessionIcon,
     screen: SuccessionScreen,
+  },
+  {
+    id: 'inheritance',
+    label: 'Inheritance',
+    description: 'What has been left to you, checked against the blockchain before it opens.',
+    icon: InheritanceIcon,
+    screen: InheritanceScreen,
   },
   {
     id: 'security',

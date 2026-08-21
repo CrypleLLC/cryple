@@ -13,4 +13,5 @@ export * from './recovery-kit';
 export * from './heartbeat';
 export * from './anchoring';
 export * from './inheritance';
+export * from './claim';
 export * from './modal';

@@ -18,6 +18,7 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | `inheritance.ts` | The selectable list behind "Set inheritance", and the additive save |
 | `modal.ts` | A modal's keyboard contract, backdrop dismissal and scroll-lock counting |
 | `anchoring.ts` | The Merkle tree over the inheritance, and what the owner is told about it |
+| `claim.ts` | The heir's side: verify against the chain, then decrypt |
 
 ## Onboarding
 
@@ -440,6 +441,52 @@ signature needs its own fresh challenge.
 `describeSaveOutcome` names both numbers on a partial run — "2 of 3 saved" rather than "something
 went wrong". The vague version tells an owner to retry all three, and the two that landed are
 exactly the ones they would then believe had not.
+
+## Claiming an inheritance
+
+`claim.ts` is the heir's side, and it is the one place in this client where the API is treated as
+an adversary rather than a source.
+
+### Two checks, and both must hold
+
+`verifyInherited` rebuilds the root from the retained leaf set and compares it to the root read
+**from the chain**, then looks for this item's own leaf inside that set. Either check alone is
+worthless:
+
+- a matching root over a set you are not in says nothing about you;
+- a set containing your leaf that rebuilds to nothing on-chain is a list Cryple made up.
+
+With the whole ordered leaf set in hand a Merkle *proof* is redundant — membership plus a matching
+root proves exactly what a proof would, and needs nothing the API withholds. That is why
+`rootFromLeaves` exists in [`lib/vaultmerkle`](../vaultmerkle/README.md) beside `vaultRoot`: an
+heir has hashes, never the other items.
+
+**No response is ever consulted for a verdict.** There is no `verified` field on the wire and there
+must never be a code path that behaves as though there were.
+
+### Decryption cannot happen without verification
+
+`openInherited` takes the verdict as a **required argument** and throws `NotVerifiedError` on a
+failed one — before unwrapping the item key, which a test pins. "Verify, then decrypt" is only a
+rule if the code cannot do the second without the first; showing an heir content that failed, even
+behind a warning, is the exact failure this mechanism exists to prevent.
+
+### The epoch is chosen by the release, not by recency
+
+`anchorForRelease` takes the newest anchor **at or before** `released_at`. A past epoch is frozen
+on-chain, so that root describes the vault as it stood while the owner was alive; anything anchored
+afterwards is either irrelevant or something an heir has no reason to trust.
+
+### A document is not a bigger secret
+
+The anchored leaf covers the **snapshot alone**. `anchorableBlob` returns `snapshot_ciphertext` for
+a document and `ciphertext` for everything else — conflating them hashes the wrong bytes and fails
+verification for a document that is perfectly intact.
+
+The deltas after the snapshot are fetched and merged anyway, because a document without them is
+stale, and `openInherited` reports **how many** were applied. Every one is content the heir has and
+cannot prove, so the count drives its own notice rather than disappearing into a single
+"verified ✓" over the merged result.
 
 ## Protection covers the inheritance, not the vault
 

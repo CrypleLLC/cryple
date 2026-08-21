@@ -26,6 +26,7 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `GuardiansScreen.tsx` | Guardians, recovery setup, Recovery Kit |
 | `GuardianInbox.tsx` | The merged guardian queue, 1-minute poll |
 | `SuccessionScreen.tsx` | Release status, vote audit, heirs, protection |
+| `InheritanceScreen.tsx` | The heir's side — verify against the chain, then open |
 | `HeirTabs.tsx` | One tab per heir — what they inherit, and the actions on it |
 | `SetInheritanceModal.tsx` | Choosing which vault items an heir inherits |
 | `RecoveryKitCard.tsx` | The printable share-0 surface |
@@ -70,6 +71,28 @@ neutral slate surface, in the manner of Drive/Proton. Destructive buttons are ou
 than solid so rows of actions stay calm. Every interactive primitive carries a
 `focus-visible` brand ring. All colors have dark-mode variants keyed off
 `prefers-color-scheme`.
+
+## The heir's screen
+
+`InheritanceScreen.tsx` is a section of the app, not a parallel client — an heir is an ordinary
+signed-in user with their own seed, their own account and probably their own vault.
+
+**Its empty state is the normal one, and it is deliberately uninformative.** An account that named
+you but whose owner is alive is omitted from `GET /succession/inheritances` entirely, so a named
+heir and a stranger see the same empty screen. That is the point: an heir who knows they are named
+can watch the owner's public on-chain check-in cadence. Never add a count, a "pending" row, or a
+"you may be an heir" hint — the API cannot answer it, and the reason it cannot is a decision, not a
+gap.
+
+**The root comes from `fetchRootAt`, not from a response.** Everything else on the page is served
+by Cryple; the value it is checked against is read from `ProofRegistry` using the
+`smart_account_address` the listing carries. A root handed over by the API would prove nothing,
+because the API is what the verification exists to be independent of.
+
+Verification and decryption are one button, in that order, and
+[`openInherited`](../lib/app/README.md#claiming-an-inheritance) refuses to decrypt an item that
+failed — so a wrong result shows the failure and no content, rather than content with a warning
+over it.
 
 ## Protection lives on Succession, not Vault
 

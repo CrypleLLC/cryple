@@ -178,6 +178,26 @@ export function orderedLeafHashesHex(items: readonly VaultItem[]): string[] {
   return orderedLeaves(items).map((leaf) => `0x${bytesToHex(leaf)}`);
 }
 
+/**
+ * Rebuilds the root from leaf hashes alone — the heir's side of verification.
+ *
+ * An heir holds one item and a list of hashes, never the other items, so they
+ * cannot call `vaultRoot`. With the whole ordered leaf set in hand an inclusion
+ * *proof* is redundant: rebuilding the root and finding your own leaf in the
+ * list proves exactly what a proof would, and needs nothing the API withholds.
+ *
+ * Order is the payload. These arrive in tree order and are never re-sorted;
+ * sorting hashes is not the same as sorting by (type, id), and doing it here
+ * would produce a root that matches nothing.
+ */
+export function rootFromLeaves(leaves: readonly Uint8Array[]): Uint8Array {
+  if (leaves.length === 0) {
+    throw new EmptyTreeError();
+  }
+
+  return merkleRoot([...leaves]);
+}
+
 export function vaultRoot(items: readonly VaultItem[]): Uint8Array {
   return merkleRoot(orderedLeaves(items));
 }
