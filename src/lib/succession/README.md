@@ -32,10 +32,11 @@ fields, and nothing else. A test pins the exact body key set.
 Decision A landed the owner's vault KEK (`Cryple-Key-v1|vault-kek`, see [`lib/keys`](../keys/README.md)
 and [`lib/secrets`](../secrets/README.md)), but the ratified sealed-blob table covers only
 `secrets.wrapped_dek`, `secrets.ciphertext` and `recovery_vaults.encrypted_seed` —
-**`encrypted_label` is not in it.** Reusing the vault KEK here anyway would be exactly the kind of
-uncoordinated construction `storage-plan.md` §3.1.1 forbids, so this seam stays blocked
-([`lib/app` § The blocked heir label](../app/README.md#the-blocked-heir-label)) until the backend
-spec names a construction for this field specifically.
+**`encrypted_label` was not in it**, and reusing the vault KEK anyway would have been exactly the
+uncoordinated construction `storage-plan.md` §3.1.1 forbids. It got its own leaf instead —
+`Cryple-Key-v1|heir-label`, `crypto/ECDSA.md` § Step 6, sealed through the same envelope
+([`lib/app` § The heir label](../app/README.md#the-heir-label)). The sealed-blob table now lists
+four fields, not three.
 
 `dropped_shares` is **absent when zero**, which today means always: enrolment keys are immutable,
 so a re-registration can never supersede the stored snapshot. `registerBeneficiary` still

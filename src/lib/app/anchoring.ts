@@ -124,6 +124,13 @@ export interface VaultSources {
 export interface CollectOptions {
   cache?: ReadonlyMap<LeafCacheKey, VaultItem>;
   onProgress?: (progress: CollectProgress) => void;
+
+  /**
+   * The item ids anyone inherits. Only these are fetched, hashed and put in the
+   * tree — an item nobody inherits never needs a Merkle proof, because no heir
+   * will ever verify it.
+   */
+  assigned: ReadonlySet<string>;
 }
 
 export interface CollectProgress {
@@ -146,15 +153,34 @@ export class NothingToAnchorError extends Error {
   }
 }
 
+/**
+ * A vault with items in it, none of which anyone inherits.
+ *
+ * Distinct from NothingToAnchorError on purpose: "your vault is empty" and
+ * "you have not chosen what anyone inherits" are different situations and only
+ * one of them is actionable.
+ */
+export class NothingAssignedError extends Error {
+  constructor() {
+    super('choose what your heirs inherit first — protection covers what you have left them');
+    this.name = 'NothingAssignedError';
+  }
+}
+
+export const NOTHING_ASSIGNED_NOTICE =
+  'Nothing is set to be inherited yet, so there is nothing to protect. Choose what each heir ' +
+  'gets, then protect it.';
+
 export async function collectVault(
   sources: VaultSources,
-  options: CollectOptions = {},
+  options: CollectOptions,
 ): Promise<CollectedVault> {
   const cache = new Map<LeafCacheKey, VaultItem>(options.cache ?? []);
   const items: VaultItem[] = [];
   const liveKeys: LeafCacheKey[] = [];
 
-  const secrets = await sources.listSecrets();
+  const { assigned } = options;
+  const secrets = (await sources.listSecrets()).filter((secret) => assigned.has(secret.id));
   options.onProgress?.({ stage: 'secrets', fetched: secrets.length, total: secrets.length });
   for (const secret of secrets) {
     const item: VaultItem = { type: 'secret', id: secret.id, blob: secret.ciphertext };
@@ -164,7 +190,7 @@ export async function collectVault(
     items.push(item);
   }
 
-  const noteMeta = await sources.listNotesMeta();
+  const noteMeta = (await sources.listNotesMeta()).filter((entry) => assigned.has(entry.id));
   let fetched = 0;
   for (const entry of noteMeta) {
     const key = noteCacheKey(entry);
@@ -184,7 +210,9 @@ export async function collectVault(
     options.onProgress?.({ stage: 'notes', fetched, total: noteMeta.length });
   }
 
-  const documentMeta = await sources.listDocumentsMeta();
+  const documentMeta = (await sources.listDocumentsMeta()).filter((entry) =>
+    assigned.has(entry.id),
+  );
   const pendingDocuments: string[] = [];
   const excludedDocuments: string[] = [];
 
@@ -218,7 +246,7 @@ export async function collectVault(
   }
 
   if (items.length === 0) {
-    throw new NothingToAnchorError();
+    throw assigned.size === 0 ? new NothingAssignedError() : new NothingToAnchorError();
   }
 
   return {
@@ -243,19 +271,28 @@ export interface AnchorPass {
 }
 
 export type VaultAnchorState =
-  | { state: 'anchored'; epoch: number; root: string }
+  // `current` is false when the root is anchored at an earlier epoch. Still
+  // protected — see vaultAnchorState.
+  | { state: 'anchored'; epoch: number; root: string; current: boolean }
   | { state: 'stale'; currentRoot: string; anchoredEpoch?: number; anchoredRoot?: string }
   | { state: 'never'; currentRoot: string }
   | { state: 'unverified'; anchoredEpoch: number };
 
 export async function runAnchorPass(
   sources: VaultSources,
-  options: AnchorPassOptions = {},
+  options: AnchorPassOptions,
 ): Promise<AnchorPass> {
   const compacted: string[] = [];
 
   if (options.compactDocument) {
-    for (const entry of documentsNeedingCompaction(await sources.listDocumentsMeta())) {
+    // Only assigned documents. Compaction exists to make a document verifiable,
+    // and an uninherited one has nothing to verify — compacting it would be a
+    // write, and a re-encryption, for no reader.
+    const meta = (await sources.listDocumentsMeta()).filter((entry) =>
+      options.assigned.has(entry.id),
+    );
+
+    for (const entry of documentsNeedingCompaction(meta)) {
       await options.compactDocument(entry.id);
       compacted.push(entry.id);
     }
@@ -273,6 +310,17 @@ export async function runAnchorPass(
   };
 }
 
+/**
+ * Whether what the owner has now is already proven on-chain.
+ *
+ * **The root decides, not the epoch.** An earlier version compared both and
+ * called the vault stale whenever the anchored epoch was not today's — so the
+ * morning after a successful anchor the card asked for another one with the root
+ * byte-identical, which is daily re-hashing for no reason. A past epoch is
+ * frozen on-chain and its leaf set is retained beside it, so the proof it
+ * carries is exactly as good as today's; `current` reports the difference for
+ * display without turning it into an action.
+ */
 export function vaultAnchorState(
   currentRoot: string,
   anchored: { epoch: number; root: string } | undefined,
@@ -282,8 +330,13 @@ export function vaultAnchorState(
     return { state: 'never', currentRoot };
   }
 
-  if (anchored.epoch === epoch && anchored.root.toLowerCase() === currentRoot.toLowerCase()) {
-    return { state: 'anchored', epoch, root: currentRoot };
+  if (anchored.root.toLowerCase() === currentRoot.toLowerCase()) {
+    return {
+      state: 'anchored',
+      epoch: anchored.epoch,
+      root: currentRoot,
+      current: anchored.epoch === epoch,
+    };
   }
 
   return {
@@ -340,10 +393,14 @@ export function buildProtectionView(
   }
 
   if (state.state === 'anchored') {
+    const since = state.current
+      ? undefined
+      : `Last saved ${epochDate(state.epoch).toLocaleDateString()}, and still valid — nothing has changed since.`;
+
     return {
       tone: caveats.length > 0 ? 'attention' : 'ok',
       headline: PROTECTION_HEADLINE_OK,
-      ...(detail === undefined ? {} : { detail }),
+      ...(joinDetail(since, detail) === undefined ? {} : { detail: joinDetail(since, detail)! }),
       actionLabel: 'Protect again',
       needsAnchor: false,
     };
@@ -357,6 +414,12 @@ export function buildProtectionView(
     actionLabel: 'Protect my vault',
     needsAnchor: true,
   };
+}
+
+function joinDetail(...parts: (string | undefined)[]): string | undefined {
+  const kept = parts.filter((part): part is string => part !== undefined);
+
+  return kept.length === 0 ? undefined : kept.join(' ');
 }
 
 export function epochDate(epoch: number): Date {

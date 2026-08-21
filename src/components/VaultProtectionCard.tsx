@@ -12,6 +12,7 @@ import {
 import {
   allVerified,
   buildProtectionView,
+  NothingAssignedError,
   NothingToAnchorError,
   runAnchorPass,
   vaultAnchorState,
@@ -21,12 +22,15 @@ import {
   type VaultSources,
 } from '@/lib/app';
 import { compactForAnchor } from '@/lib/documents';
+import { assignedItemIds, listAllShares, saveAnchorLeaves } from '@/lib/succession';
+import { orderedLeafHashesHex } from '@/lib/vaultmerkle';
 import type { VaultItem } from '@/lib/vaultmerkle';
 import { useAuthedContext, useCryple } from './CrypleProvider';
 import { Button, Card, Notice, Spinner } from './ui';
 
-const BUSY_LABELS: Record<OperationStage['name'] | 'collecting', string> = {
+const BUSY_LABELS: Record<OperationStage['name'] | 'collecting' | 'storing', string> = {
   collecting: 'Checking what needs protecting…',
+  storing: 'Saving the proof your heirs will use…',
   deriving: 'Preparing…',
   measuring: 'Preparing…',
   sponsoring: 'Preparing…',
@@ -79,7 +83,10 @@ export default function VaultProtectionCard({ sources }: { sources: VaultSources
     setBusy('collecting');
 
     try {
+      const assigned = assignedItemIds(await listAllShares(context));
+
       const pass = await runAnchorPass(sources, {
+        assigned,
         cache,
         compactDocument: (id) => compactForAnchor(context, id),
       });
@@ -94,8 +101,16 @@ export default function VaultProtectionCard({ sources }: { sources: VaultSources
       if (state.state === 'anchored') {
         setVerified(allVerified(verifyVaultAgainstRoot(pass.items, latest?.root ?? pass.root)));
         setAnchorState(state);
+
         return;
       }
+
+      // Before the userOp, never after. An heir holds only their own items, so
+      // they rebuild the tree from this set — a root on-chain with no leaf set
+      // beside it proves nothing to the person it was made for, and the epoch
+      // freezes, so it cannot be repaired later.
+      setBusy('storing');
+      await saveAnchorLeaves(context, epoch, pass.root, orderedLeafHashesHex(pass.items));
 
       const result: AnchorResult = await anchorVaultRoot(identity(), pass.root, {
         reportedSmartAccountAddress: address,
@@ -106,10 +121,12 @@ export default function VaultProtectionCard({ sources }: { sources: VaultSources
       setVerified(
         readBack !== undefined && allVerified(verifyVaultAgainstRoot(pass.items, readBack.root)),
       );
-      setAnchorState({ state: 'anchored', epoch: result.epoch, root: result.root });
+      setAnchorState({ state: 'anchored', epoch: result.epoch, root: result.root, current: true });
     } catch (cause) {
       setMessage(
-        cause instanceof NothingToAnchorError ? cause.message : reportError(cause),
+        cause instanceof NothingToAnchorError || cause instanceof NothingAssignedError
+          ? cause.message
+          : reportError(cause),
       );
     } finally {
       setBusy(undefined);

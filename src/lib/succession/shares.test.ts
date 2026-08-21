@@ -98,6 +98,7 @@ function beneficiary(overrides: Partial<Beneficiary> = {}): Beneficiary {
     id: BENEFICIARY_ID,
     user_uuid: '0f5c8b1e-4f89-11d3-9a0c-0305e82c3301',
     username: 'carol9876ijkl',
+    user_address: HEIR_ADDRESS,
     encrypted_label: 'AQIDBA==',
     public_key_x25519_snapshot: vectors.x25519_key.public_key_base64,
     public_key_mlkem_snapshot: vectors.mlkem768_key.public_key_base64,

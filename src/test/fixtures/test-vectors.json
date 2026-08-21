@@ -49,6 +49,13 @@
     "vault_kek_hex": "e56ba781d128ab234df442a752d9bb05763b21a7fe66bd94aa34c28fb2f66c53",
     "vault_kek_base64": "5WungdEoqyNN9EKnUtm7BXY7Iaf+Zr2UqjTCj7L2bFM="
   },
+  "heir_label_key": {
+    "derivation": "HKDF-SHA512(ikm=seed, salt=empty, info=label, length=32) used directly as an AES-256 key",
+    "hkdf_info_label": "Cryple-Key-v1|heir-label",
+    "usage": "Seals beneficiaries.encrypted_label, the owner's private note naming an heir. Application data, which is why it is not the vault KEK.",
+    "heir_label_key_hex": "362b04a280bdae4c130570c0cd4219ecbf646bbad2eb12cf17852e95d06dcffb",
+    "heir_label_key_base64": "NisEooC9rkwTBXDAzUIZ7L9ka7rS6xLPF4UuldBtz/s="
+  },
   "sealed_blob": {
     "format": "base64(version(1) || iv(12) || AES-256-GCM(key, iv, plaintext) || tag(16))",
     "layout": "version(1) || iv(12) || aead_ciphertext_with_tag(len(plaintext)+16)",
@@ -61,6 +68,20 @@
     "ciphertext_with_tag_hex": "6e716123e8ecfe334aef6964e57b0786cf3cab5685028cadc221a844b17fe9d6fac631b4e0e0c069ba9ec8e9bd8df0fd",
     "blob_hex": "01c0c1c2c3c4c5c6c7c8c9cacb6e716123e8ecfe334aef6964e57b0786cf3cab5685028cadc221a844b17fe9d6fac631b4e0e0c069ba9ec8e9bd8df0fd",
     "blob_base64": "AcDBwsPExcbHyMnKy25xYSPo7P4zSu9pZOV7B4bPPKtWhQKMrcIhqESxf+nW+sYxtODgwGm6nsjpvY3w/Q=="
+  },
+  "sealed_label_blob": {
+    "format": "base64(version(1) || iv(12) || AES-256-GCM(key, iv, plaintext) || tag(16))",
+    "layout": "version(1) || iv(12) || aead_ciphertext_with_tag(len(plaintext)+16)",
+    "version_byte": "0x01 — a reader MUST reject any other value instead of parsing best-effort",
+    "note": "Same envelope as sealed_blob, different key and a variable-length plaintext. The plaintext is UTF-8 with no normalization applied; seal the bytes the user typed.",
+    "example_field": "beneficiaries.encrypted_label — an heir label sealed under the heir label key above",
+    "key_hex": "362b04a280bdae4c130570c0cd4219ecbf646bbad2eb12cf17852e95d06dcffb",
+    "iv_hex": "d0d1d2d3d4d5d6d7d8d9dadb",
+    "plaintext_utf8": "Ana — minha irmã",
+    "plaintext_hex": "416e6120e28094206d696e68612069726dc3a3",
+    "ciphertext_with_tag_hex": "ed048a2827bd7da2314ca13a1d01f666c18a4d2a4f925070a38d0111046a7d9c82e223",
+    "blob_hex": "01d0d1d2d3d4d5d6d7d8d9dadbed048a2827bd7da2314ca13a1d01f666c18a4d2a4f925070a38d0111046a7d9c82e223",
+    "blob_base64": "AdDR0tPU1dbX2Nna2+0EiignvX2iMUyhOh0B9mbBik0qT5JQcKONAREEan2cguIj"
   },
   "server_auth_token": {
     "pin": "428193",

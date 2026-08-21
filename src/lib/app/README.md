@@ -14,7 +14,10 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | `notes.ts` | The notes file-grid view model — title, thumbnail, selection, character budget and autosave state |
 | `succession-view.ts` | Release status, vote audit and heir view models |
 | `recovery-kit.ts` | The printable share-0 Recovery Kit |
-| `label.ts` | The heir-label sealing seam (blocked, see below) |
+| `label.ts` | Sealing and reading the owner's private note about an heir |
+| `inheritance.ts` | The selectable list behind "Set inheritance", and the additive save |
+| `modal.ts` | A modal's keyboard contract, backdrop dismissal and scroll-lock counting |
+| `anchoring.ts` | The Merkle tree over the inheritance, and what the owner is told about it |
 
 ## Onboarding
 
@@ -410,25 +413,114 @@ unchecked box meant removal, the first save would strip an heir of everything th
 Removal is a deliberate single-item action in the heir's tab, and there is deliberately no
 function here that produces one.
 
-## The blocked heir label
+### An heir's own list is a join, not a listing
+
+`buildAssignedItems` pairs an heir's shares with the vault, because **a share carries no title**:
+`item_id` and `item_type` are all the server has, and the only place a name exists is inside the
+ciphertext this device just opened. Rows sort the same way the picker does, so the two lists agree.
+
+A share with no matching item keeps its row (`present: false`). It should be unreachable — deleting
+an item deletes its shares in the same transaction — and that is the reason not to hide it: a
+silent filter would turn an impossible state into a quiet one.
+
+`buildHeirTabs` and `nextActiveTab` are the strip. The active tab survives a re-read so a refresh
+does not move the owner mid-task, and falls back to the first tab rather than to none, because a
+blank panel after removing an heir reads as though everything is gone.
+
+### Saving is one request per item, and it keeps going
+
+`assignSelection` walks the chosen items and does not stop at the first failure. There is no batch
+endpoint and no transaction across them, so a run can genuinely end up half-applied — stopping
+early leaves the same half-applied state while reporting less about it, and every share that did
+land is real.
+
+It is **sequential rather than parallel** on purpose: each assignment signs an action, and every
+signature needs its own fresh challenge.
+
+`describeSaveOutcome` names both numbers on a partial run — "2 of 3 saved" rather than "something
+went wrong". The vague version tells an owner to retry all three, and the two that landed are
+exactly the ones they would then believe had not.
+
+## Protection covers the inheritance, not the vault
+
+`anchoring.ts` builds the Merkle tree that goes on-chain. **It covers exactly the items someone
+inherits**, and `collectVault` takes that set as a required argument rather than an option — an
+item nobody inherits never needs a proof, because no heir will ever verify it, and making the
+scope optional would make "hash everything" the accident you get by forgetting.
+
+Unassigned items are never fetched, never hashed and never in the tree, and the same scope governs
+compaction: an uninherited document with pending deltas is left alone, because compaction exists to
+make a document verifiable and that one has no reader.
+
+**"Your vault is empty" and "you have not chosen what anyone inherits" are different errors.**
+`NothingToAnchorError` and `NothingAssignedError` say so separately — only the second is
+actionable, and telling an owner with a full vault that it is empty is how a feature acquires a
+reputation for being broken.
+
+### The root decides, not the epoch
+
+`vaultAnchorState` used to compare the anchored epoch with today's and report `stale` whenever they
+differed — so the morning after a successful anchor, the card asked for another one with the root
+byte-identical. That is daily re-hashing for nothing, and it was the complaint this whole milestone
+started from.
+
+A past epoch is frozen on-chain and its leaf set is retained beside it, so the proof it carries is
+exactly as good as today's. Now the **root** decides: same root, still protected, whatever epoch
+holds it. `current: false` reports that it was anchored earlier so the card can say when, without
+turning it into a chore.
+
+### The upload comes before the userOp
+
+An heir holds only their own items, so they rebuild the tree from the retained leaf set — every
+other sibling hash belongs to something they will never see. `orderedLeafHashesHex` produces that
+set in tree order and `saveAnchorLeaves` stores it **before** the operation is submitted.
+
+The asymmetry is why the order is fixed: leaves with no root are harmless and correctable — upload
+the new set at the same epoch and it replaces the old one — but a root with no leaves is permanent,
+because the epoch freezes on-chain.
+
+## A modal, minus the DOM
+
+`modal.ts` holds the three decisions a dialog has to get right, so they are unit-tested rather
+than only reachable by rendering one. `Modal` in [`ui.tsx`](../../components/README.md) is the
+shell that wires them to real elements.
+
+**`trapAction` is the whole keyboard contract as a decision table.** Escape closes; Tab returns
+`pass` in the middle of the dialog, so the browser keeps owning tab order and the trap does not
+re-implement it; and the only intercepted cases are the ones where focus would leave — wrapping
+at either end, and pulling it back when it is already outside. A dialog with nothing tabbable
+still swallows Tab (`hold`), because letting it through walks focus into the page behind, which a
+screen reader then reads as though the modal were not there.
+
+**`isBackdropDismissal` takes the press and the release, not just the click.** Checking the
+release alone is the usual shortcut and it has a visible bug: select text inside the dialog, drag
+past its edge, let go, and the dialog closes mid-selection.
+
+**`scrollLockTransition` is reference-counted**, so a nested dialog closing cannot hand the page
+back its scrollbar while an outer one is still open.
+
+## The heir label
 
 `registerBeneficiary` needs a non-empty `encrypted_label` — the owner's private note about an
 heir, which the zero-knowledge rule says must be sealed on this device.
 
-**There is no key specified to seal it with.** `label.ts` therefore ships the same shape as the
-DEK seam: an interface plus `unspecifiedLabelSealer`, which rejects with
-`LabelKeyNotSpecifiedError`. Naming an heir is disabled in the UI with `LABEL_SEALED_NOTICE`;
-listing and removing existing heirs work normally.
+**The key is the fifth leaf of the frozen tree**, `Cryple-Key-v1|heir-label`, specified in
+`crypto/ECDSA.md` § Step 6. `heirLabelSealer(session.heirLabelKey)` seals through the standard
+sealed-blob envelope; `keys.test.ts` pins the leaf against the fixture and asserts the two
+symmetric leaves differ.
 
-Substituting an existing key here — the X25519 private key, the identity key, the
-`Server_Auth_Token` — would be the exact invention `storage-plan.md` §3.1.1 forbids, and worse,
-reusing a credential or an asymmetric secret as a symmetric wrapping key.
+**It is deliberately not the vault KEK**, and that distinction is the whole reason this was open
+for two weeks. Decision A's `Cryple-Key-v1|vault-kek` landed 2026-08-08, and § Step 5 scopes it to
+wrapping *other keys* — the per-item DEK in [`lib/secrets`](../secrets/README.md) — stating it
+"never encrypts application data directly." A label is application data. Reusing the vault KEK here
+would have been the same invention `storage-plan.md` §3.1.1 forbids, just with a real key instead
+of a borrowed one, so the seam threw until a construction was named for this field specifically.
 
-**Decision A's `Cryple-Key-v1|vault-kek` landed 2026-08-08, but it is not this key.** Its
-ratified text in `crypto/ECDSA.md` § Step 5 scopes it to wrapping *other keys* — specifically
-the per-item DEK in [`lib/secrets`](../secrets/README.md) — and states it "never encrypts
-application data directly." A label is application data, not a key, so reusing the vault KEK
-here would repeat the exact mistake this section warns against, just with a real key instead of
-a borrowed one. This stays a distinct open item until the backend spec names a construction for
-`encrypted_label` specifically; when it does, implement `LabelSealer` and delete the notice — no
-call site changes.
+**Plaintext is UTF-8 with no normalization.** Seal the bytes the user typed — applying NFC or NFKD
+produces a blob the owner's *other* devices decrypt to a different string, and nothing surfaces the
+divergence until they compare two devices. The vector's plaintext is non-ASCII precisely so a
+client that normalizes fails the fixture, and a test seals an NFD string and gets it back unchanged.
+
+**`readLabel` returns a placeholder instead of throwing.** A label is a convenience, not a key: one
+that will not open must not stop an heir from being listed, removed, or assigned anything. None of
+those depend on it — they need the key snapshot and the username, neither of which is in here.

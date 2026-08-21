@@ -25,9 +25,11 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `documents/extensions.ts` | The TipTap extension set, bound to the document's `Y.Doc` |
 | `GuardiansScreen.tsx` | Guardians, recovery setup, Recovery Kit |
 | `GuardianInbox.tsx` | The merged guardian queue, 1-minute poll |
-| `SuccessionScreen.tsx` | Release status, vote audit, heirs |
+| `SuccessionScreen.tsx` | Release status, vote audit, heirs, protection |
+| `HeirTabs.tsx` | One tab per heir — what they inherit, and the actions on it |
+| `SetInheritanceModal.tsx` | Choosing which vault items an heir inherits |
 | `RecoveryKitCard.tsx` | The printable share-0 surface |
-| `ui.tsx` | Card / Button / Field / TextArea / Badge / Notice primitives |
+| `ui.tsx` | Card / Button / Field / TextArea / Badge / Notice / Modal primitives |
 | `icons.tsx` | The stroke-icon set shared by navigation and primitives |
 | `StagingBanner.tsx` | The walking red warning banner, dev-only — see [`app`](../app/README.md#the-staging-banner) |
 
@@ -68,6 +70,110 @@ neutral slate surface, in the manner of Drive/Proton. Destructive buttons are ou
 than solid so rows of actions stay calm. Every interactive primitive carries a
 `focus-visible` brand ring. All colors have dark-mode variants keyed off
 `prefers-color-scheme`.
+
+## Protection lives on Succession, not Vault
+
+`VaultProtectionCard.tsx` moved off the Vault screen. Protection covers **what heirs inherit** and
+the proof exists **for them**, so beside the heir tabs it reads as part of succession; on the Vault
+screen it read as a property of storage, which is what made "protect my vault" sound like it should
+cover the whole vault.
+
+Anchoring is two writes and the order is not negotiable: `saveAnchorLeaves` first, the userOp
+second. Leaves with no root on-chain are harmless and correctable; a root with no leaves is
+permanent, because the epoch freezes. The `storing` busy label exists so that step is visible
+rather than looking like a stalled signature.
+
+**A secret has no update path.** The API is create-or-return by id, so editing one is
+delete-then-recreate under a **new id** — which silently drops its assignment, and the heir tab's
+count is what surfaces it. Notes and documents keep their id and their DEK across edits, so their
+shares survive. This is a real gap in the product, not in this screen; it is listed under open
+follow-ups.
+
+## One tab per heir
+
+`HeirTabs.tsx` replaced the flat "Who inherits" list. Each heir is a tab labelled with their
+username and a count; the panel below holds what they inherit, **Set inheritance**, per-item
+removal, and heir removal.
+
+**Release status, the vote audit and the heartbeat card stay outside the tabs.** They describe the
+account's switch, not one heir, and nesting them under a name would suggest a countdown could run
+per heir. It cannot — there is one switch.
+
+**The vault is opened once for the whole screen, not per tab.** Every title in the panel comes from
+decrypted content — a share carries `item_id` and `item_type` and nothing else, because the server
+never learns a title — so two heirs looking at the same vault must not decrypt it twice.
+
+**A share whose item is missing is shown, not filtered.** Deleting an item deletes its shares in the
+same transaction, so the row should be unreachable; that is exactly why hiding it would be the wrong
+response. An owner seeing a row they cannot explain beats an owner told an heir inherits less than
+the server says.
+
+**Removing an heir is one call.** `DELETE /succession/beneficiaries/{id}` cascades to their wrapped
+keys; deleting the shares first would be a series of signed calls that can half-fail, for a result
+the single call already guarantees. The confirmation names what goes, because the cascade is
+invisible and those keys are the one thing only the owner's client can regenerate.
+
+The open tab follows the list rather than owning it (`nextActiveTab`): it survives a re-read so a
+refresh cannot move the owner mid-task, and falls back to the first tab rather than to none when the
+heir being viewed is removed — a blank panel reads as though everything is gone.
+
+## Setting what an heir inherits
+
+`SetInheritanceModal.tsx` opens from an heir's row on the Succession screen. It is the only place
+an item is assigned, and its two rules are both about not destroying anything by accident.
+
+**Every box opens unchecked, every time.** This is where an owner *chooses what to share*, not
+where they edit a saved selection. So an unticked box means "not chosen in this pass", never
+"revoke" — the footer says so in `UNCHECKED_IS_NOT_REMOVAL`, because a list of empty checkboxes
+otherwise reads as "this heir inherits nothing".
+
+**Items the heir already holds are listed, marked "already shared", and disabled.** Listing them
+is what stops the blank checkboxes from being alarming. Disabling them is a step past what
+[`itemsToAssign`](../lib/app/README.md#nothing-here-unassigns) requires — it filters them anyway —
+but a tick that provably does nothing is a worse affordance than no tick at all, and "Select all"
+skips them for the same reason.
+
+An item this device cannot open is listed, disabled, and says so. Assigning it would re-wrap a DEK
+that was never shown to open.
+
+**A partial save leaves the failures ticked.** After re-reading, the items that landed come back
+marked already shared and the ones that did not are still chosen, so retrying is one click rather
+than hunting through the list again.
+
+The heir's `user_address` comes from their beneficiary record (`recipientFor`), which is the only
+place it exists — `GET /users/lookup` maps address to username and never the reverse. A closed
+account has none, so the modal refuses to open for one even though the screen already hides the
+button.
+
+## The modal primitive
+
+`Modal` in `ui.tsx` is the one dialog. Before it, the only "are you sure" surface was an inline
+`Notice` — which `DocumentsScreen` still uses for its delete confirmation, and which does not
+scale to a scrollable checkbox list of the whole vault.
+
+It is a three-part flex column at `max-h-[85vh]`: **header and footer are `shrink-0`, only the
+body scrolls.** A footer that scrolls away takes the Save button with it, which on a long list is
+the same as not having one.
+
+**Everything decidable without a DOM lives in [`lib/app/modal.ts`](../lib/app/README.md#a-modal-minus-the-dom)**
+— the Escape/Tab decision table, backdrop dismissal, and reference-counted scroll locking — so
+those rules have tests, and what is left here is wiring: query the tabbables, read
+`document.activeElement`, call `focus()`, set `body.style.overflow`. Same split as
+`note-surface.ts` and `lib/note-format`.
+
+The two pieces that can only live here:
+
+- **Focus restore captures the trigger on mount**, before focus moves into the dialog, and returns
+  it on unmount. Reading it later would restore focus to the dialog's own close button.
+- **Opening focuses the first tabbable, or the dialog itself when it has none** (`tabIndex={-1}`
+  exists for that case alone), so the next Tab starts inside and a screen reader announces the
+  dialog rather than whatever was behind it.
+
+Verified in a browser rather than asserted, since none of it is reachable from the node-environment
+test suite: `aria-modal` and `aria-labelledby` resolving to the title, focus entering on open, the
+body locking, Tab walking the controls and wrapping at the end, Tab from outside being pulled back
+in, Escape closing, focus returning to the trigger, and the lock releasing. The one path not
+exercised is a mouse drag from inside the dialog to outside it.
 
 ## Session custody
 
@@ -135,20 +241,19 @@ recorded here rather than being visible in the code:
 - **No check-in or dead-man's-switch configuration.** Both are on-chain owner actions; the screen
   says so instead of offering controls that would silently do nothing.
 
-## What is visibly blocked
+## Nothing here is blocked any more
 
-One screen surfaces an unresolved backend spec gap rather than hiding or faking it:
+Two screens used to surface an unresolved backend spec gap rather than hide or fake it, and both
+are now closed:
 
-- **Naming an heir is disabled** (`LabelKeyNotSpecifiedError`). Listing and removing heirs work.
-  See [`src/lib/app`](../lib/app/README.md#the-blocked-heir-label) — Decision A's vault KEK
-  explicitly does not cover this field, so it stays blocked even though the vault itself no
-  longer is.
+- **Vault items** (`KekNotSpecifiedError`) — Decision A landed 2026-08-08, wired in 2026-08-10.
+- **Naming an heir** (`LabelKeyNotSpecifiedError`) — `Cryple-Key-v1|heir-label` landed 2026-08-20,
+  wired the same day. See [`src/lib/app`](../lib/app/README.md#the-heir-label).
 
-Vault items used to be blocked the same way (`KekNotSpecifiedError`) until Decision A landed
-2026-08-08 and was wired in 2026-08-10. `VaultScreen` was built the same way while it was still
-blocked — the real add/reveal/delete UI against the actual `@/lib/secrets` calls, rather than a
-disabled placeholder — so once the seam stopped throwing, Add and Show started working with no
-UI change.
+**Both were built as though they already worked**, against the real calls rather than as disabled
+placeholders, so in each case the seam ceasing to throw was the entire change — no UI edit. That
+is the pattern to repeat the next time a spec gap blocks a screen: build the screen, throw in the
+seam, and let the fix be one file.
 
 ## Why the vault list downloads every payload
 

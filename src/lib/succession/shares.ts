@@ -179,6 +179,30 @@ export async function listShares(
   );
 }
 
+/**
+ * Every share this owner has assigned, across all heirs, in one call.
+ *
+ * The anchor pass needs the union of assigned item ids, and building it from the
+ * per-heir listing costs a paginated walk per heir on a path that runs on every
+ * Succession screen load.
+ */
+export async function listAllShares(context: SuccessionContext): Promise<InheritanceShare[]> {
+  return collectPages<InheritanceShare>((page: PageRequest) =>
+    request<InheritanceShare[]>({
+      method: 'GET',
+      path: '/succession/shares',
+      token: requireToken(context),
+      timeoutMs: context.timeoutMs,
+      query: { limit: page.limit, cursor: page.cursor },
+    }),
+  );
+}
+
+/** The item ids anyone inherits — what the vault tree is built over. */
+export function assignedItemIds(shares: readonly InheritanceShare[]): Set<string> {
+  return new Set(shares.map((share) => share.item_id));
+}
+
 export async function deleteShare(
   context: SuccessionContext,
   shareId: string,

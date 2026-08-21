@@ -497,6 +497,7 @@ describe('the succession dashboard stays inside the reachable states', () => {
         id: '1a2b3c4d-4f89-11d3-9a0c-0305e82c3301',
         user_uuid: '',
         username: '',
+        user_address: 'a'.repeat(64),
         encrypted_label: 'x',
         public_key_x25519_snapshot: 'x',
         public_key_mlkem_snapshot: 'x',

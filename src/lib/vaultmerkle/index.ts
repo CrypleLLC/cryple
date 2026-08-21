@@ -168,6 +168,16 @@ export function orderedLeaves(items: readonly VaultItem[]): Uint8Array[] {
   return canonicalOrder(items).map(leafHash);
 }
 
+/**
+ * The leaf hashes in tree order, `0x`-prefixed hex — the wire form the anchored
+ * leaf set is stored in. Order is the payload: re-sorting these produces a
+ * different root, and the API refuses a set that does not rebuild the one
+ * declared with it.
+ */
+export function orderedLeafHashesHex(items: readonly VaultItem[]): string[] {
+  return orderedLeaves(items).map((leaf) => `0x${bytesToHex(leaf)}`);
+}
+
 export function vaultRoot(items: readonly VaultItem[]): Uint8Array {
   return merkleRoot(orderedLeaves(items));
 }

@@ -28,8 +28,11 @@ For the well-known all-`abandon` BIP39 mnemonic (test values only — never a re
 | `seed_and_user_address` | [`lib/keys`](../../lib/keys/README.md) |
 | `identity_key_p256` | [`lib/keys`](../../lib/keys/README.md), [`lib/encoding`](../../lib/encoding/README.md) |
 | `x25519_key`, `mlkem768_key` | [`lib/keys`](../../lib/keys/README.md) |
+| `vault_kek`, `sealed_blob` | [`lib/keys`](../../lib/keys/README.md), [`lib/secrets`](../../lib/secrets/README.md) |
+| `heir_label_key`, `sealed_label_blob` | [`lib/keys`](../../lib/keys/README.md), [`lib/app` § The heir label](../../lib/app/README.md#the-heir-label) |
 | `server_auth_token` | [`lib/pin`](../../lib/pin/README.md) |
-| `pqxdh` | `lib/pqxdh` (Task 14, not yet built) |
+| `pqxdh` | [`lib/pqxdh`](../../lib/pqxdh/README.md) |
+| `vault_merkle` | [`lib/vaultmerkle`](../../lib/vaultmerkle/README.md) |
 
 ### Refreshing the copy
 
@@ -40,3 +43,12 @@ npm test
 
 If the suite goes red after a refresh, do not adjust this client until you know which
 backend constant moved and why.
+
+**A refresh that only *adds* objects is the good case**, and it is what the last two looked like:
+`vault_kek` / `sealed_blob` arrived with Decision A/B, and `heir_label_key` / `sealed_label_blob`
+with `crypto/ECDSA.md` § Step 6, each leaving every pre-existing value byte-identical. A refresh
+that *changes* an existing value is the breaking one.
+
+**`sealed_label_blob`'s plaintext is deliberately non-ASCII.** It carries `plaintext_utf8` and
+`plaintext_hex` side by side so a client that normalizes (NFC/NFKD), transcodes, or seals UTF-16
+fails here rather than silently writing blobs its owner's other devices read differently.

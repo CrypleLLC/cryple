@@ -1,9 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createSecret, deleteSecret, listSecrets, openSecret } from '@/lib/secrets';
-import { getNote, listNotesMeta } from '@/lib/notes';
-import { getDocument, listDocumentsMeta } from '@/lib/documents';
 import {
   buildVaultRows,
   encodeSecretPayload,
@@ -13,7 +11,6 @@ import {
   type VaultRow,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
-import VaultProtectionCard from './VaultProtectionCard';
 import { useVaultReveal } from './VaultReveal';
 import { Button, Card, CopyButton, Empty, Field, Notice, PanelGrid, Spinner } from './ui';
 
@@ -28,17 +25,6 @@ export default function VaultScreen() {
 
   const [name, setName] = useState('');
   const [value, setValue] = useState('');
-
-  const sources = useMemo(
-    () => ({
-      listSecrets: () => listSecrets(context),
-      listNotesMeta: () => listNotesMeta(context),
-      getNote: (id: string) => getNote(context, id),
-      listDocumentsMeta: () => listDocumentsMeta(context),
-      getDocument: (id: string) => getDocument(context, id),
-    }),
-    [context],
-  );
 
   const load = useCallback(async () => {
     try {
@@ -93,8 +79,6 @@ export default function VaultScreen() {
 
   return (
     <div className="space-y-6">
-      <VaultProtectionCard sources={sources} />
-
       <Card title="Stored items" flush>
         {message ? (
           <div className="px-5 pt-4">
