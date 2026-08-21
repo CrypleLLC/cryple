@@ -132,62 +132,52 @@ describe('the onboarding flow', () => {
     expect(state.mnemonic).toBe(mnemonic);
   });
 
-  it('sends an imported phrase straight to the mode choice — there is nothing to back up', () => {
+  it('sends an imported phrase straight to the PIN — there is nothing to back up', () => {
     const state = run([
       { type: 'choose-origin', origin: 'import' },
       { type: 'mnemonic-ready', mnemonic },
     ]);
 
-    expect(state.step).toBe('mode');
+    expect(state.step).toBe('pin');
   });
 
-  it('asks for a PIN only after Paranoid is chosen', () => {
-    const chosen = run([
-      { type: 'choose-origin', origin: 'import' },
-      { type: 'mnemonic-ready', mnemonic },
-      { type: 'mode-chosen', paranoid: true },
-    ]);
+  it('asks for a PIN in both modes, because it is what wraps the local phrase', () => {
+    for (const paranoid of [true, false]) {
+      const chosen = run([
+        { type: 'choose-origin', origin: 'import' },
+        { type: 'mnemonic-ready', mnemonic },
+        { type: 'pin-chosen', pin, paranoid },
+      ]);
 
-    expect(chosen.step).toBe('pin');
-    expect(chosen.paranoid).toBe(true);
-    expect(chosen.pin).toBeUndefined();
+      expect(chosen.step).toBe('enrolling');
+      expect(chosen.pin).toBe(pin);
+      expect(chosen.paranoid).toBe(paranoid);
+      expect(isReadyToEnroll(chosen)).toBe(true);
+    }
   });
 
-  it('enrols a Standard account straight from the mode choice, with no PIN at all', () => {
-    const chosen = run([
-      { type: 'choose-origin', origin: 'import' },
-      { type: 'mnemonic-ready', mnemonic },
-      { type: 'mode-chosen', paranoid: false },
-    ]);
+  it('rejects a weak PIN whichever mode was ticked', () => {
+    for (const paranoid of [true, false]) {
+      const rejected = run([
+        { type: 'choose-origin', origin: 'import' },
+        { type: 'mnemonic-ready', mnemonic },
+        { type: 'pin-chosen', pin: '111111', paranoid },
+      ]);
 
-    expect(chosen.step).toBe('enrolling');
-    expect(chosen.paranoid).toBe(false);
-    expect(chosen.pin).toBeUndefined();
-    expect(isReadyToEnroll(chosen)).toBe(true);
+      expect(rejected.step).toBe('pin');
+      expect(rejected.pin).toBeUndefined();
+      expect(rejected.error).toBeDefined();
+    }
   });
 
-  it('drops a PIN entered before the user switched back to Standard', () => {
-    const switched = run([
-      { type: 'choose-origin', origin: 'import' },
-      { type: 'mnemonic-ready', mnemonic },
-      { type: 'mode-chosen', paranoid: true },
-      { type: 'pin-chosen', pin },
-      { type: 'mode-chosen', paranoid: false },
-    ]);
-
-    expect(switched.pin).toBeUndefined();
-    expect(switched.paranoid).toBe(false);
-  });
-
-  it('lets the PIN step go back to the mode choice, dropping the half-entered PIN', () => {
+  it('lets the PIN step go back to the phrase, dropping the half-entered PIN', () => {
     const back = run([
       { type: 'choose-origin', origin: 'import' },
       { type: 'mnemonic-ready', mnemonic },
-      { type: 'mode-chosen', paranoid: true },
       { type: 'back' },
     ]);
 
-    expect(back.step).toBe('mode');
+    expect(back.step).toBe('import');
     expect(back.pin).toBeUndefined();
     expect(back.mnemonic).toBe(mnemonic);
   });
@@ -201,7 +191,7 @@ describe('going back a step', () => {
       { type: 'backup-confirmed' },
       { type: 'backup-confirmed' },
     ]);
-    expect(atMode.step).toBe('mode');
+    expect(atMode.step).toBe('pin');
 
     const atVerify = onboardingReducer(atMode, { type: 'back' });
     expect(atVerify.step).toBe('verify');
@@ -249,24 +239,24 @@ describe('going back a step', () => {
     expect(atOrigin.wordCount).toBe(24);
   });
 
-  it('clears the mode as well as the PIN when stepping back onto the mode choice', () => {
-    const atMode = run([
+  it('clears the PIN and the mode when stepping back off the PIN screen', () => {
+    const back = run([
       { type: 'choose-origin', origin: 'import' },
       { type: 'mnemonic-ready', mnemonic },
-      { type: 'mode-chosen', paranoid: true },
+      { type: 'pin-chosen', pin: '111111', paranoid: true },
       { type: 'back' },
     ]);
 
-    expect(atMode.paranoid).toBeUndefined();
-    expect(atMode.pin).toBeUndefined();
+    expect(back.step).toBe('import');
+    expect(back.paranoid).toBeUndefined();
+    expect(back.pin).toBeUndefined();
   });
 
   it('clears any error, so a rejection does not follow the user backwards', () => {
     const failed = run([
       { type: 'choose-origin', origin: 'import' },
       { type: 'mnemonic-ready', mnemonic },
-      { type: 'mode-chosen', paranoid: true },
-      { type: 'pin-chosen', pin: '123456' },
+      { type: 'pin-chosen', pin: '123456', paranoid: true },
     ]);
     expect(failed.error).toBeDefined();
 
@@ -280,7 +270,7 @@ describe('going back a step', () => {
     const enrolling = run([
       { type: 'choose-origin', origin: 'import' },
       { type: 'mnemonic-ready', mnemonic },
-      { type: 'mode-chosen', paranoid: false },
+      { type: 'pin-chosen', pin, paranoid: false },
     ]);
     expect(enrolling.step).toBe('enrolling');
     expect(canGoBack(enrolling)).toBe(false);
@@ -293,7 +283,7 @@ describe('going back a step', () => {
       { type: 'mnemonic-ready', mnemonic },
     ]);
 
-    for (const step of ['backup', 'verify', 'import', 'mode', 'pin'] as const) {
+    for (const step of ['backup', 'verify', 'import', 'pin'] as const) {
       expect(canGoBack({ ...reachable, step })).toBe(true);
     }
     for (const step of ['origin', 'enrolling', 'done'] as const) {
@@ -316,8 +306,7 @@ describe('going back a step', () => {
     const state = run([
       { type: 'choose-origin', origin: 'import' },
       { type: 'mnemonic-ready', mnemonic },
-      { type: 'mode-chosen', paranoid: true },
-      { type: 'pin-chosen', pin: '123456' },
+      { type: 'pin-chosen', pin: '123456', paranoid: true },
     ]);
 
     expect(state.step).toBe('pin');
@@ -325,29 +314,24 @@ describe('going back a step', () => {
     expect(state.error).toMatch(/counts up/);
   });
 
-  it('reaches enrolment without a PIN in Standard, and only with one in Paranoid', () => {
-    const standard = run([
-      { type: 'choose-origin', origin: 'import' },
-      { type: 'mnemonic-ready', mnemonic },
-      { type: 'mode-chosen', paranoid: false },
-    ]);
-    expect(isReadyToEnroll(standard)).toBe(true);
+  it('needs a PIN before enrolling, in either mode', () => {
+    for (const paranoid of [true, false]) {
+      const withoutPin = run([
+        { type: 'choose-origin', origin: 'import' },
+        { type: 'mnemonic-ready', mnemonic },
+      ]);
+      expect(isReadyToEnroll(withoutPin)).toBe(false);
 
-    const paranoid = run([
-      { type: 'choose-origin', origin: 'import' },
-      { type: 'mnemonic-ready', mnemonic },
-      { type: 'mode-chosen', paranoid: true },
-    ]);
-    expect(isReadyToEnroll(paranoid)).toBe(false);
-    expect(isReadyToEnroll(onboardingReducer(paranoid, { type: 'pin-chosen', pin }))).toBe(true);
+      const withPin = onboardingReducer(withoutPin, { type: 'pin-chosen', pin, paranoid });
+      expect(isReadyToEnroll(withPin)).toBe(true);
+    }
   });
 
-  it('returns to whichever step the user last acted on when enrolment fails', () => {
+  it('returns to the PIN screen when enrolment fails, in either mode', () => {
     const paranoid = run([
       { type: 'choose-origin', origin: 'import' },
       { type: 'mnemonic-ready', mnemonic },
-      { type: 'mode-chosen', paranoid: true },
-      { type: 'pin-chosen', pin },
+      { type: 'pin-chosen', pin, paranoid: true },
     ]);
     expect(paranoid.step).toBe('enrolling');
 
@@ -362,14 +346,14 @@ describe('going back a step', () => {
     const standard = run([
       { type: 'choose-origin', origin: 'import' },
       { type: 'mnemonic-ready', mnemonic },
-      { type: 'mode-chosen', paranoid: false },
+      { type: 'pin-chosen', pin, paranoid: false },
     ]);
 
     const standardFailed = onboardingReducer(standard, {
       type: 'failed',
       message: 'could not sign in',
     });
-    expect(standardFailed.step).toBe('mode');
+    expect(standardFailed.step).toBe('pin');
     expect(standardFailed.mnemonic).toBe(mnemonic);
   });
 
@@ -378,10 +362,10 @@ describe('going back a step', () => {
     expect(JSON.stringify(MODE_COPY)).not.toMatch(/disable|remove the PIN|turn off/i);
   });
 
-  it('states what Standard costs, since nothing is kept on the device without a PIN', () => {
-    expect(MODE_COPY.standard.summary).toMatch(/No PIN/);
-    expect(MODE_COPY.standard.tradeoff).toMatch(/type your recovery phrase again/);
-    expect(PIN_STEP_COPY.subtitle).toMatch(/every time you sign in/);
+  it('describes the PIN as local in Standard and as a sign-in factor in Paranoid', () => {
+    expect(MODE_COPY.standard.tradeoff).toMatch(/stays on this device/);
+    expect(MODE_COPY.paranoid.summary).toMatch(/required to sign in/);
+    expect(PIN_STEP_COPY.subtitle).toMatch(/encrypts the copy of your phrase kept on this device/);
   });
 });
 

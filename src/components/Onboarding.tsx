@@ -14,6 +14,7 @@ import {
   PIN_STEP_COPY,
   SEED_WARNING,
   verifyBackup,
+  type OnboardingOrigin,
   type OnboardingState,
 } from '@/lib/app';
 import { useCryple } from './CrypleProvider';
@@ -24,7 +25,7 @@ export default function Onboarding() {
   const [state, dispatch] = useReducer(onboardingReducer, INITIAL_ONBOARDING);
   const [busy, setBusy] = useState(false);
 
-  async function finish(paranoid: boolean, pin?: string) {
+  async function finish(paranoid: boolean, pin: string) {
     if (state.mnemonic === undefined) {
       return;
     }
@@ -41,15 +42,10 @@ export default function Onboarding() {
     }
   }
 
-  function chooseStandard() {
-    dispatch({ type: 'mode-chosen', paranoid: false });
-    void finish(false);
-  }
-
-  function chooseParanoid(pin: string) {
-    dispatch({ type: 'pin-chosen', pin });
+  function choosePin(pin: string, paranoid: boolean) {
+    dispatch({ type: 'pin-chosen', pin, paranoid });
     if (checkPin(pin).ok) {
-      void finish(true, pin);
+      void finish(paranoid, pin);
     }
   }
 
@@ -61,11 +57,12 @@ export default function Onboarding() {
       {state.step === 'backup' ? <BackupStep state={state} dispatch={dispatch} /> : null}
       {state.step === 'verify' ? <VerifyStep state={state} dispatch={dispatch} /> : null}
       {state.step === 'import' ? <ImportStep state={state} dispatch={dispatch} /> : null}
-      {state.step === 'mode' ? (
-        <ModeStep busy={busy} dispatch={dispatch} onChooseStandard={chooseStandard} />
-      ) : null}
       {state.step === 'pin' ? (
-        <PinStep busy={busy} onSubmit={chooseParanoid} />
+        <PinStep
+          busy={busy}
+          signingUp={state.origin === 'generate'}
+          onSubmit={choosePin}
+        />
       ) : null}
       {state.step === 'enrolling' ? (
         <Card title="Creating your vault">
@@ -89,37 +86,104 @@ export default function Onboarding() {
 type Dispatch = (event: Parameters<typeof onboardingReducer>[1]) => void;
 
 function OriginStep({ dispatch }: { dispatch: Dispatch }) {
+  const [tab, setTab] = useState<OnboardingOrigin>('generate');
   const [wordCount, setWordCount] = useState<MnemonicWordCount>(12);
+
+  const [phrase, setPhrase] = useState('');
+  const [phraseError, setPhraseError] = useState<string>();
+
+  const signingUp = tab === 'generate';
+
+  function startSignUp() {
+    dispatch({ type: 'choose-origin', origin: 'generate', wordCount });
+  }
+
+  // Sign-in takes the phrase on this same screen: a tab that only offers a
+  // Continue button is a step that asks nothing.
+  function startSignIn() {
+    const checked = checkMnemonic(phrase);
+    if (!checked.ok) {
+      setPhraseError(checked.message);
+
+      return;
+    }
+
+    setPhraseError(undefined);
+    dispatch({ type: 'choose-origin', origin: 'import', wordCount });
+    dispatch({ type: 'mnemonic-ready', mnemonic: mnemonicSentence(phrase) });
+  }
 
   return (
     <Card
-      title="Set up Cryple"
       subtitle="Your recovery phrase is the account. Nothing on our servers can replace it."
+      flush
     >
-      <div className="space-y-4">
-        <div className="flex gap-2">
-          {([12, 24] as const).map((count) => (
-            <Button
-              key={count}
-              variant={wordCount === count ? 'primary' : 'secondary'}
-              onClick={() => setWordCount(count)}
-            >
-              {count} words
-            </Button>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap gap-3">
-          <Button onClick={() => dispatch({ type: 'choose-origin', origin: 'generate', wordCount })}>
-            Create a new vault
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => dispatch({ type: 'choose-origin', origin: 'import', wordCount })}
+      <div className="flex border-b border-slate-200 px-5 dark:border-slate-800">
+        {(
+          [
+            ['generate', 'Sign up'],
+            ['import', 'Sign in'],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            aria-current={tab === id ? 'true' : undefined}
+            onClick={() => setTab(id)}
+            className={`-mb-px border-b-2 px-4 py-3 text-sm transition ${
+              tab === id
+                ? 'border-brand-500 font-medium text-slate-900 dark:text-slate-100'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
           >
-            I already have a recovery phrase
-          </Button>
-        </div>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-4 p-5">
+        {signingUp ? (
+          <>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              We will generate a recovery phrase for you. Write it down — it is the only way back
+              into your vault.
+            </p>
+
+            <div className="flex gap-2">
+              {([12, 24] as const).map((count) => (
+                <Button
+                  key={count}
+                  variant={wordCount === count ? 'primary' : 'secondary'}
+                  onClick={() => setWordCount(count)}
+                >
+                  {count} words
+                </Button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Enter the recovery phrase you already have. Signing in on a new device works the
+              same way — there is no password to recover.
+            </p>
+
+            <TextArea
+              label="Recovery phrase"
+              rows={3}
+              value={phrase}
+              spellCheck={false}
+              autoComplete="off"
+              onChange={(event) => setPhrase(event.target.value)}
+            />
+
+            {phraseError ? <Notice tone="danger">{phraseError}</Notice> : null}
+          </>
+        )}
+
+        <Button onClick={signingUp ? startSignUp : startSignIn}>
+          {signingUp ? 'Create my recovery phrase' : 'Continue'}
+        </Button>
       </div>
     </Card>
   );
@@ -254,69 +318,25 @@ function ImportStep({ state, dispatch }: { state: OnboardingState; dispatch: Dis
   );
 }
 
-function ModeStep({
-  busy,
-  dispatch,
-  onChooseStandard,
-}: {
-  busy: boolean;
-  dispatch: Dispatch;
-  onChooseStandard: () => void;
-}) {
-  return (
-    <Card title="How should signing in work?">
-      <div className="space-y-4">
-        <Notice tone="warning">{MODE_COPY.oneWayDoor}</Notice>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-            <h3 className="font-medium">{MODE_COPY.standard.title}</h3>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              {MODE_COPY.standard.summary}
-            </p>
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-500">
-              {MODE_COPY.standard.tradeoff}
-            </p>
-            <Button className="mt-4" variant="secondary" disabled={busy} onClick={onChooseStandard}>
-              {busy ? 'Creating your vault…' : 'Use Standard'}
-            </Button>
-          </div>
-
-          <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-            <h3 className="font-medium">{MODE_COPY.paranoid.title}</h3>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              {MODE_COPY.paranoid.summary}
-            </p>
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-500">
-              {MODE_COPY.paranoid.tradeoff}
-            </p>
-            <Button
-              className="mt-4"
-              disabled={busy}
-              onClick={() => dispatch({ type: 'mode-chosen', paranoid: true })}
-            >
-              Use Paranoid
-            </Button>
-          </div>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
 function PinStep({
   busy,
+  signingUp,
   onSubmit,
 }: {
   busy: boolean;
-  onSubmit: (pin: string) => void;
+  signingUp: boolean;
+  onSubmit: (pin: string, paranoid: boolean) => void;
 }) {
   const [pin, setPin] = useState('');
   const [confirmation, setConfirmation] = useState('');
+  const [paranoid, setParanoid] = useState(false);
   const [message, setMessage] = useState<string>();
 
   return (
-    <Card title={PIN_STEP_COPY.title} subtitle={PIN_STEP_COPY.subtitle}>
+    <Card
+      title={signingUp ? PIN_STEP_COPY.title : 'Your PIN'}
+      subtitle={signingUp ? PIN_STEP_COPY.subtitle : PIN_STEP_COPY.signIn}
+    >
       <div className="space-y-4">
         <Field
           label="PIN"
@@ -326,30 +346,58 @@ function PinStep({
           value={pin}
           onChange={(event) => setPin(event.target.value)}
         />
-        <Field
-          label="Confirm PIN"
-          type="password"
-          inputMode="numeric"
-          maxLength={6}
-          value={confirmation}
-          onChange={(event) => setConfirmation(event.target.value)}
-        />
+        {signingUp ? (
+          <Field
+            label="Confirm PIN"
+            type="password"
+            inputMode="numeric"
+            maxLength={6}
+            value={confirmation}
+            onChange={(event) => setConfirmation(event.target.value)}
+          />
+        ) : null}
+
+        <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={paranoid}
+              onChange={(event) => setParanoid(event.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-brand-500"
+            />
+            <span>
+              <span className="block text-sm font-medium">
+                {MODE_COPY.paranoid.title} mode — also require this PIN to sign in
+              </span>
+              <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+                {paranoid ? MODE_COPY.paranoid.tradeoff : MODE_COPY.standard.tradeoff}
+              </span>
+            </span>
+          </label>
+
+          {signingUp && paranoid ? (
+            <p className="mt-3 text-xs text-amber-700 dark:text-amber-500">
+              {MODE_COPY.oneWayDoor}
+            </p>
+          ) : null}
+        </div>
 
         {message ? <Notice tone="danger">{message}</Notice> : null}
 
         <Button
           disabled={busy}
           onClick={() => {
-            const result = checkPin(pin, confirmation);
+            const result = checkPin(pin, signingUp ? confirmation : undefined);
             if (!result.ok) {
               setMessage(result.message);
+
               return;
             }
             setMessage(undefined);
-            onSubmit(pin);
+            onSubmit(pin, paranoid);
           }}
         >
-          {busy ? 'Creating your vault…' : 'Continue'}
+          {busy ? 'Opening your vault…' : signingUp ? 'Create my vault' : 'Sign in'}
         </Button>
       </div>
     </Card>

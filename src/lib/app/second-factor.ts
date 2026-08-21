@@ -4,27 +4,26 @@ export const SECOND_FACTOR_COPY = {
   offered: {
     title: 'Turn on PIN protection',
     summary:
-      'Adds a 6-digit PIN to this account. You will need it alongside your recovery phrase to ' +
-      'sign in, and it encrypts a copy of your phrase on this device — so day to day you lock ' +
-      'and unlock with six digits instead of typing your phrase again.',
+      'Requires your PIN to sign in, on top of your recovery phrase. Someone who steals your ' +
+      'phrase then still cannot get in, and you will be asked for the PIN on every new device.',
     phrasePrompt:
-      'Confirm your recovery phrase. This device does not keep one yet, and your new PIN is what ' +
-      'will encrypt it.',
+      'Confirm your recovery phrase, and set the PIN you want. The phrase is what re-encrypts ' +
+      'the copy kept on this device under the new PIN.',
     oneWayDoor: MODE_COPY.oneWayDoor,
   },
   enabled: {
     title: 'PIN protection is on',
     summary:
-      'Signing in needs your PIN as well as your recovery phrase, and this device keeps your ' +
-      'phrase encrypted under that PIN.',
+      'Signing in needs your PIN as well as your recovery phrase, on this device and on any ' +
+      'other.',
     oneWayDoor: MODE_COPY.oneWayDoor,
   },
   phraseMismatch:
     'That recovery phrase belongs to a different account. Check it against the one you signed ' +
     'in with.',
   enabledNotice:
-    'PIN protection is on. This device now remembers your recovery phrase, encrypted under your ' +
-    'PIN — you can lock instead of logging out.',
+    'PIN protection is on. Your PIN is now required to sign in anywhere, not just to unlock this ' +
+    'device.',
 } as const;
 
 export type UpgradeCheck = { ok: true } | { ok: false; message: string };

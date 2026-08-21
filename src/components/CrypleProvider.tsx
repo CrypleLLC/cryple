@@ -40,7 +40,7 @@ interface CrypleValue {
   paranoid: boolean;
   context?: AuthedContext;
   unlock(pin: string): Promise<UnlockOutcome>;
-  enrol(mnemonic: string, pin: string | undefined, paranoid: boolean): Promise<UnlockOutcome>;
+  enrol(mnemonic: string, pin: string, paranoid: boolean): Promise<UnlockOutcome>;
   refreshAccount(): Promise<void>;
   reportError(error: unknown): string;
   lock(): void;
@@ -163,22 +163,22 @@ export function CrypleProvider({ children }: { children: ReactNode }) {
   );
 
   const enrol = useCallback(
-    async (
-      mnemonic: string,
-      pin: string | undefined,
-      wantParanoid: boolean,
-    ): Promise<UnlockOutcome> => {
+    async (mnemonic: string, pin: string, wantParanoid: boolean): Promise<UnlockOutcome> => {
       try {
-        await session.unlockWithMnemonic(mnemonic, pin);
+        // The PIN goes to the keystore in both modes, but `paranoid` decides
+        // whether it is also sent as the server's second factor.
+        await session.unlockWithMnemonic(mnemonic, wantParanoid ? pin : undefined);
         const booted = await enrolAccount({
           session,
           tokens,
           paranoid: wantParanoid,
         });
 
-        if (pin !== undefined) {
-          await createSeedVault(mnemonic, pin);
-        }
+        // Always. The PIN encrypts the local copy of the phrase in both modes
+        // (auth/two-factor-PIN.md § Local Seed Encryption), and without it there
+        // is nothing to lock the app back to — the session could only be ended,
+        // never paused.
+        await createSeedVault(mnemonic, pin);
         writeModeHint(booted.account.has_password);
 
         setAccount(booted.account);

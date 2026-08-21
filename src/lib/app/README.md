@@ -23,72 +23,39 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 ## Onboarding
 
 The flow is a reducer, not scattered `useState` — every guard that matters is testable without
-rendering. Order:
+rendering. Two branches, chosen by a tab rather than by two buttons:
 
 ```
-origin → (backup → verify | import) → mode ─┬─ Standard ──────────→ enrolling → done
-                                            └─ Paranoid → PIN ────→ enrolling → done
+origin ─┬─ Sign up → backup → verify ─┐
+        └─ Sign in ─────────────────→ ┴→ pin → enrolling → done
 ```
 
-**The mode is chosen first, and only Paranoid reaches the PIN step.** Asking for a PIN before the
-user knows what a PIN is *for* is the wrong order; and a Standard account has no PIN at all, so
-asking for one is asking for something that is then thrown away.
+The sign-in tab takes the phrase **on the tab itself**, so `origin` and `import` are one screen: a
+tab that offers only a Continue button is a step that asks nothing.
 
-`mode-chosen` therefore also clears any `pin` already entered — a user who picks Paranoid, types a
-PIN, goes `back` and picks Standard must not enrol carrying it. `isReadyToEnroll` requires a PIN
-only when `paranoid` is true, and a failed enrolment returns to whichever step the user last acted
-on — `pin` for Paranoid, `mode` for Standard.
+### Every account has a PIN
 
-### Going back
+`mode` and `pin` used to be two steps, and Standard skipped the second one entirely. That left a
+Standard account with **no local vault**, so the phrase had to be retyped on every reload and after
+every idle timeout, and Lock could not be offered at all — there was nothing to lock back to.
 
-`previousStep` is the reverse of the diagram above, and `back` walks it **one step at a time** —
-it is not a reset. Reaching `origin` by pressing Back repeatedly is the only way to start over, and
-that is the one transition that discards the phrase and the branch, because both are chosen there.
+Now the PIN is always set and the two steps are one. The checkbox on it decides one thing only:
+whether that same PIN is **also** the server's second factor.
 
-What each step back forgets is what that step chooses, and nothing more:
+| | Standard | Paranoid |
+| --- | --- | --- |
+| Encrypts the local phrase | yes | yes |
+| Locks the app | yes | yes |
+| Required to sign in | no | yes |
 
-| Back onto | Forgets |
-| --- | --- |
-| `origin` | the phrase and the generate/import branch — the word count survives |
-| `backup` / `verify` / `import` | nothing; the phrase is still needed to show or edit |
-| `mode` | the mode **and** the PIN, since the PIN only exists because Paranoid was chosen |
+This restores `auth/two-factor-PIN.md` § Local Seed Encryption, which specifies the local seed
+vault for **both** modes; the client had deliberately diverged from it, and that divergence is what
+produced the retype-your-phrase behaviour.
 
-`back` also clears `error`, so a rejection never follows the user onto a screen it did not come
-from. `origin`, `enrolling` and `done` have no previous step: the first has nothing behind it, and
-the other two are past the point of no return — `previousStep` returns `undefined` and `back` is a
-no-op rather than a half-cancelled enrolment. The Back control renders once, below the step card,
-driven by `canGoBack`; steps do not each carry their own.
-
-`ImportStep` seeds its textarea from `state.mnemonic`, so stepping back onto it offers the phrase
-for correction rather than an empty box.
-
-**The consequence for Standard, which the copy states rather than hides:** the PIN is what
-encrypts the local seed vault ([`pin`](../pin/README.md)), so with no PIN there is no vault and
-nothing about the account is kept on the device. A Standard user re-enters the recovery phrase
-whenever the session ends — every reload, and after the 15-minute idle lock. That is what
-"your recovery phrase alone" costs, and `MODE_COPY.standard.tradeoff` says so on the choice screen
-next to the Standard button, not afterwards.
-
-This is a deliberate divergence from `auth/two-factor-PIN.md` § Local Seed Encryption (Both
-Modes), which assumes a PIN exists in both modes. The alternative reading — keep a PIN in Standard
-purely for storage — was built first and rejected as a product decision: a "Standard" mode that
-still demands a PIN is not a second mode. Nothing on the wire changes either way; the spec section
-describes a client-local convenience, and no server behaviour depends on it.
-
-The generated phrase is rendered as **one sentence, not a numbered list** — that is how a phrase is
-written down and how every other wallet renders it, and a numbered grid invites transcription into
-a numbered list where a single misplaced word survives unnoticed. `mnemonicSentence` produces the
-one string that is both shown and copied by the clipboard button, so the two can never diverge.
-
-The reducer refuses to advance on a failed checksum or a rejected PIN, so a bad value cannot
-reach a derivation. `MODE_COPY.oneWayDoor` states that Paranoid → Standard does not exist; a test
-asserts the copy never contains the words "disable" or "remove the PIN", because
-[no such affordance may ever exist](../../../AGENTS.md).
-
-`buildVerificationChallenge` picks distinct word positions and takes an injectable `pick` so the
-test is deterministic. `verifyBackup` is tolerant of case and whitespace — a user copying from
-paper should not fail on capitalisation — but rejects a short answer list rather than passing on a
-prefix match.
+**Deriving the token is not sending it.** `session.unlock(pin)` always derives a
+`Server_Auth_Token`, in both modes — it is only *sent* when the account is Paranoid, which
+`signInWithModeDetection` decides from `has_password`. A Standard account holding a derived token it
+never transmits is correct rather than a leak waiting to happen.
 
 ## Signing in without knowing the mode
 

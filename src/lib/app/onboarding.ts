@@ -8,7 +8,6 @@ export type OnboardingStep =
   | 'backup'
   | 'verify'
   | 'import'
-  | 'mode'
   | 'pin'
   | 'enrolling'
   | 'done';
@@ -27,8 +26,9 @@ export type OnboardingEvent =
   | { type: 'choose-origin'; origin: OnboardingOrigin; wordCount?: MnemonicWordCount }
   | { type: 'mnemonic-ready'; mnemonic: string }
   | { type: 'backup-confirmed' }
-  | { type: 'pin-chosen'; pin: string }
-  | { type: 'mode-chosen'; paranoid: boolean }
+  // One event, because mode and PIN are one decision on one screen: the PIN is
+  // always set, and `paranoid` only says whether it is also the server factor.
+  | { type: 'pin-chosen'; pin: string; paranoid: boolean }
   | { type: 'enrolled' }
   | { type: 'failed'; message: string }
   | { type: 'back' };
@@ -46,28 +46,30 @@ const PIN_REJECTION_COPY: Record<PinRejection, string> = {
 export const MODE_COPY = {
   standard: {
     title: 'Standard',
-    summary: 'No PIN. Your recovery phrase alone unlocks the account.',
+    summary: 'Your recovery phrase alone proves who you are to Cryple.',
     tradeoff:
-      'Nothing is kept on this device, so you type your recovery phrase again whenever the ' +
-      'session ends — on every reload, and after 15 minutes idle.',
+      'Your PIN stays on this device — it locks the app and encrypts the copy of your phrase ' +
+      'kept here, and Cryple never sees it.',
   },
   paranoid: {
     title: 'Paranoid',
-    summary: 'A 6-digit PIN is required alongside your recovery phrase to sign in.',
+    summary: 'Your PIN is also required to sign in, on top of your recovery phrase.',
     tradeoff:
-      'The PIN also encrypts a copy of your phrase on this device, so unlocking later is just ' +
-      'the PIN. Three wrong tries erase that copy.',
+      'Someone who steals your phrase still cannot get in without the PIN. You will be asked ' +
+      'for it on every new device.',
   },
   oneWayDoor:
-    'You can move from Standard to Paranoid later, but never back. There is no way to remove a ' +
-    'PIN once it is set — that is what protects you if your recovery phrase is ever stolen.',
+    'You can move from Standard to Paranoid later, but never back. There is no way to stop a ' +
+    'PIN being required once it is — that is what protects you if your recovery phrase is ever ' +
+    'stolen.',
 } as const;
 
 export const PIN_STEP_COPY = {
   title: 'Choose your 6-digit PIN',
   subtitle:
-    'You will need it alongside your recovery phrase every time you sign in. It also encrypts ' +
-    'the copy of your phrase kept on this device — three wrong tries erase that copy.',
+    'It locks the app and encrypts the copy of your phrase kept on this device, so coming back ' +
+    'is just the PIN rather than 12 words. Three wrong tries erase that copy.',
+  signIn: 'Enter the PIN for this device.',
 } as const;
 
 export const SEED_WARNING =
@@ -162,13 +164,11 @@ export function previousStep(state: OnboardingState): OnboardingStep | undefined
       return 'origin';
     case 'verify':
       return 'backup';
-    case 'mode':
+    case 'pin':
       if (state.origin === undefined) {
         return 'origin';
       }
       return state.origin === 'import' ? 'import' : 'verify';
-    case 'pin':
-      return 'mode';
     default:
       return undefined;
   }
@@ -199,7 +199,7 @@ export function onboardingReducer(
       return {
         ...state,
         mnemonic: event.mnemonic,
-        step: state.origin === 'generate' ? state.step : 'mode',
+        step: state.origin === 'generate' ? state.step : 'pin',
         error: undefined,
       };
     }
@@ -207,23 +207,20 @@ export function onboardingReducer(
     case 'backup-confirmed':
       return state.step === 'backup'
         ? { ...state, step: 'verify', error: undefined }
-        : { ...state, step: 'mode', error: undefined };
-
-    case 'mode-chosen':
-      return {
-        ...state,
-        paranoid: event.paranoid,
-        pin: undefined,
-        step: event.paranoid ? 'pin' : 'enrolling',
-        error: undefined,
-      };
+        : { ...state, step: 'pin', error: undefined };
 
     case 'pin-chosen': {
       const feedback = checkPin(event.pin);
       if (!feedback.ok) {
         return { ...state, error: feedback.message };
       }
-      return { ...state, pin: event.pin, step: 'enrolling', error: undefined };
+      return {
+        ...state,
+        pin: event.pin,
+        paranoid: event.paranoid,
+        step: 'enrolling',
+        error: undefined,
+      };
     }
 
     case 'enrolled':
@@ -233,7 +230,7 @@ export function onboardingReducer(
       if (state.step !== 'enrolling') {
         return { ...state, error: event.message };
       }
-      return { ...state, step: state.paranoid === true ? 'pin' : 'mode', error: event.message };
+      return { ...state, step: 'pin', error: event.message };
     }
 
     case 'back': {
@@ -246,8 +243,8 @@ export function onboardingReducer(
         step: target,
         origin: target === 'origin' ? undefined : state.origin,
         mnemonic: target === 'origin' ? undefined : state.mnemonic,
-        paranoid: target === 'mode' ? undefined : state.paranoid,
-        pin: target === 'mode' ? undefined : state.pin,
+        paranoid: target === 'pin' ? undefined : state.paranoid,
+        pin: target === 'pin' ? undefined : state.pin,
         error: undefined,
       };
     }
