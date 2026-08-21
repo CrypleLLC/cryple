@@ -44,7 +44,7 @@ every account sponsorship exists to serve. `measureGasLimits` sends
 
 ## The address derivation is frozen, and it is checked against the chain
 
-`smartAccountAddress` reproduces `api-general/internal/chain/address.go` exactly: CREATE2 over
+`smartAccountAddress` reproduces `api-general/pkg/chain/address.go` exactly: CREATE2 over
 the factory, a salt of `keccak256(qx ‖ qy ‖ guardianRoot ‖ threshold ‖ recoveryDelay ‖ salt)`,
 and the EIP-1167 proxy code hash built from the implementation address. Four of the six salt
 inputs are fixed at zero for the MVP because `GuardianRecovery` is not called until Task 63.
@@ -150,10 +150,20 @@ All optional; the defaults reach Arbitrum Sepolia through public endpoints.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `NEXT_PUBLIC_CHAIN_RPC_URL` | Arbitrum Sepolia public RPC | read-only calls |
-| `NEXT_PUBLIC_BUNDLER_URL` | the paymaster URL if set, else Pimlico's public endpoint | see below — do not run on the public endpoint |
-| `NEXT_PUBLIC_PAYMASTER_URL` | *unset* | **without it every heartbeat is self-paid** |
-| `NEXT_PUBLIC_SPONSORSHIP_POLICY_ID` | *unset* | the policy must allow-list the factory |
+| `NEXT_PUBLIC_CHAIN_RPC_URL` | Arbitrum Sepolia public RPC | read-only calls, no API key involved |
+| `NEXT_PUBLIC_BUNDLER_URL` | `/api/aa` | override only to bypass the proxy |
+| `NEXT_PUBLIC_PAYMASTER_URL` | `/api/aa` when a policy id is set, else *unset* | unset means **every heartbeat is self-paid** |
+| `NEXT_PUBLIC_SPONSORSHIP_ENABLED` | *unset* | `true` turns sponsorship on. The policy **id** is server-side (`SPONSORSHIP_POLICY_ID`) and pinned by the proxy — the client never names a policy. |
+
+**Bundler and paymaster calls go through `/api/aa`, not straight to Pimlico.** The API key lives in
+the server-only `PIMLICO_API_KEY` and never reaches the bundle; see
+[`../aa-proxy/README.md`](../aa-proxy/README.md). `getBundlerUrl()` and `getPaymasterUrl()` return a
+**relative path**, which is why every chain call must originate in the browser — there is no host to
+resolve it against during SSR.
+
+Setting `NEXT_PUBLIC_PAYMASTER_URL` or `NEXT_PUBLIC_BUNDLER_URL` to a full Pimlico URL still works
+and bypasses the proxy, which puts the key back in the bundle. Do that only against a throwaway
+key.
 
 **Do not run against the public bundler.** It is rate limited, and it does not fail cleanly when
 it is: it answers `eth_estimateUserOperationGas` with **`verificationGasLimit: 0`**. Declaring that
@@ -169,9 +179,15 @@ ceiling. Falling back to the ceiling was the first fix and it was wrong: a 2,000
 priced by the paymaster, blows past a sane policy cap, and turns a retryable estimate glitch into a
 refused sponsorship. Failing loudly lets the caller retry against a working endpoint.
 
-The paymaster URL carries an API key and is public in the bundle by construction — that is a
-property of client-side sponsorship, not an oversight. Scope the policy to this factory and
-these targets; it is a spend authorisation, not a secret.
+**An earlier revision of this file claimed the key is public in the bundle "by construction" and is
+"a spend authorisation, not a secret". That was only half right, and it no longer describes the
+code.** It holds for paymaster methods, which the sponsorship policy bounds. It does not hold for
+the same key's bundler methods and account APIs, which no policy governs — and `getBundlerUrl()`
+routes bundler traffic to the authenticated endpoint precisely because the public one is unusable,
+so the exposed key necessarily carried both. The key is now server-side behind `/api/aa`.
+
+Scoping the policy to this factory and these targets is still required. The proxy protects the key;
+only the policy caps the spend.
 
 ## Tests
 

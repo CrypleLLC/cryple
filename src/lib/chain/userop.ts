@@ -25,7 +25,6 @@ import {
   PROBE_VERIFICATION_GAS_LIMIT,
   CHAIN_ID,
   getPaymasterUrl,
-  getSponsorshipPolicyId,
 } from './config';
 import { bundlerCall, ethCall, jsonRpc, nodeCall } from './rpc';
 
@@ -246,14 +245,12 @@ export async function requestSponsorship(
     return undefined;
   }
 
-  const policyId = getSponsorshipPolicyId();
-  const context = policyId ? { sponsorshipPolicyId: policyId } : {};
   const request = { ...operation, signature: DUMMY_SIGNATURE };
 
   const stub = await jsonRpc<PaymasterFields & { isFinal?: boolean }>(
     paymasterUrl,
     'pm_getPaymasterStubData',
-    [request, ENTRY_POINT_ADDRESS, `0x${CHAIN_ID.toString(16)}`, context],
+    [request, ENTRY_POINT_ADDRESS, `0x${CHAIN_ID.toString(16)}`, {}],
     signal,
   );
 
@@ -276,7 +273,7 @@ export async function requestSponsorship(
       { ...stubbed, signature: DUMMY_SIGNATURE },
       ENTRY_POINT_ADDRESS,
       `0x${CHAIN_ID.toString(16)}`,
-      context,
+      {},
     ],
     signal,
   );

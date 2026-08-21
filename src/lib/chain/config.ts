@@ -9,7 +9,7 @@ export const PROOF_REGISTRY_ADDRESS = '0xd344197975C4D47f97dDB1d26b91a96be6e8393
 export const EPOCH_SECONDS = 86_400;
 
 export const DEFAULT_RPC_URL = 'https://sepolia-rollup.arbitrum.io/rpc';
-export const DEFAULT_BUNDLER_URL = `https://public.pimlico.io/v2/${CHAIN_ID}/rpc`;
+export const AA_PROXY_PATH = '/api/aa';
 
 export const MVP_GUARDIAN_ROOT = `0x${'00'.repeat(32)}`;
 export const MVP_GUARDIAN_THRESHOLD = 0;
@@ -40,19 +40,18 @@ export function getRpcUrl(): string {
 
 export function getBundlerUrl(): string {
   const configured = process.env.NEXT_PUBLIC_BUNDLER_URL?.trim();
-  if (configured && configured.length > 0) {
-    return configured;
-  }
-
-  return getPaymasterUrl() ?? DEFAULT_BUNDLER_URL;
+  return configured && configured.length > 0 ? configured : AA_PROXY_PATH;
 }
 
 export function getPaymasterUrl(): string | undefined {
   const configured = process.env.NEXT_PUBLIC_PAYMASTER_URL?.trim();
-  return configured && configured.length > 0 ? configured : undefined;
+  if (configured && configured.length > 0) {
+    return configured;
+  }
+
+  return isSponsorshipEnabled() ? AA_PROXY_PATH : undefined;
 }
 
-export function getSponsorshipPolicyId(): string | undefined {
-  const configured = process.env.NEXT_PUBLIC_SPONSORSHIP_POLICY_ID?.trim();
-  return configured && configured.length > 0 ? configured : undefined;
+export function isSponsorshipEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_SPONSORSHIP_ENABLED === 'true';
 }
