@@ -14,77 +14,48 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | `notes.ts` | The notes file-grid view model — title, thumbnail, selection, character budget and autosave state |
 | `succession-view.ts` | Release status, vote audit and heir view models |
 | `recovery-kit.ts` | The printable share-0 Recovery Kit |
-| `label.ts` | The heir-label sealing seam (blocked, see below) |
+| `label.ts` | Sealing and reading the owner's private note about an heir |
+| `inheritance.ts` | The selectable list behind "Set inheritance", and the additive save |
+| `modal.ts` | A modal's keyboard contract, backdrop dismissal and scroll-lock counting |
+| `anchoring.ts` | The Merkle tree over the inheritance, and what the owner is told about it |
+| `claim.ts` | The heir's side: verify against the chain, then decrypt |
 
 ## Onboarding
 
 The flow is a reducer, not scattered `useState` — every guard that matters is testable without
-rendering. Order:
+rendering. Two branches, chosen by a tab rather than by two buttons:
 
 ```
-origin → (backup → verify | import) → mode ─┬─ Standard ──────────→ enrolling → done
-                                            └─ Paranoid → PIN ────→ enrolling → done
+origin ─┬─ Sign up → backup → verify ─┐
+        └─ Sign in ─────────────────→ ┴→ pin → enrolling → done
 ```
 
-**The mode is chosen first, and only Paranoid reaches the PIN step.** Asking for a PIN before the
-user knows what a PIN is *for* is the wrong order; and a Standard account has no PIN at all, so
-asking for one is asking for something that is then thrown away.
+The sign-in tab takes the phrase **on the tab itself**, so `origin` and `import` are one screen: a
+tab that offers only a Continue button is a step that asks nothing.
 
-`mode-chosen` therefore also clears any `pin` already entered — a user who picks Paranoid, types a
-PIN, goes `back` and picks Standard must not enrol carrying it. `isReadyToEnroll` requires a PIN
-only when `paranoid` is true, and a failed enrolment returns to whichever step the user last acted
-on — `pin` for Paranoid, `mode` for Standard.
+### Every account has a PIN
 
-### Going back
+`mode` and `pin` used to be two steps, and Standard skipped the second one entirely. That left a
+Standard account with **no local vault**, so the phrase had to be retyped on every reload and after
+every idle timeout, and Lock could not be offered at all — there was nothing to lock back to.
 
-`previousStep` is the reverse of the diagram above, and `back` walks it **one step at a time** —
-it is not a reset. Reaching `origin` by pressing Back repeatedly is the only way to start over, and
-that is the one transition that discards the phrase and the branch, because both are chosen there.
+Now the PIN is always set and the two steps are one. The checkbox on it decides one thing only:
+whether that same PIN is **also** the server's second factor.
 
-What each step back forgets is what that step chooses, and nothing more:
+| | Standard | Paranoid |
+| --- | --- | --- |
+| Encrypts the local phrase | yes | yes |
+| Locks the app | yes | yes |
+| Required to sign in | no | yes |
 
-| Back onto | Forgets |
-| --- | --- |
-| `origin` | the phrase and the generate/import branch — the word count survives |
-| `backup` / `verify` / `import` | nothing; the phrase is still needed to show or edit |
-| `mode` | the mode **and** the PIN, since the PIN only exists because Paranoid was chosen |
+This restores `auth/two-factor-PIN.md` § Local Seed Encryption, which specifies the local seed
+vault for **both** modes; the client had deliberately diverged from it, and that divergence is what
+produced the retype-your-phrase behaviour.
 
-`back` also clears `error`, so a rejection never follows the user onto a screen it did not come
-from. `origin`, `enrolling` and `done` have no previous step: the first has nothing behind it, and
-the other two are past the point of no return — `previousStep` returns `undefined` and `back` is a
-no-op rather than a half-cancelled enrolment. The Back control renders once, below the step card,
-driven by `canGoBack`; steps do not each carry their own.
-
-`ImportStep` seeds its textarea from `state.mnemonic`, so stepping back onto it offers the phrase
-for correction rather than an empty box.
-
-**The consequence for Standard, which the copy states rather than hides:** the PIN is what
-encrypts the local seed vault ([`pin`](../pin/README.md)), so with no PIN there is no vault and
-nothing about the account is kept on the device. A Standard user re-enters the recovery phrase
-whenever the session ends — every reload, and after the 15-minute idle lock. That is what
-"your recovery phrase alone" costs, and `MODE_COPY.standard.tradeoff` says so on the choice screen
-next to the Standard button, not afterwards.
-
-This is a deliberate divergence from `auth/two-factor-PIN.md` § Local Seed Encryption (Both
-Modes), which assumes a PIN exists in both modes. The alternative reading — keep a PIN in Standard
-purely for storage — was built first and rejected as a product decision: a "Standard" mode that
-still demands a PIN is not a second mode. Nothing on the wire changes either way; the spec section
-describes a client-local convenience, and no server behaviour depends on it.
-
-The generated phrase is rendered as **one sentence, not a numbered list** — that is how a phrase is
-written down and how every other wallet renders it, and a numbered grid invites transcription into
-a numbered list where a single misplaced word survives unnoticed. `mnemonicSentence` produces the
-one string that is both shown and copied by the clipboard button, so the two can never diverge.
-
-The reducer refuses to advance on a failed checksum or a rejected PIN, so a bad value cannot
-reach a derivation. `MODE_COPY.oneWayDoor` states that Paranoid → Standard does not exist; a test
-asserts the copy never contains the words "disable" or "remove the PIN", because
-[no such affordance may ever exist](../../../AGENTS.md).
-
-`buildVerificationChallenge` picks distinct word positions and takes an injectable `pick` so the
-test is deterministic. `verifyBackup` is tolerant of case and whitespace — a user copying from
-paper should not fail on capitalisation — but rejects a short answer list rather than passing on a
-prefix match.
+**Deriving the token is not sending it.** `session.unlock(pin)` always derives a
+`Server_Auth_Token`, in both modes — it is only *sent* when the account is Paranoid, which
+`signInWithModeDetection` decides from `has_password`. A Standard account holding a derived token it
+never transmits is correct rather than a leak waiting to happen.
 
 ## Signing in without knowing the mode
 
@@ -362,25 +333,208 @@ on `chain.status` when the difference matters.
 configured on-chain" when the smart account has never been configured, and
 "unavailable" during an outage.
 
-## The blocked heir label
+## Choosing what an heir inherits
+
+`inheritance.ts` is the model behind the "Set inheritance" modal. It is pure apart from one
+loader, so the rules below are unit-tested rather than only reachable through a component.
+
+### The list has to decrypt, because no title is on the wire
+
+A vault item's title is not a field. A secret's name lives inside the `SecretPayload` JSON
+([§ The secret name/value format](#the-secret-namevalue-format)), a note's title is the first
+non-empty line of its plaintext ([§ A note has no title field](#a-note-has-no-title-field-and-does-not-need-one)),
+and a document's title lives inside the CRDT. So building this list opens every item, exactly as
+the Vault, Notes and Documents screens already do — `loadInheritanceCandidates` composes their
+loaders rather than adding a fourth fetch path.
+
+**An item that fails to open is listed and not selectable.** It keeps its place with an
+"Unreadable …" title rather than vanishing, because a silently shorter list is how an owner
+believes they left an heir something they did not. Assigning it would be worse still: the wrapped
+DEK would be re-wrapped without ever being verified as openable, producing a share no heir can
+use. `assignable: false` is the same fact under both readings.
+
+A candidate carries its `wrappedDek`, which the field list in the task did not ask for. The load
+already had it in hand, so the alternative is a second fetch per item at save time — and carrying
+it makes the save a local computation, so a partial failure in Task 38 is only ever a failed
+request, never a failed re-read.
+
+### Sorted by type, then title — the same order the tree uses
+
+Type order is `document, note, secret`, taken from `lib/succession`'s `ITEM_TYPES`, which is
+`lib/vaultmerkle`'s leaf order. The list a person reads and the leaves that get hashed are then
+in the same sequence, which is one fewer thing to hold in your head when reading an anchor pass
+beside a modal. Titles compare case-insensitively and ties break on id, so the order is stable
+across reloads.
+
+### Nothing here unassigns
+
+`itemsToAssign(candidates, selected, current)` returns **only** the checked items the heir does
+not already hold. Three exclusions, and each has a reason worth keeping:
+
+- **already held** — the wire upserts on `(beneficiary_id, item_id)`, so re-assigning is harmless
+  but burns a PQXDH encapsulation to rewrite a share that is already correct;
+- **not assignable** — see above, even when its key is passed in;
+- **not checked** — an unchecked box means "not chosen in this pass", **never "revoke"**.
+
+That last one is the load-bearing rule. The modal opens with every box clear (Task 38), so if an
+unchecked box meant removal, the first save would strip an heir of everything they had been left.
+Removal is a deliberate single-item action in the heir's tab, and there is deliberately no
+function here that produces one.
+
+### An heir's own list is a join, not a listing
+
+`buildAssignedItems` pairs an heir's shares with the vault, because **a share carries no title**:
+`item_id` and `item_type` are all the server has, and the only place a name exists is inside the
+ciphertext this device just opened. Rows sort the same way the picker does, so the two lists agree.
+
+A share with no matching item keeps its row (`present: false`). It should be unreachable — deleting
+an item deletes its shares in the same transaction — and that is the reason not to hide it: a
+silent filter would turn an impossible state into a quiet one.
+
+`buildHeirTabs` and `nextActiveTab` are the strip. The active tab survives a re-read so a refresh
+does not move the owner mid-task, and falls back to the first tab rather than to none, because a
+blank panel after removing an heir reads as though everything is gone.
+
+### Saving is one request per item, and it keeps going
+
+`assignSelection` walks the chosen items and does not stop at the first failure. There is no batch
+endpoint and no transaction across them, so a run can genuinely end up half-applied — stopping
+early leaves the same half-applied state while reporting less about it, and every share that did
+land is real.
+
+It is **sequential rather than parallel** on purpose: each assignment signs an action, and every
+signature needs its own fresh challenge.
+
+`describeSaveOutcome` names both numbers on a partial run — "2 of 3 saved" rather than "something
+went wrong". The vague version tells an owner to retry all three, and the two that landed are
+exactly the ones they would then believe had not.
+
+## Claiming an inheritance
+
+`claim.ts` is the heir's side, and it is the one place in this client where the API is treated as
+an adversary rather than a source.
+
+### Two checks, and both must hold
+
+`verifyInherited` rebuilds the root from the retained leaf set and compares it to the root read
+**from the chain**, then looks for this item's own leaf inside that set. Either check alone is
+worthless:
+
+- a matching root over a set you are not in says nothing about you;
+- a set containing your leaf that rebuilds to nothing on-chain is a list Cryple made up.
+
+With the whole ordered leaf set in hand a Merkle *proof* is redundant — membership plus a matching
+root proves exactly what a proof would, and needs nothing the API withholds. That is why
+`rootFromLeaves` exists in [`lib/vaultmerkle`](../vaultmerkle/README.md) beside `vaultRoot`: an
+heir has hashes, never the other items.
+
+**No response is ever consulted for a verdict.** There is no `verified` field on the wire and there
+must never be a code path that behaves as though there were.
+
+### Decryption cannot happen without verification
+
+`openInherited` takes the verdict as a **required argument** and throws `NotVerifiedError` on a
+failed one — before unwrapping the item key, which a test pins. "Verify, then decrypt" is only a
+rule if the code cannot do the second without the first; showing an heir content that failed, even
+behind a warning, is the exact failure this mechanism exists to prevent.
+
+### The epoch is chosen by the release, not by recency
+
+`anchorForRelease` takes the newest anchor **at or before** `released_at`. A past epoch is frozen
+on-chain, so that root describes the vault as it stood while the owner was alive; anything anchored
+afterwards is either irrelevant or something an heir has no reason to trust.
+
+### A document is not a bigger secret
+
+The anchored leaf covers the **snapshot alone**. `anchorableBlob` returns `snapshot_ciphertext` for
+a document and `ciphertext` for everything else — conflating them hashes the wrong bytes and fails
+verification for a document that is perfectly intact.
+
+The deltas after the snapshot are fetched and merged anyway, because a document without them is
+stale, and `openInherited` reports **how many** were applied. Every one is content the heir has and
+cannot prove, so the count drives its own notice rather than disappearing into a single
+"verified ✓" over the merged result.
+
+## Protection covers the inheritance, not the vault
+
+`anchoring.ts` builds the Merkle tree that goes on-chain. **It covers exactly the items someone
+inherits**, and `collectVault` takes that set as a required argument rather than an option — an
+item nobody inherits never needs a proof, because no heir will ever verify it, and making the
+scope optional would make "hash everything" the accident you get by forgetting.
+
+Unassigned items are never fetched, never hashed and never in the tree, and the same scope governs
+compaction: an uninherited document with pending deltas is left alone, because compaction exists to
+make a document verifiable and that one has no reader.
+
+**"Your vault is empty" and "you have not chosen what anyone inherits" are different errors.**
+`NothingToAnchorError` and `NothingAssignedError` say so separately — only the second is
+actionable, and telling an owner with a full vault that it is empty is how a feature acquires a
+reputation for being broken.
+
+### The root decides, not the epoch
+
+`vaultAnchorState` used to compare the anchored epoch with today's and report `stale` whenever they
+differed — so the morning after a successful anchor, the card asked for another one with the root
+byte-identical. That is daily re-hashing for nothing, and it was the complaint this whole milestone
+started from.
+
+A past epoch is frozen on-chain and its leaf set is retained beside it, so the proof it carries is
+exactly as good as today's. Now the **root** decides: same root, still protected, whatever epoch
+holds it. `current: false` reports that it was anchored earlier so the card can say when, without
+turning it into a chore.
+
+### The upload comes before the userOp
+
+An heir holds only their own items, so they rebuild the tree from the retained leaf set — every
+other sibling hash belongs to something they will never see. `orderedLeafHashesHex` produces that
+set in tree order and `saveAnchorLeaves` stores it **before** the operation is submitted.
+
+The asymmetry is why the order is fixed: leaves with no root are harmless and correctable — upload
+the new set at the same epoch and it replaces the old one — but a root with no leaves is permanent,
+because the epoch freezes on-chain.
+
+## A modal, minus the DOM
+
+`modal.ts` holds the three decisions a dialog has to get right, so they are unit-tested rather
+than only reachable by rendering one. `Modal` in [`ui.tsx`](../../components/README.md) is the
+shell that wires them to real elements.
+
+**`trapAction` is the whole keyboard contract as a decision table.** Escape closes; Tab returns
+`pass` in the middle of the dialog, so the browser keeps owning tab order and the trap does not
+re-implement it; and the only intercepted cases are the ones where focus would leave — wrapping
+at either end, and pulling it back when it is already outside. A dialog with nothing tabbable
+still swallows Tab (`hold`), because letting it through walks focus into the page behind, which a
+screen reader then reads as though the modal were not there.
+
+**`isBackdropDismissal` takes the press and the release, not just the click.** Checking the
+release alone is the usual shortcut and it has a visible bug: select text inside the dialog, drag
+past its edge, let go, and the dialog closes mid-selection.
+
+**`scrollLockTransition` is reference-counted**, so a nested dialog closing cannot hand the page
+back its scrollbar while an outer one is still open.
+
+## The heir label
 
 `registerBeneficiary` needs a non-empty `encrypted_label` — the owner's private note about an
 heir, which the zero-knowledge rule says must be sealed on this device.
 
-**There is no key specified to seal it with.** `label.ts` therefore ships the same shape as the
-DEK seam: an interface plus `unspecifiedLabelSealer`, which rejects with
-`LabelKeyNotSpecifiedError`. Naming an heir is disabled in the UI with `LABEL_SEALED_NOTICE`;
-listing and removing existing heirs work normally.
+**The key is the fifth leaf of the frozen tree**, `Cryple-Key-v1|heir-label`, specified in
+`crypto/ECDSA.md` § Step 6. `heirLabelSealer(session.heirLabelKey)` seals through the standard
+sealed-blob envelope; `keys.test.ts` pins the leaf against the fixture and asserts the two
+symmetric leaves differ.
 
-Substituting an existing key here — the X25519 private key, the identity key, the
-`Server_Auth_Token` — would be the exact invention `storage-plan.md` §3.1.1 forbids, and worse,
-reusing a credential or an asymmetric secret as a symmetric wrapping key.
+**It is deliberately not the vault KEK**, and that distinction is the whole reason this was open
+for two weeks. Decision A's `Cryple-Key-v1|vault-kek` landed 2026-08-08, and § Step 5 scopes it to
+wrapping *other keys* — the per-item DEK in [`lib/secrets`](../secrets/README.md) — stating it
+"never encrypts application data directly." A label is application data. Reusing the vault KEK here
+would have been the same invention `storage-plan.md` §3.1.1 forbids, just with a real key instead
+of a borrowed one, so the seam threw until a construction was named for this field specifically.
 
-**Decision A's `Cryple-Key-v1|vault-kek` landed 2026-08-08, but it is not this key.** Its
-ratified text in `crypto/ECDSA.md` § Step 5 scopes it to wrapping *other keys* — specifically
-the per-item DEK in [`lib/secrets`](../secrets/README.md) — and states it "never encrypts
-application data directly." A label is application data, not a key, so reusing the vault KEK
-here would repeat the exact mistake this section warns against, just with a real key instead of
-a borrowed one. This stays a distinct open item until the backend spec names a construction for
-`encrypted_label` specifically; when it does, implement `LabelSealer` and delete the notice — no
-call site changes.
+**Plaintext is UTF-8 with no normalization.** Seal the bytes the user typed — applying NFC or NFKD
+produces a blob the owner's *other* devices decrypt to a different string, and nothing surfaces the
+divergence until they compare two devices. The vector's plaintext is non-ASCII precisely so a
+client that normalizes fails the fixture, and a test seals an NFD string and gets it back unchanged.
+
+**`readLabel` returns a placeholder instead of throwing.** A label is a convenience, not a key: one
+that will not open must not stop an heir from being listed, removed, or assigned anything. None of
+those depend on it — they need the key snapshot and the username, neither of which is in here.

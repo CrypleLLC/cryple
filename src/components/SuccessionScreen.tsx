@@ -1,8 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  deleteBeneficiary,
   getReleaseStatus,
   listBeneficiaries,
   listReleaseVotes,
@@ -12,18 +11,22 @@ import {
 } from '@/lib/succession';
 import {
   auditVotes,
-  buildBeneficiaryViews,
   buildReleaseView,
   CHAIN_UNAVAILABLE_CAVEAT,
   CONFIGURATION_CAVEAT,
-  LABEL_SEALED_NOTICE,
   LAST_CHECK_IN_CAVEAT,
-  unspecifiedLabelSealer,
+  NO_HEIRS_YET,
+  heirLabelSealer,
   type AuditedVotes,
   type ReleaseView,
 } from '@/lib/app';
+import { listSecrets } from '@/lib/secrets';
+import { getNote, listNotesMeta } from '@/lib/notes';
+import { getDocument, listDocumentsMeta } from '@/lib/documents';
 import { useAuthedContext, useCryple } from './CrypleProvider';
 import HeartbeatCard from './HeartbeatCard';
+import HeirTabs from './HeirTabs';
+import VaultProtectionCard from './VaultProtectionCard';
 import { Button, Card, Empty, Field, Notice, PanelGrid, Spinner } from './ui';
 
 export default function SuccessionScreen() {
@@ -62,10 +65,25 @@ export default function SuccessionScreen() {
     void load();
   }, [load]);
 
+  // Protection is a succession concept: it covers what heirs inherit, and the
+  // proof exists for them. On the Vault screen it read as a property of storage.
+  const sources = useMemo(
+    () => ({
+      listSecrets: () => listSecrets(context),
+      listNotesMeta: () => listNotesMeta(context),
+      getNote: (id: string) => getNote(context, id),
+      listDocumentsMeta: () => listDocumentsMeta(context),
+      getDocument: (id: string) => getDocument(context, id),
+    }),
+    [context],
+  );
+
   async function register() {
     setBusy(true);
     try {
-      const encryptedLabel = await unspecifiedLabelSealer.sealLabel(label.trim());
+      const encryptedLabel = await heirLabelSealer(context.session.heirLabelKey).sealLabel(
+        label.trim(),
+      );
       await registerBeneficiary(context, username.trim(), encryptedLabel);
       setUsername('');
       setLabel('');
@@ -77,23 +95,11 @@ export default function SuccessionScreen() {
     }
   }
 
-  async function remove(id: string) {
-    setBusy(true);
-    try {
-      await deleteBeneficiary(context, id);
-      await load();
-    } catch (error) {
-      setMessage(reportError(error));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const views = buildBeneficiaryViews(beneficiaries ?? []);
-
   return (
     <div className="space-y-6">
       {message ? <Notice tone="danger">{message}</Notice> : null}
+
+      <VaultProtectionCard sources={sources} />
 
       {statusRecord ? (
         <HeartbeatCard status={statusRecord} onCheckedIn={() => void load()} />
@@ -142,6 +148,18 @@ export default function SuccessionScreen() {
         )}
       </Card>
 
+      {beneficiaries === undefined ? (
+        <Card title="Who inherits what">
+          <Spinner />
+        </Card>
+      ) : beneficiaries.length === 0 ? (
+        <Card title="Who inherits what" subtitle="Heirs are named privately. They are never notified.">
+          <Empty>{NO_HEIRS_YET}</Empty>
+        </Card>
+      ) : (
+        <HeirTabs beneficiaries={beneficiaries} onChanged={() => void load()} />
+      )}
+
       <PanelGrid>
         <Card
           title="Votes on record"
@@ -179,36 +197,8 @@ export default function SuccessionScreen() {
           )}
         </Card>
 
-        <Card title="Who inherits" subtitle="Heirs are named privately. They are never notified." flush>
-          {beneficiaries === undefined ? (
-            <Spinner />
-          ) : views.length === 0 ? (
-            <Empty>You have not named anyone yet.</Empty>
-          ) : (
-            <ul className="divide-y divide-slate-200 dark:divide-slate-800">
-              {views.map((view) => (
-                <li key={view.id} className="flex items-center justify-between gap-4 px-5 py-3">
-                  <div>
-                    <p className="text-sm font-medium">{view.username}</p>
-                    <p className="text-xs text-slate-500">
-                      {view.accountClosed
-                        ? 'This heir closed their account. Remove them and choose another.'
-                        : `${view.shareCount} item${view.shareCount === 1 ? '' : 's'} assigned`}
-                    </p>
-                  </div>
-                  <Button variant="danger" disabled={busy} onClick={() => void remove(view.id)}>
-                    Remove
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
         <Card title="Name an heir">
           <div className="space-y-4">
-            <Notice tone="warning">{LABEL_SEALED_NOTICE}</Notice>
-
             <Field
               label="Their Cryple username"
               value={username}

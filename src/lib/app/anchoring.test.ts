@@ -99,7 +99,18 @@ describe('leaf cache keys move exactly when the content can', () => {
   });
 });
 
-import { collectVault, NothingToAnchorError, type VaultSources } from './anchoring';
+import {
+  collectVault,
+  NothingAssignedError,
+  NothingToAnchorError,
+  type VaultSources,
+} from './anchoring';
+
+// Every id these fixtures use, so the existing tests keep collecting what they
+// used to. Scoping is exercised on its own below.
+const ALL = {
+  assigned: new Set(['s1', 's2', 'n1', 'd1', 'd2']),
+};
 import { vaultRootHex } from '@/lib/vaultmerkle';
 
 function sources(over: Partial<VaultSources> = {}): VaultSources {
@@ -119,7 +130,7 @@ function sources(over: Partial<VaultSources> = {}): VaultSources {
 
 describe('collecting the vault', () => {
   it('refuses to anchor an empty vault rather than anchoring nothing', async () => {
-    await expect(collectVault(sources())).rejects.toThrow(NothingToAnchorError);
+    await expect(collectVault(sources(), ALL)).rejects.toThrow(NothingToAnchorError);
   });
 
   it('excludes a never-compacted document without fetching it', async () => {
@@ -128,6 +139,7 @@ describe('collecting the vault', () => {
         listSecrets: async () => [{ id: 's1', ciphertext: 'YQ==', updated_at: 'A' } as never],
         listDocumentsMeta: async () => [docMeta({ id: 'd1', snapshot_seq: 0, latest_seq: 0 })],
       }),
+      ALL,
     );
     expect(collected.excludedDocuments).toEqual(['d1']);
     expect(collected.items.map((i) => i.type)).toEqual(['secret']);
@@ -139,6 +151,7 @@ describe('collecting the vault', () => {
         listDocumentsMeta: async () => [docMeta({ id: 'd1', snapshot_seq: 4, latest_seq: 9 })],
         getDocument: async () => ({ id: 'd1', snapshot_ciphertext: 'ZA==' }) as never,
       }),
+      ALL,
     );
     expect(collected.pendingDocuments).toEqual(['d1']);
     expect(collected.items).toHaveLength(1);
@@ -157,7 +170,7 @@ describe('collecting the vault', () => {
           return { id: 'n1', ciphertext: 'bg==' } as never;
         },
       }),
-      { cache },
+      { ...ALL, cache },
     );
 
     expect(fetches).toBe(0);
@@ -176,7 +189,7 @@ describe('collecting the vault', () => {
           return { id: 'n1', ciphertext: 'bmV3' } as never;
         },
       }),
-      { cache },
+      { ...ALL, cache },
     );
 
     expect(fetches).toBe(1);
@@ -191,6 +204,7 @@ describe('collecting the vault', () => {
             { id: '1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e', ciphertext: 'c2VjcmV0LWItY2lwaGVydGV4dA==', updated_at: 'A' },
           ].slice().sort(() => (secretsFirst ? 1 : -1)) as never,
         }),
+        { assigned: new Set(['0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d', '1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e']) },
       );
 
     const [a, b] = await Promise.all([build(true), build(false)]);
@@ -215,7 +229,7 @@ describe('the anchor pass compacts before it measures', () => {
         },
         getDocument: async () => ({ id: 'd1', snapshot_ciphertext: 'ZA==' }) as never,
       }),
-      { compactDocument: async (id) => void compacted.push(id) },
+      { ...ALL, compactDocument: async (id) => void compacted.push(id) },
     );
 
     expect(compacted).toEqual(['d1']);
@@ -229,6 +243,7 @@ describe('the anchor pass compacts before it measures', () => {
         listDocumentsMeta: async () => [docMeta({ id: 'd1', snapshot_seq: 4, latest_seq: 9 })],
         getDocument: async () => ({ id: 'd1', snapshot_ciphertext: 'ZA==' }) as never,
       }),
+      ALL,
     );
     expect(pass.compacted).toEqual([]);
     expect(pass.pendingDocuments).toEqual(['d1']);
@@ -250,8 +265,28 @@ describe('detecting an anchor that never confirmed', () => {
     );
   });
 
-  it('is stale when the vault changed since yesterday', () => {
-    expect(vaultAnchorState(root, { epoch: 20684, root }, 20685)).toMatchObject({ state: 'stale' });
+  it('is still anchored when yesterday\'s epoch holds the same root', () => {
+    // This used to report `stale`, so the morning after a successful anchor the
+    // card asked for another one with the root byte-identical. A past epoch is
+    // frozen on-chain and keeps its leaf set, so its proof is as good as today's.
+    expect(vaultAnchorState(root, { epoch: 20684, root }, 20685)).toMatchObject({
+      state: 'anchored',
+      epoch: 20684,
+      current: false,
+    });
+  });
+
+  it('is stale only when the root itself moved', () => {
+    const changed = `0x${'22'.repeat(32)}`;
+
+    expect(vaultAnchorState(changed, { epoch: 20684, root }, 20685)).toMatchObject({
+      state: 'stale',
+      anchoredEpoch: 20684,
+    });
+  });
+
+  it('reports today\'s anchor as current', () => {
+    expect(vaultAnchorState(root, { epoch: 20685, root }, 20685)).toMatchObject({ current: true });
   });
 
   it('is never when nothing was ever anchored', () => {
@@ -265,14 +300,14 @@ describe('what the owner is told about protection', () => {
   const root = '0x38824a82f4d55e8056f862ed1e2aaa7fb60d1c2793fedab1fec873b14c94ca87';
 
   it('confirms protection only when the chain agrees', () => {
-    const view = buildProtectionView({ state: 'anchored', epoch: 20685, root });
+    const view = buildProtectionView({ state: 'anchored', epoch: 20685, root, current: true });
     expect(view.headline).toBe(PROTECTION_HEADLINE_OK);
     expect(view.needsAnchor).toBe(false);
     expect(view.tone).toBe('ok');
   });
 
   it('never claims full protection while a document has uncovered changes', () => {
-    const view = buildProtectionView({ state: 'anchored', epoch: 20685, root }, ['d1']);
+    const view = buildProtectionView({ state: 'anchored', epoch: 20685, root, current: true }, ['d1']);
     expect(view.needsAnchor).toBe(false);
     expect(view.tone).toBe('attention');
     expect(view.detail).toContain('not covered yet');
@@ -291,7 +326,7 @@ describe('what the owner is told about protection', () => {
   it('speaks no chain vocabulary', () => {
     const jargon = /merkle|root|anchor|epoch|chain|hash|gas|on-chain/i;
     for (const view of [
-      buildProtectionView({ state: 'anchored', epoch: 1, root }),
+      buildProtectionView({ state: 'anchored', epoch: 1, root, current: true }),
       buildProtectionView({ state: 'stale', currentRoot: root }, ['d1'], ['d2']),
       buildProtectionView({ state: 'never', currentRoot: root }),
     ]) {
@@ -327,5 +362,81 @@ describe('verifying every item against the root the chain returned', () => {
   it('fails when one byte of one blob changed', () => {
     const tampered = [{ ...items[1], blob: `${items[1].blob.slice(0, -2)}XX` }, items[0], items[2]];
     expect(allVerified(verifyVaultAgainstRoot(tampered, chainRoot))).toBe(false);
+  });
+});
+
+import { NOTHING_ASSIGNED_NOTICE } from './anchoring';
+
+describe('the tree covers what heirs inherit, not the vault', () => {
+  const secret = (id: string) => ({ id, ciphertext: 'YQ==', updated_at: 'A' }) as never;
+
+  it('hashes only assigned items and never fetches the rest', async () => {
+    let noteFetches = 0;
+
+    const collected = await collectVault(
+      sources({
+        listSecrets: async () => [secret('s1'), secret('s2')],
+        listNotesMeta: async () => [{ id: 'n1', updated_at: 'A' }] as NoteMetaRecord[],
+        getNote: async () => {
+          noteFetches += 1;
+
+          return { id: 'n1', ciphertext: 'bg==' } as never;
+        },
+      }),
+      { assigned: new Set(['s1']) },
+    );
+
+    expect(collected.items.map((item) => item.id)).toEqual(['s1']);
+    expect(noteFetches).toBe(0);
+  });
+
+  it('says nothing is assigned rather than that the vault is empty', async () => {
+    await expect(
+      collectVault(sources({ listSecrets: async () => [secret('s1')] }), {
+        assigned: new Set<string>(),
+      }),
+    ).rejects.toThrow(NothingAssignedError);
+
+    expect(NOTHING_ASSIGNED_NOTICE).toContain('Choose what each heir');
+  });
+
+  it('still says the vault is empty when it is', async () => {
+    await expect(collectVault(sources(), { assigned: new Set(['s1']) })).rejects.toThrow(
+      NothingToAnchorError,
+    );
+  });
+
+  it('compacts only assigned documents, because an uninherited one has no reader', async () => {
+    const compacted: string[] = [];
+
+    await runAnchorPass(
+      sources({
+        listDocumentsMeta: async () => [
+          docMeta({ id: 'd1', snapshot_seq: 4, latest_seq: 9 }),
+          docMeta({ id: 'd2', snapshot_seq: 4, latest_seq: 9 }),
+        ],
+        getDocument: async () => ({ id: 'd1', snapshot_ciphertext: 'ZA==' }) as never,
+      }),
+      { assigned: new Set(['d1']), compactDocument: async (id) => void compacted.push(id) },
+    );
+
+    expect(compacted).toEqual(['d1']);
+  });
+
+  it('changing an unassigned item leaves the root alone', async () => {
+    const build = (otherCiphertext: string) =>
+      collectVault(
+        sources({
+          listSecrets: async () => [
+            { id: 's1', ciphertext: 'YQ==', updated_at: 'A' },
+            { id: 's2', ciphertext: otherCiphertext, updated_at: 'A' },
+          ] as never,
+        }),
+        { assigned: new Set(['s1']) },
+      );
+
+    const [before, after] = await Promise.all([build('YQ=='), build('Yg==')]);
+
+    expect(vaultRootHex(before.items)).toBe(vaultRootHex(after.items));
   });
 });

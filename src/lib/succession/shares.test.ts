@@ -7,9 +7,16 @@ import { bytesToBase64, hexToBytes } from '@/lib/encoding';
 import { buildActionPayload, verifyPayload } from '@/lib/signing';
 import { pqxdhUnwrap, parseBlob } from '@/lib/pqxdh';
 import { vaultKekDekWrapper, type DekWrapper, type SecretRecord } from '@/lib/secrets';
+import type { NoteRecord } from '@/lib/notes';
+import type { DocumentRecord } from '@/lib/documents';
 import {
   assignShare,
   BeneficiaryAccountClosedError,
+  inheritableDocument,
+  inheritableNote,
+  inheritableSecret,
+  UnsupportedItemTypeError,
+  type InheritableItem,
   deleteShare,
   findItemAssignments,
   listShares,
@@ -91,6 +98,7 @@ function beneficiary(overrides: Partial<Beneficiary> = {}): Beneficiary {
     id: BENEFICIARY_ID,
     user_uuid: '0f5c8b1e-4f89-11d3-9a0c-0305e82c3301',
     username: 'carol9876ijkl',
+    user_address: HEIR_ADDRESS,
     encrypted_label: 'AQIDBA==',
     public_key_x25519_snapshot: vectors.x25519_key.public_key_base64,
     public_key_mlkem_snapshot: vectors.mlkem768_key.public_key_base64,
@@ -107,6 +115,32 @@ function secret(overrides: Partial<SecretRecord> = {}): SecretRecord {
     id: ITEM_ID,
     ciphertext: 'AQIDBA==',
     wrapped_dek: bytesToBase64(DEK),
+    version: 'v1',
+    created_at: '2026-07-26T12:00:00Z',
+    updated_at: '2026-07-26T12:00:00Z',
+    ...overrides,
+  };
+}
+
+function note(overrides: Partial<NoteRecord> = {}): NoteRecord {
+  return {
+    id: ITEM_ID,
+    ciphertext: 'AQIDBA==',
+    wrapped_dek: bytesToBase64(DEK),
+    version: 'v1',
+    created_at: '2026-07-26T12:00:00Z',
+    updated_at: '2026-07-26T12:00:00Z',
+    ...overrides,
+  };
+}
+
+function document(overrides: Partial<DocumentRecord> = {}): DocumentRecord {
+  return {
+    id: ITEM_ID,
+    wrapped_dek: bytesToBase64(DEK),
+    snapshot_ciphertext: 'AQIDBA==',
+    snapshot_seq: 4,
+    revision: 4,
     version: 'v1',
     created_at: '2026-07-26T12:00:00Z',
     updated_at: '2026-07-26T12:00:00Z',
@@ -136,7 +170,7 @@ describe('the owner-side unwrap uses the real vault KEK by default', () => {
 
     const wrapped = await wrapItemKeyForHeir(
       await newContext(),
-      secret({ wrapped_dek }),
+      inheritableSecret(secret({ wrapped_dek })),
       toRecipient(beneficiary(), HEIR_ADDRESS),
     );
 
@@ -157,7 +191,7 @@ describe('assigning an item to an heir', () => {
 
     const wrapped = await wrapItemKeyForHeir(
       context,
-      secret(),
+      inheritableSecret(secret()),
       toRecipient(beneficiary(), HEIR_ADDRESS),
     );
 
@@ -184,7 +218,7 @@ describe('assigning an item to an heir', () => {
 
     const wrapped = await wrapItemKeyForHeir(
       context,
-      secret(),
+      inheritableSecret(secret()),
       toRecipient(beneficiary(), HEIR_ADDRESS),
     );
 
@@ -210,7 +244,7 @@ describe('assigning an item to an heir', () => {
 
     const wrapped = await wrapItemKeyForHeir(
       context,
-      secret(),
+      inheritableSecret(secret()),
       toRecipient(beneficiary(), HEIR_ADDRESS),
     );
 
@@ -234,7 +268,7 @@ describe('assigning an item to an heir', () => {
     const calls = mockFetch({ status: 201, body: { data: share() } });
     const context = await newContext({ dek: fakeDekWrapperForTestsOnly() });
 
-    await assignShare(context, beneficiary(), toRecipient(beneficiary(), HEIR_ADDRESS), secret());
+    await assignShare(context, beneficiary(), toRecipient(beneficiary(), HEIR_ADDRESS), inheritableSecret(secret()));
 
     const body = calls[0].body!;
     expect(body.beneficiary_id).toBe(BENEFICIARY_ID);
@@ -259,7 +293,7 @@ describe('assigning an item to an heir', () => {
     const calls = mockFetch({ status: 201, body: { data: share() } });
     const context = await newContext({ dek: fakeDekWrapperForTestsOnly() });
 
-    await assignShare(context, beneficiary(), toRecipient(beneficiary(), HEIR_ADDRESS), secret());
+    await assignShare(context, beneficiary(), toRecipient(beneficiary(), HEIR_ADDRESS), inheritableSecret(secret()));
 
     const body = calls[0].body!;
     expect(
@@ -280,7 +314,7 @@ describe('assigning an item to an heir', () => {
     const calls = mockFetch({ status: 201, body: { data: share() } });
     const context = await newContext({ dek: fakeDekWrapperForTestsOnly() });
 
-    await assignShare(context, beneficiary(), toRecipient(beneficiary(), HEIR_ADDRESS), secret());
+    await assignShare(context, beneficiary(), toRecipient(beneficiary(), HEIR_ADDRESS), inheritableSecret(secret()));
 
     const body = calls[0].body!;
     expect(body.pq_hybrid_encrypted_item_key).toBeTruthy();
@@ -293,8 +327,63 @@ describe('assigning an item to an heir', () => {
     const closed = beneficiary({ keys_rotated: true });
 
     await expect(
-      assignShare(context, closed, toRecipient(beneficiary(), HEIR_ADDRESS), secret()),
+      assignShare(context, closed, toRecipient(beneficiary(), HEIR_ADDRESS), inheritableSecret(secret())),
     ).rejects.toThrow(BeneficiaryAccountClosedError);
+  });
+
+  it.each([
+    ['note', () => inheritableNote(note())],
+    ['document', () => inheritableDocument(document())],
+  ])('wraps a %s the same way, and the heir opens it', async (itemType, build) => {
+    const calls = mockFetch({ status: 201, body: { data: share({ item_type: itemType as never }) } });
+    const context = await newContext({ dek: fakeDekWrapperForTestsOnly() });
+
+    await assignShare(context, beneficiary(), toRecipient(beneficiary(), HEIR_ADDRESS), build());
+
+    const body = calls[0].body!;
+    expect(body.item_type).toBe(itemType);
+    expect(body.item_id).toBe(ITEM_ID);
+
+    const opened = await pqxdhUnwrap(
+      body.pq_hybrid_encrypted_item_key as string,
+      { x25519PrivateKey: tree.x25519.privateKey, mlkemSecretKey: tree.mlkem768.secretKey },
+      { usage: 'succession-dek', senderUserAddress: ownerAddress, recipientUserAddress: HEIR_ADDRESS },
+    );
+
+    expect(opened).toEqual(DEK);
+  });
+
+  it('unwraps a note and a document against the real vault KEK, like a secret', async () => {
+    mockFetch({ status: 201, body: { data: share() } }, { status: 201, body: { data: share() } });
+    const context = await newContext();
+    const wrapped_dek = await vaultKekDekWrapper(tree.vaultKek).wrapDek(DEK);
+
+    for (const item of [
+      inheritableNote(note({ wrapped_dek })),
+      inheritableDocument(document({ wrapped_dek })),
+    ]) {
+      const wrapped = await wrapItemKeyForHeir(context, item, toRecipient(beneficiary(), HEIR_ADDRESS));
+
+      const opened = await pqxdhUnwrap(
+        wrapped,
+        { x25519PrivateKey: tree.x25519.privateKey, mlkemSecretKey: tree.mlkem768.secretKey },
+        { usage: 'succession-dek', senderUserAddress: ownerAddress, recipientUserAddress: HEIR_ADDRESS },
+      );
+
+      expect(opened).toEqual(DEK);
+    }
+  });
+
+  it('refuses an unknown item type before anything reaches the network', async () => {
+    const calls = mockFetch({ status: 201, body: { data: share() } });
+    const context = await newContext({ dek: fakeDekWrapperForTestsOnly() });
+    const bogus = { type: 'credential', id: ITEM_ID, wrappedDek: bytesToBase64(DEK) } as unknown as InheritableItem;
+
+    await expect(
+      assignShare(context, beneficiary(), toRecipient(beneficiary(), HEIR_ADDRESS), bogus),
+    ).rejects.toThrow(UnsupportedItemTypeError);
+
+    expect(calls).toHaveLength(0);
   });
 
   it('reports the upsert — re-assigning the same pair is a 200, not a 201', async () => {
@@ -305,7 +394,7 @@ describe('assigning an item to an heir', () => {
       context,
       beneficiary(),
       toRecipient(beneficiary(), HEIR_ADDRESS),
-      secret(),
+      inheritableSecret(secret()),
     );
     expect(result.created).toBe(false);
   });

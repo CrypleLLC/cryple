@@ -53,6 +53,16 @@ export function SuccessionIcon(props: IconProps) {
   );
 }
 
+export function InheritanceIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 10.5 12 4l8 6.5" />
+      <path d="M6 10v9.5h12V10" />
+      <path d="M9.5 19.5v-5h5v5" />
+    </Icon>
+  );
+}
+
 export function SecurityIcon(props: IconProps) {
   return (
     <Icon {...props}>
@@ -147,6 +157,15 @@ export function PlusIcon(props: IconProps) {
     <Icon {...props}>
       <path d="M12 5v14" />
       <path d="M5 12h14" />
+    </Icon>
+  );
+}
+
+export function CloseIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M6 6l12 12" />
+      <path d="M18 6l-12 12" />
     </Icon>
   );
 }
