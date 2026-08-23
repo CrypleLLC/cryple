@@ -238,7 +238,7 @@ CI runs typecheck, lint (`--max-warnings 0`) and tests on every push and PR.
 
 **Lint is ESLint 9 flat config** (`eslint.config.mjs`), extending `next/core-web-vitals` and `next/typescript`. Two rules exist because of this project's threat model rather than style, and both carry their reasoning in the failure message:
 
-- **`no-console` is an error.** The cross-cutting rule is "never log the seed phrase, private keys, DEKs, the PIN, or the `Server_Auth_Token`" — and the deleted `src/lib/crypto.ts` logged the environment and API URL. A blanket ban is the only version of that rule a linter can enforce.
+- **`no-console` is an error.** The cross-cutting rule is "never log the seed phrase, private keys, DEKs, the PIN, or the `Server_Auth_Token`" — and the deleted `src/lib/crypto.ts` logged the environment and API URL. A blanket ban is the only version of that rule a linter can enforce. `scripts/**` is the one exemption: dev-only CLIs that never ship to a browser and never hold key material, where stdout *is* the output. Nothing under `src/` is ever exempt.
 - **`no-restricted-globals` blocks `localStorage` and `sessionStorage`.** Only the seed vault may reach persistent storage, and only for one PIN-encrypted blob. `src/lib/pin/**` and `src/lib/app/mode-hint.ts` are the two exemptions; adding a third needs a reason that survives §Conventions.
 
 Tests are Vitest (`environment: 'node'`, matching `src/**/*.test.ts` only — so `.tsx` component tests would need jsdom and a testing library that are deliberately not installed). Keep testable product logic in framework-free modules, as `src/lib/app` does.
