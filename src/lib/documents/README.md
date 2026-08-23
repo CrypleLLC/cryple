@@ -50,6 +50,17 @@ The DEK is per document and wrapped under the vault KEK by the shared
 `vaultKekDekWrapper` ([`lib/secrets/dek.ts`](../secrets/README.md)), the same seam every other
 domain uses.
 
+**One DEK seals the snapshot and every delta**, which is what makes a document assignable to an
+heir at all: `inheritableDocument(document)` hands `lib/succession` a single `wrapped_dek`, and
+that one wrapped key covers the whole log however long it grows
+([`lib/succession`](../succession/README.md)). It is also why rotating a document's DEK means
+re-encrypting everything — compact first, then rotate — and why a rotation would invalidate every
+share already assigned.
+
+Verification is the one thing the DEK does not stretch over. The anchored Merkle leaf commits to
+the **snapshot** ciphertext alone, so deltas appended after the last compaction are inherited and
+decryptable but **unproven**. An heir client must show that seam rather than paper over it.
+
 ## The two cursor traps
 
 Both of these produce silent, permanent data loss rather than an error, and both have tests.

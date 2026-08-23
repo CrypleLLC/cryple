@@ -13,6 +13,7 @@ import {
   deriveVaultKek,
   IDENTITY_PATH,
   MLKEM768_HKDF_INFO,
+  HEIR_LABEL_HKDF_INFO,
   VAULT_KEK_HKDF_INFO,
   X25519_HKDF_INFO,
 } from './index';
@@ -24,6 +25,7 @@ const identityVector = vectors.identity_key_p256;
 const x25519Vector = vectors.x25519_key;
 const mlkemVector = vectors.mlkem768_key;
 const vaultKekVector = vectors.vault_kek;
+const heirLabelVector = vectors.heir_label_key;
 
 describe('the fixture pins the constants this client must not diverge on', () => {
   it('matches the frozen SLIP-0010 HMAC key and derivation path', () => {
@@ -37,6 +39,7 @@ describe('the fixture pins the constants this client must not diverge on', () =>
     expect(x25519Vector.hkdf_info_label).toBe(X25519_HKDF_INFO);
     expect(mlkemVector.hkdf_info_label).toBe(MLKEM768_HKDF_INFO);
     expect(vaultKekVector.hkdf_info_label).toBe(VAULT_KEK_HKDF_INFO);
+    expect(heirLabelVector.hkdf_info_label).toBe(HEIR_LABEL_HKDF_INFO);
   });
 });
 
@@ -131,6 +134,17 @@ describe('the frozen key tree reproduces test-vectors.json end to end', () => {
     const tree = await treePromise;
     expect(bytesToHex(tree.vaultKek)).toBe(vaultKekVector.vault_kek_hex);
     expect(bytesToHex(tree.vaultKek)).toHaveLength(64);
+  });
+
+  it('reproduces the heir label key', async () => {
+    const tree = await treePromise;
+    expect(bytesToHex(tree.heirLabelKey)).toBe(heirLabelVector.heir_label_key_hex);
+    expect(bytesToHex(tree.heirLabelKey)).toHaveLength(64);
+  });
+
+  it('keeps the two symmetric leaves distinct', async () => {
+    const tree = await treePromise;
+    expect(bytesToHex(tree.heirLabelKey)).not.toBe(bytesToHex(tree.vaultKek));
   });
 });
 

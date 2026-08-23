@@ -13,7 +13,7 @@ path is real but unbuilt and its paths are unsettled. Do not add heir-facing scr
 | `registerBeneficiary` | `POST /succession/beneficiaries` 🔒 | `beneficiary-register`, upsert |
 | `listBeneficiaries` | `GET /succession/beneficiaries` 🔒 | paginated; the only place `share_count` / `keys_rotated` are real |
 | `deleteBeneficiary` | `DELETE /succession/beneficiaries/{id}` 🔒 | `beneficiary-delete`, cascades every share |
-| `assignShare` / `assignSecretById` | `POST /succession/shares` 🔒 | `share-assign`, upsert |
+| `assignShare` / `assignSecretById` | `POST /succession/shares` 🔒 | `share-assign`, upsert; any of the three item types |
 | `listShares` | `GET /succession/beneficiaries/{id}/shares` 🔒 | paginated |
 | `deleteShare` | `DELETE /succession/shares/{id}` 🔒 | `share-delete` |
 | `castReleaseVote` | `POST /succession/votes` 🔒 | guardian-scoped, `succession-release-vote` |
@@ -32,10 +32,11 @@ fields, and nothing else. A test pins the exact body key set.
 Decision A landed the owner's vault KEK (`Cryple-Key-v1|vault-kek`, see [`lib/keys`](../keys/README.md)
 and [`lib/secrets`](../secrets/README.md)), but the ratified sealed-blob table covers only
 `secrets.wrapped_dek`, `secrets.ciphertext` and `recovery_vaults.encrypted_seed` —
-**`encrypted_label` is not in it.** Reusing the vault KEK here anyway would be exactly the kind of
-uncoordinated construction `storage-plan.md` §3.1.1 forbids, so this seam stays blocked
-([`lib/app` § The blocked heir label](../app/README.md#the-blocked-heir-label)) until the backend
-spec names a construction for this field specifically.
+**`encrypted_label` was not in it**, and reusing the vault KEK anyway would have been exactly the
+uncoordinated construction `storage-plan.md` §3.1.1 forbids. It got its own leaf instead —
+`Cryple-Key-v1|heir-label`, `crypto/ECDSA.md` § Step 6, sealed through the same envelope
+([`lib/app` § The heir label](../app/README.md#the-heir-label)). The sealed-blob table now lists
+four fields, not three.
 
 `dropped_shares` is **absent when zero**, which today means always: enrolment keys are immutable,
 so a re-registration can never supersede the stored snapshot. `registerBeneficiary` still
@@ -87,8 +88,34 @@ default. The `dek` override on `SuccessionContext` still exists as a test seam, 
 requirement.
 
 `share-assign` signs `beneficiary_id` then `item_id`, **in that order**; a test confirms the
-signature does not verify with the two swapped. `item_type` is `secret` and nothing else today.
-Re-assigning the same `(beneficiary, item)` pair is an upsert — `created` is `false` on the `200`.
+signature does not verify with the two swapped. Re-assigning the same `(beneficiary, item)` pair is
+an upsert — `created` is `false` on the `200`.
+
+### All three item types, one path
+
+An heir can be left a **secret, a note or a document**. `assignShare` takes an `InheritableItem`
+(`{ type, id, wrappedDek }`) rather than a record from any one domain, because the three are
+identical where it matters: each carries a `wrapped_dek` sealed under the same vault KEK, so
+unwrap → PQXDH-rewrap → `POST /succession/shares` is one function with `item_type` as data.
+`inheritableSecret` / `inheritableNote` / `inheritableDocument` build one from each record; the
+caller supplies the record it already holds.
+
+`ITEM_TYPES` is sorted `document, note, secret` — the order
+[`lib/vaultmerkle`](../vaultmerkle/README.md) sorts leaves in, so the two lists read as the one set
+they are. `assertItemType` rejects anything else **before the request is built**, mirroring the
+server's `unsupported item_type`; a test asserts nothing reaches the network.
+
+**A document's DEK seals its snapshot *and* every delta**, so this one wrapped key is the whole
+assignment however long the log grows — nothing extra is stored per delta. What that does *not*
+cover is verification: the anchored Merkle leaf commits to the snapshot alone, so an heir receives
+the deltas past `snapshot_seq` unproven. That is the heir client's problem to render honestly, and
+it is documented on the API side under `/succession/inheritances/…`
+([front-end-endpoints.md](../../../front-end-endpoints.md)).
+
+**One id space, three tables.** The server's uniqueness constraint is
+`(beneficiary_id, item_id)` with no `item_type` in it, so one heir cannot hold two items that share
+an id even when they are a note and a secret. Ids are random UUIDs, so this is theoretical — but it
+is why `findItemAssignments` matches on `item_id` alone and is still correct.
 
 ### Deleting an item shrinks someone's inheritance
 
@@ -138,10 +165,19 @@ cycle fails. Verification never throws — a malformed signature or key yields `
 ## What this module does not do
 
 - **No heir screens**, per the boundary above.
-- **No UI for `released` or `cancelled`.** `getReleaseStatus` types only `monitoring` and
-  `counting_down`; nothing in this API writes the others, and `released_at` is never set.
-- **`last_check_in` is not a live "last seen".** Until the chain indexer ships it is the row
-  creation time, and the thresholds are database defaults. Do not render it as a heartbeat.
+- **No UI for `released` or `cancelled` on the off-chain half.** `ReleaseStatus` types only
+  `monitoring` and `counting_down`, and a `CHECK` on the column now enforces that. Release lives on
+  `chain.status`, which is typed separately as `ChainStatus`.
+- **`chain.status` carries one value the contract does not define: `unknown`.** It means the API
+  could not read its chain mirror — an infrastructure fault, not a fact about the switch. It is
+  surfaced as `ReleaseView.chainUnavailable` so a screen can say "retry" rather than "not set up".
+  Never treat it as permission for anything.
+- **Everything inside `chain` is unix seconds; everything outside it is RFC 3339.** `chain` values
+  are block timestamps the API copies rather than reformats. `buildReleaseView` converts them in
+  one place, `fromUnixSeconds`, so no caller picks the wrong parser.
+- **`chain.last_check_in` is optional.** It appears once the smart account has been configured
+  on-chain, and is absent before that. It is a real heartbeat now, not a row-creation date, but an
+  absent one must not render as a date.
 - **No check-in or switch configuration.** `inactivity_threshold_days` and the quorum are
   **on-chain owner actions**; this endpoint is a read-only mirror.
 - `trigger_started_at` is typed `string | undefined` and tested with `in` — never `| null`.

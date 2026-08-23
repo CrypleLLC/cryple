@@ -32,3 +32,16 @@ export class BeneficiaryAddressMismatchError extends SuccessionValidationError {
     this.userAddress = userAddress;
   }
 }
+
+export class UnsupportedItemTypeError extends SuccessionValidationError {
+  readonly itemType: string;
+
+  constructor(itemType: string) {
+    super(
+      `"${itemType}" is not an inheritable item type — only a secret, a note or a document ` +
+        'can be left to an heir',
+      'UnsupportedItemTypeError',
+    );
+    this.itemType = itemType;
+  }
+}

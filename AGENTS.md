@@ -207,10 +207,10 @@ Derived from the guide and the specs; these are the ones a client gets wrong by 
 
 ## Product boundaries — do not build these
 
-- **No heir-facing screens.** Nothing lets a named beneficiary discover, accept, decline or claim an inheritance. Before release that is permanent by design; after release the routes are unbuilt and their paths unsettled.
+- **No heir-facing screens *in this client yet*.** Nothing here lets a named beneficiary discover, accept, decline or claim an inheritance. Before release that stays permanent by design — the API omits an unreleased inheritance from `GET /succession/inheritances` entirely, so there is nothing to render. **After release the routes now exist** (`api-general` Task 54, `/succession/inheritances/…`), and building the claim flow against them is web-app Task 41. Until it ships, an heir has no way in through this client.
 - **No "sign out all devices" / session list.** The API has no revocation. Logout means deleting your own copy of the token.
 - **No key rotation flow, and no "disable PIN".** Rotation is a protocol change (backend Task 63), not an endpoint. `keys_rotated: true` means the heir *deleted their account* — surface "remove them and choose another", never a re-wrap prompt.
-- **No UI waiting on `released`, `cancelled` (release trigger) or `completed` (recovery session).** No code path writes them; they need a chain indexer that does not exist. `GET /succession/status` only ever reads `monitoring` or `counting_down`, and `last_check_in` is not a live "last seen".
+- **No UI waiting on `cancelled` (release trigger) or `completed` (recovery session).** No code path writes them. Release is different: the chain indexer shipped 2026-08-16, so `GET /succession/status` now carries a `chain` object whose `chain.status` reaches `released`. The top-level `status` is still only `monitoring` or `counting_down` — the two are separate facts and merging them is a bug. See [`src/lib/app/README.md`](./src/lib/app/README.md).
 - **Check-in / dead-man's-switch configuration is on-chain**, not in this API.
 - **Nothing from `.docs/storage-plan.md`.** The file vault is postponed post-MVP; it is the one `.docs` file that is not a build target.
 
@@ -238,7 +238,7 @@ CI runs typecheck, lint (`--max-warnings 0`) and tests on every push and PR.
 
 **Lint is ESLint 9 flat config** (`eslint.config.mjs`), extending `next/core-web-vitals` and `next/typescript`. Two rules exist because of this project's threat model rather than style, and both carry their reasoning in the failure message:
 
-- **`no-console` is an error.** The cross-cutting rule is "never log the seed phrase, private keys, DEKs, the PIN, or the `Server_Auth_Token`" — and the deleted `src/lib/crypto.ts` logged the environment and API URL. A blanket ban is the only version of that rule a linter can enforce.
+- **`no-console` is an error.** The cross-cutting rule is "never log the seed phrase, private keys, DEKs, the PIN, or the `Server_Auth_Token`" — and the deleted `src/lib/crypto.ts` logged the environment and API URL. A blanket ban is the only version of that rule a linter can enforce. `scripts/**` is the one exemption: dev-only CLIs that never ship to a browser and never hold key material, where stdout *is* the output. Nothing under `src/` is ever exempt.
 - **`no-restricted-globals` blocks `localStorage` and `sessionStorage`.** Only the seed vault may reach persistent storage, and only for one PIN-encrypted blob. `src/lib/pin/**` and `src/lib/app/mode-hint.ts` are the two exemptions; adding a third needs a reason that survives §Conventions.
 
 Tests are Vitest (`environment: 'node'`, matching `src/**/*.test.ts` only — so `.tsx` component tests would need jsdom and a testing library that are deliberately not installed). Keep testable product logic in framework-free modules, as `src/lib/app` does.

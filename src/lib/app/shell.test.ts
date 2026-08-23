@@ -170,9 +170,16 @@ describe('turning on the second factor', () => {
     expect(JSON.stringify(SECOND_FACTOR_COPY)).not.toMatch(/disable|remove the PIN|turn off/i);
   });
 
-  it('explains why the phrase is asked for, since the device has none stored', () => {
-    expect(SECOND_FACTOR_COPY.offered.phrasePrompt).toMatch(/does not keep one yet/);
+  it('explains why the phrase is asked for — the local copy is re-sealed under the new PIN', () => {
+    expect(SECOND_FACTOR_COPY.offered.phrasePrompt).toMatch(/re-encrypts/);
     expect(SECOND_FACTOR_COPY.phraseMismatch).toMatch(/different account/);
+  });
+
+  it('describes the upgrade as a sign-in requirement, not as gaining a local PIN', () => {
+    // Both modes have a PIN now, so "adds a PIN to this device" would be false —
+    // what changes is that the server starts requiring it too.
+    expect(SECOND_FACTOR_COPY.offered.summary).toMatch(/to sign in/);
+    expect(SECOND_FACTOR_COPY.enabledNotice).toMatch(/required to sign in anywhere/);
   });
 });
 
@@ -421,7 +428,14 @@ describe('the succession dashboard stays inside the reachable states', () => {
       required_votes: 2,
       release_cycle: 1,
       inactivity_threshold_days: 180,
-      last_check_in: '2026-07-26T12:00:00Z',
+      chain: {
+        indexed: true,
+        smart_account_address: '0x4dcb2c4a8d8b42f58522ed7e116bb33fc75843b1',
+        status: 'active',
+        last_check_in: 1785110400,
+        inactivity_period_seconds: 600,
+        triggerable_at: 1785111000,
+      },
       ...overrides,
     };
   }
@@ -490,6 +504,7 @@ describe('the succession dashboard stays inside the reachable states', () => {
         id: '1a2b3c4d-4f89-11d3-9a0c-0305e82c3301',
         user_uuid: '',
         username: '',
+        user_address: 'a'.repeat(64),
         encrypted_label: 'x',
         public_key_x25519_snapshot: 'x',
         public_key_mlkem_snapshot: 'x',

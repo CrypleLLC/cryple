@@ -9,11 +9,13 @@ import type { AuthedContext } from '@/lib/context';
 import {
   acceptGuardianship,
   activeGuardians,
+  GuardianAddressUnavailableError,
   GuardianKeysUnavailableError,
   inviteGuardian,
   listGuardians,
   listGuardianships,
   pendingInvitations,
+  recipientFor,
   revokeGuardian,
   summarizeQuorum,
   toRecipient,
@@ -27,6 +29,7 @@ const tree = await deriveKeyTreeFromSeed(hexToBytes(vectors.seed_and_user_addres
 const publicKey = tree.identity.publicKeyUncompressed;
 
 const GUARDIAN_ID = '9c1e5f2a-4f89-11d3-9a0c-0305e82c3301';
+const GUARDIAN_ADDRESS = '2'.repeat(64);
 
 interface Call {
   method: string;
@@ -72,6 +75,7 @@ function guardian(overrides: Partial<Guardian> = {}): Guardian {
   return {
     id: GUARDIAN_ID,
     username: 'alice1234abcd',
+    user_address: GUARDIAN_ADDRESS,
     status: 'active',
     encryption_public_key_x25519: vectors.x25519_key.public_key_base64,
     encryption_public_key_mlkem: vectors.mlkem768_key.public_key_base64,
@@ -356,5 +360,18 @@ describe('turning a guardian into a PQXDH recipient', () => {
     });
 
     expect(() => toRecipient(pending, 'a'.repeat(64))).toThrow(GuardianKeysUnavailableError);
+  });
+
+  it('takes the address from the guardian row rather than asking for one', () => {
+    const recipient = recipientFor(guardian());
+
+    expect(recipient.userAddress).toBe(GUARDIAN_ADDRESS);
+    expect(bytesToHex(recipient.x25519PublicKey)).toBe(vectors.x25519_key.public_key_hex);
+  });
+
+  it('refuses a guardian whose address the API withholds', () => {
+    const pending = guardian({ status: 'pending_invite', user_address: undefined });
+
+    expect(() => recipientFor(pending)).toThrow(GuardianAddressUnavailableError);
   });
 });

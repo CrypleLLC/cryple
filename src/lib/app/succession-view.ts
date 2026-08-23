@@ -1,14 +1,18 @@
 import {
   verifyReport,
   type Beneficiary,
+  type ChainStatus,
   type ReleaseStatusRecord,
   type ReleaseVoteReport,
   type VerifiedReleaseVote,
 } from '@/lib/succession';
 
 export const LAST_CHECK_IN_CAVEAT =
-  'Not a live "last seen". The heartbeat is an on-chain action this API only mirrors, and until ' +
-  'the chain indexer ships this is the date the record was created.';
+  'The heartbeat is an on-chain action this API only mirrors. It appears once the smart account ' +
+  'has been configured on-chain.';
+
+export const CHAIN_UNAVAILABLE_CAVEAT =
+  'The chain status could not be read. This says nothing about the switch itself — retry.';
 
 export const CONFIGURATION_CAVEAT =
   'The inactivity threshold and the guardian quorum are configured on-chain, not here.';
@@ -21,11 +25,21 @@ export interface ReleaseView {
   releaseCycle: number;
   countdownStartedAt?: Date;
   inactivityThresholdDays: number;
-  lastCheckIn: Date;
+  chainStatus: ChainStatus;
+  chainUnavailable: boolean;
+  smartAccountAddress: string;
+  lastCheckIn?: Date;
+  triggerableAt?: Date;
+}
+
+function fromUnixSeconds(seconds: number | undefined): Date | undefined {
+  return seconds === undefined ? undefined : new Date(seconds * 1000);
 }
 
 export function buildReleaseView(record: ReleaseStatusRecord): ReleaseView {
   const countingDown = record.status === 'counting_down';
+  const lastCheckIn = fromUnixSeconds(record.chain.last_check_in);
+  const triggerableAt = fromUnixSeconds(record.chain.triggerable_at);
 
   return {
     status: record.status,
@@ -39,7 +53,11 @@ export function buildReleaseView(record: ReleaseStatusRecord): ReleaseView {
       ? {}
       : { countdownStartedAt: new Date(record.trigger_started_at) }),
     inactivityThresholdDays: record.inactivity_threshold_days,
-    lastCheckIn: new Date(record.last_check_in),
+    chainStatus: record.chain.status,
+    chainUnavailable: record.chain.status === 'unknown',
+    smartAccountAddress: record.chain.smart_account_address,
+    ...(lastCheckIn === undefined ? {} : { lastCheckIn }),
+    ...(triggerableAt === undefined ? {} : { triggerableAt }),
   };
 }
 

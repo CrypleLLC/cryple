@@ -27,9 +27,10 @@ sealed-blob codec (`sealPayload`/`openPayload`, i.e. `@/lib/sealed`'s `sealBlob`
 **Scope stays narrow, per the ratified spec text.** The vault KEK "only ever wraps other keys...
 [and] never encrypts application data directly." That is why it wraps the per-item DEK and
 nothing else — in particular, it is **not** the key for `beneficiaries.encrypted_label`
-(`succession`'s pass-through field), which stays blocked; see
+(`succession`'s pass-through field), which has its own key — `Cryple-Key-v1|heir-label`, a fifth
+leaf rather than a reuse of this one; see
 [`lib/succession` § Beneficiaries](../succession/README.md#beneficiaries) and
-[`lib/app` § The blocked heir label](../app/README.md#the-blocked-heir-label).
+[`lib/app` § The heir label](../app/README.md#the-heir-label).
 
 `wrapper(context)` (in `index.ts`, and its mirror in
 [`lib/succession/shares.ts`](../succession/README.md)) defaults to

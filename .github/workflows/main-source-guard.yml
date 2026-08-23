@@ -1,18 +1,16 @@
 name: main-source-guard
 on:
   pull_request:
-    branches: [main]
     types: [opened, synchronize, reopened, edited]
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   check-source-branch:
     runs-on: ubuntu-latest
     steps:
       - name: Require PRs into main to come from staging
-        if: github.head_ref != 'staging'
+        if: github.base_ref == 'main' && github.head_ref != 'staging'
         run: |
           echo "PRs into main must come from staging (got '${{ github.head_ref }}')."
           exit 1

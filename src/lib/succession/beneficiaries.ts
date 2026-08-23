@@ -16,6 +16,12 @@ export interface Beneficiary {
   id: string;
   user_uuid: string;
   username: string;
+
+  // The heir's own user_address, and the recipient half of the succession-dek
+  // PQXDH info string. There is no other way to obtain it: GET /users/lookup
+  // maps address to username and never the reverse. Empty when the heir deleted
+  // their account, which is the same fact keys_rotated reports.
+  user_address: string;
   encrypted_label: string;
   public_key_x25519_snapshot: string;
   public_key_mlkem_snapshot: string;
@@ -148,6 +154,17 @@ export function toRecipient(
     x25519PublicKey: base64ToBytes(beneficiary.public_key_x25519_snapshot),
     mlkemPublicKey: base64ToBytes(beneficiary.public_key_mlkem_snapshot),
   };
+}
+
+// The recipient an heir's own record already describes. resolveRecipient below
+// stays for the case where an address arrives from somewhere else and has to be
+// checked against the username before anything is wrapped under it.
+export function recipientFor(beneficiary: Beneficiary): BeneficiaryRecipient {
+  if (beneficiary.user_address.length === 0) {
+    throw new BeneficiaryAccountClosedError(beneficiary.id);
+  }
+
+  return toRecipient(beneficiary, beneficiary.user_address);
 }
 
 export async function resolveRecipient(

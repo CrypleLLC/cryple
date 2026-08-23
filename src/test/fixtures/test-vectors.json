@@ -6,7 +6,8 @@
     "onchain_signer_use": ".docs/onchain-architecture.md",
     "pqxdh": ".docs/crypto/pqxdh.md",
     "server_auth_token": ".docs/auth/two-factor-PIN.md",
-    "user_address": ".docs/auth/user-address.md"
+    "user_address": ".docs/auth/user-address.md",
+    "vault_merkle": ".docs/crypto/vault-leaf.md"
   },
   "seed_and_user_address": {
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -48,6 +49,13 @@
     "vault_kek_hex": "e56ba781d128ab234df442a752d9bb05763b21a7fe66bd94aa34c28fb2f66c53",
     "vault_kek_base64": "5WungdEoqyNN9EKnUtm7BXY7Iaf+Zr2UqjTCj7L2bFM="
   },
+  "heir_label_key": {
+    "derivation": "HKDF-SHA512(ikm=seed, salt=empty, info=label, length=32) used directly as an AES-256 key",
+    "hkdf_info_label": "Cryple-Key-v1|heir-label",
+    "usage": "Seals beneficiaries.encrypted_label, the owner's private note naming an heir. Application data, which is why it is not the vault KEK.",
+    "heir_label_key_hex": "362b04a280bdae4c130570c0cd4219ecbf646bbad2eb12cf17852e95d06dcffb",
+    "heir_label_key_base64": "NisEooC9rkwTBXDAzUIZ7L9ka7rS6xLPF4UuldBtz/s="
+  },
   "sealed_blob": {
     "format": "base64(version(1) || iv(12) || AES-256-GCM(key, iv, plaintext) || tag(16))",
     "layout": "version(1) || iv(12) || aead_ciphertext_with_tag(len(plaintext)+16)",
@@ -60,6 +68,20 @@
     "ciphertext_with_tag_hex": "6e716123e8ecfe334aef6964e57b0786cf3cab5685028cadc221a844b17fe9d6fac631b4e0e0c069ba9ec8e9bd8df0fd",
     "blob_hex": "01c0c1c2c3c4c5c6c7c8c9cacb6e716123e8ecfe334aef6964e57b0786cf3cab5685028cadc221a844b17fe9d6fac631b4e0e0c069ba9ec8e9bd8df0fd",
     "blob_base64": "AcDBwsPExcbHyMnKy25xYSPo7P4zSu9pZOV7B4bPPKtWhQKMrcIhqESxf+nW+sYxtODgwGm6nsjpvY3w/Q=="
+  },
+  "sealed_label_blob": {
+    "format": "base64(version(1) || iv(12) || AES-256-GCM(key, iv, plaintext) || tag(16))",
+    "layout": "version(1) || iv(12) || aead_ciphertext_with_tag(len(plaintext)+16)",
+    "version_byte": "0x01 — a reader MUST reject any other value instead of parsing best-effort",
+    "note": "Same envelope as sealed_blob, different key and a variable-length plaintext. The plaintext is UTF-8 with no normalization applied; seal the bytes the user typed.",
+    "example_field": "beneficiaries.encrypted_label — an heir label sealed under the heir label key above",
+    "key_hex": "362b04a280bdae4c130570c0cd4219ecbf646bbad2eb12cf17852e95d06dcffb",
+    "iv_hex": "d0d1d2d3d4d5d6d7d8d9dadb",
+    "plaintext_utf8": "Ana — minha irmã",
+    "plaintext_hex": "416e6120e28094206d696e68612069726dc3a3",
+    "ciphertext_with_tag_hex": "ed048a2827bd7da2314ca13a1d01f666c18a4d2a4f925070a38d0111046a7d9c82e223",
+    "blob_hex": "01d0d1d2d3d4d5d6d7d8d9dadbed048a2827bd7da2314ca13a1d01f666c18a4d2a4f925070a38d0111046a7d9c82e223",
+    "blob_base64": "AdDR0tPU1dbX2Nna2+0EiignvX2iMUyhOh0B9mbBik0qT5JQcKONAREEan2cguIj"
   },
   "server_auth_token": {
     "pin": "428193",
@@ -96,5 +118,49 @@
       "wire_blob_base64": "AWdGOytDE3wF5TYIJvRAi+HF0+i3kFZ1Zf79wBHUdbOoa7fiKM82psVzfkyYKDoDyKQmDmHVUXPpRUcCWJy7rZVXRNBR8lfz5j6Q/oRyxuqGDn5nsPSWBRQ7otp1nJiw7mntjAgth1GBdyIdTIHTiX9ucVBK61PF8HT3xziXOJ6+ywdPm7HOsVC5sdExJhr9GMUw5flxIxRvs8D3lTE2vgvIzp721wFguCMYjPhqtxzLLHISUVukPUzXdx0GWiyxgDJn8sKfjB0D5YCQaW+Ko3+1TI66g5KpaBGHKItWcCgAC+bC/CSWksEpz0Yei0/dff5ENkC69Jrkl6+I80bBUAReZwKDJbvkL5ggtmhROxQV3Kd5SjnmkPNyRPsC/Riq1ZU6cR07Tltmj9a9QMjp78omkJdci//dK5bJdelg5JZnjYbbShUW4xSdfiu0bpzr5vMHEkkSKkZF2W4AOWZVwWYkF89sUdPEMyH5rIlJrz/CJmmpH9P1Bjv9Go/XLOfmC8B7CFfOPVzFqSPeC6vOSRl36ltI9t3KLd3H/gANX3wWLCxI8D5B6UAWvVyifl+sHLf30i6HRYkoDLd+AUOkUMHe2snoT3a7voBJ1bVk1pfc5/YJQe7wZiaDvUSMQajeUKT/9eyaYWzR4IqBZAFg+GivMW8IRvUsofyIbFp40oVWY8FRFeuW+20rU6jagM4ni+j6GtaYTDFnl7jvIkX284Dv7MHYDavyhWmHp0o9hi5dUHPmcODvW046YYity4aGzKzktee/ZuauZFGLx189xQN986lefn27FuxNtlX0JBqPgUlHXFreDJTDRmUgoj/x9s2OxynumiB9KZQblQgXvgqZ/a54EI6gdk14FA4pxaj9D5TU07mS8np0n76wxWmhuYEwPNZ9DJx9yfjWTzZEorEjnNo+AMRugJJSBQ4K6Gr21mW4illgAYVwMyacCjypVWZ2zajdqf3h9W++KXpZORryRXLLnmXy2xZoSPNBV84Ktty1o8K2PTPP7GyTSaygHBdT2NeFUbTx7aUS0N8u980d6cw/DHm36EiftbCZorB/1mTNHYopynaVXcAGf0AAaSYzH4lqxUZgJRM33IbyLudUaNhWBbjXcHal5DV2SoPNzjI3GTomdFcjF/iTAV3vP5GnrIiT/dU6bSmKiZcI2orv+RBdPBRr9VqHCxaWo5sIyAyMcpH8lC752YhmiXl3LhyZ79vpROPNWCIVvVPJZmB6nXmDvkYTVkmEgnmuo+EmaS3ufAqyz21p6TbvEhRtj99hgqFuRUx1gV4slrh+FlPOr3TtHKGH9lL6HKR1UwuecbG+1PJCmB8Gfoqy0LnKX7VgkJ6fGDED40sXCKFKxguMbs4ZSkv2gPUECVH5zsn0vbVOuuH8z5xXy2PWzemEPN07WTCiImKHkYy9IaymyBFPSjozCnr6QXrpH11ckwkcB6N8vBQgk8i3VdwbEOhstCY3StFqqFPtC9/AsrhtHHywsbKztLW2t7i5uru/c+IrJDvrwxZfPsHkwW8cqqJPyyImp60XWhTWfW16J9Z1By+wonbX2gtYePQPlZg=",
       "wire_blob_layout": "version(1) || kem_ciphertext(1088) || ephemeral_x25519_public(32) || iv(12) || aead_ciphertext_with_tag(48)"
     }
+  },
+  "vault_merkle": {
+    "spec": "../crypto/vault-leaf.md",
+    "leaf_rule": "SHA-256(UTF-8 of \"cryple.vault.leaf.v1|\u003citem_type\u003e|\u003citem_id\u003e|\u003chex(SHA-256(blob))\u003e\")",
+    "node_rule": "SHA-256(0x01 || left(32) || right(32)); RFC 6962 split at the largest power of two below len",
+    "ordering": "leaves sorted ascending by (item_type, item_id) as byte strings; a repeated pair is an error",
+    "blob_note": "blob is the base64 ciphertext text exactly as the API served it, hashed as UTF-8 bytes and never base64-decoded first",
+    "items_in_canonical_order": [
+      {
+        "item_type": "document",
+        "item_id": "4e5f6a7b-8c9d-4e0f-9a1b-3c4d5e6f7a8b",
+        "blob_as_served": "ZG9jLWEtc25hcHNob3QtY2lwaGVydGV4dA==",
+        "content_sha256_hex": "03256f67898b1feef948aafb245da0eb7d71cbddf507af242891faee4062a1fc",
+        "leaf_preimage": "cryple.vault.leaf.v1|document|4e5f6a7b-8c9d-4e0f-9a1b-3c4d5e6f7a8b|03256f67898b1feef948aafb245da0eb7d71cbddf507af242891faee4062a1fc",
+        "leaf_hex": "15c089f85ef6e9963f49c1a8ff3bb6f81f717b0422323557093d825d77a71acc"
+      },
+      {
+        "item_type": "note",
+        "item_id": "2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f",
+        "blob_as_served": "bm90ZS1hLWNpcGhlcnRleHQ=",
+        "content_sha256_hex": "98d4d624aa214b8f7fc67e4794cddc1bc8a70a342fcafedd749ae64ae400da16",
+        "leaf_preimage": "cryple.vault.leaf.v1|note|2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f|98d4d624aa214b8f7fc67e4794cddc1bc8a70a342fcafedd749ae64ae400da16",
+        "leaf_hex": "ce0bfa70e5732ad730b83c5c53dda05cc2f6e0b69be1a0ad0b4f9c874a11ee1a"
+      },
+      {
+        "item_type": "secret",
+        "item_id": "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+        "blob_as_served": "c2VjcmV0LWEtY2lwaGVydGV4dA==",
+        "content_sha256_hex": "f9e40bb082adcee258416585c7d0ea87ee2defc75c424e12665636ad9e9214c6",
+        "leaf_preimage": "cryple.vault.leaf.v1|secret|0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d|f9e40bb082adcee258416585c7d0ea87ee2defc75c424e12665636ad9e9214c6",
+        "leaf_hex": "1ae5ebf5c952a42fa9eb94d88c120f2bbedbe3c0cf52f6af0d83cba14eb00b85"
+      }
+    ],
+    "root_hex": "38824a82f4d55e8056f862ed1e2aaa7fb60d1c2793fedab1fec873b14c94ca87",
+    "inclusion_proof_for": "note 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f",
+    "inclusion_proof_path": [
+      "15c089f85ef6e9963f49c1a8ff3bb6f81f717b0422323557093d825d77a71acc",
+      "1ae5ebf5c952a42fa9eb94d88c120f2bbedbe3c0cf52f6af0d83cba14eb00b85"
+    ],
+    "inclusion_proof_sibling_side": [
+      "left",
+      "right"
+    ],
+    "inclusion_proof_verification": "fold the leaf with each path element on the stated side using the node rule; the result must equal root_hex"
   }
 }

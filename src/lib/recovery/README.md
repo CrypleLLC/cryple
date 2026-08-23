@@ -220,15 +220,25 @@ fresh challenge, since action signatures are single-use.
 accidental extra guardian raises the owner's bar without adding anyone who will actually
 respond. Surface them as one unit; the number alone is misleading.
 
-`toRecipient` converts a listed guardian into a PQXDH recipient for
-[`buildSetupPayload`](#put-recoverysetup-and-its-digest). It throws
-`GuardianKeysUnavailableError` rather than wrapping to nothing when the guardian is not yet
-active — `encryption_public_key_*` are **absent** on non-active rows, not empty strings.
+`recipientFor` converts a listed guardian into a PQXDH recipient for
+[`buildSetupPayload`](#put-recoverysetup-and-its-digest), taking the recipient half of the
+`recovery-share` `info` string from the row's own `user_address`. It throws
+`GuardianAddressUnavailableError` when that field is absent and `GuardianKeysUnavailableError`
+when the encryption keys are — both meaning the same thing, that the guardian has not accepted
+yet and nothing can be wrapped for them. `toRecipient` is the lower half, taking an address from
+the caller; nothing in the UI supplies one.
 
-The same absence rule applies to `owner_user_address` and `owner_release_cycle` on
-`GET /recovery/guardianships`: present only on `active` rows. That endpoint is the **only**
-place a guardian can obtain either, and `owner_release_cycle` must be re-read before every
-release vote — it changes when a countdown is cancelled.
+The owner never types a guardian's address. `GET /recovery/guardians` supplies it, and it is the
+only place that does: `GET /users/lookup` resolves address → username and never the reverse. A
+share wrapped under the wrong address is accepted by every party and fails only at
+reconstruction.
+
+The same absence rule applies to `user_address` and `encryption_public_key_*` here, and to
+`owner_user_address` and `owner_release_cycle` on `GET /recovery/guardianships`: present only on
+`active` rows, **absent** rather than empty. The two address fields are the two halves of one
+consent handshake — neither side learns the other's address before it completes. That endpoint
+is the **only** place a guardian can obtain either of its two, and `owner_release_cycle` must be
+re-read before every release vote — it changes when a countdown is cancelled.
 
 ## The recovery session — recovering-device side
 
@@ -248,10 +258,6 @@ its own `user_address` (that needs the lost seed) nor the guardian's (the sessio
 carries no guardian identity). The session id is single-use, server-generated and 30-minute
 scoped, so it provides the cross-session binding the addresses were there for. A test confirms a
 blob wrapped for one session will not open under another.
-
-⚠️ **Deployment ordering:** the client now sends two fields, but the running API still expects
-the single `ephemeral_public_key` until `api-general` Task 65 ships. This client is ahead of the
-server on that one endpoint.
 
 What is here:
 
@@ -278,8 +284,22 @@ attempt** and resume by polling it; a blind retry strands the first session with
 a `409` and on a locally-observed `expires_at`. Sessions live 30 minutes.
 
 `completeRecovery` accepts an `ownShare` alongside the collected ones — the user's Recovery Kit
-copy, typed or scanned from the PDF. That is the share that actually counts at recovery time,
-since the server-stored share 0 is wrapped to keys the user no longer has.
+copy, typed or scanned from the PDF. The server-stored share 0 is wrapped to keys the user no
+longer has, so the Kit is the only readable form of it.
+
+⚠️ **It cannot stand in for a guardian, though.** The server releases the collected shares only
+once **`k` guardians** have submitted (`recovery/service/service.go`, `collected < KThreshold`),
+and share 0 is never submitted to a session. A session can therefore collect at most `n - 1`
+shares, `ownShare` is redundancy *above* the threshold rather than one of the `k`, and a vault
+configured `k = n` can never complete this flow at all. `guardiansCanReachThreshold` in
+[`src/lib/app/seed-recovery.ts`](../app/seed-recovery.ts) says so on arrival.
+
+This contradicts `recovery-flow.md`, which describes the recommended 2-of-3 as "user + either of
+two guardians" — as implemented it is **two guardians**, and the user's own share is not counted.
+The gate is defensible: `POST /recovery/request` is public and unauthenticated, so guardian
+approval *is* the authentication, and crediting an unverifiable "I have my Kit" would let a
+stolen Kit plus one tricked guardian open a 2-of-3 vault. But the document and the code disagree
+about what a threshold means, and the UI follows the code.
 
 After reconstruction the flow rejoins the normal restore path (Task 10): set a new local PIN,
 re-wrap the seed, then `POST /sign-up` to restore.
