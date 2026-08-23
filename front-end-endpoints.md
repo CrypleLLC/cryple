@@ -792,6 +792,7 @@ Guardians **the caller has appointed**.
     {
       "id": "9c1e…",
       "username": "alice1234abcd",
+      "user_address": "2b7f…",
       "status": "active",
       "encryption_public_key_x25519": "base64…",
       "encryption_public_key_mlkem": "base64…",
@@ -803,6 +804,8 @@ Guardians **the caller has appointed**.
 ```
 
 Use the returned keys to encrypt that guardian's Shamir share before `PUT /recovery/setup`.
+
+`user_address` is **present only on `active` rows** — omitted entirely while `pending_invite` or `revoked`, never sent as `""`, exactly like `encryption_public_key_*` and like `owner_user_address` on the mirrored [`GET /recovery/guardianships`](#get-recoveryguardianships--protected). It is the **recipient half of the PQXDH `info` string** for `usage = recovery-share`, and this endpoint is the only place it is supplied: [`GET /users/lookup`](#get-userslookupaddressuser_address--public) resolves address → username and never the reverse. Do not ask the owner to type it. A share wrapped under the wrong address is accepted by every party and fails only at reconstruction, years later.
 
 **Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
 

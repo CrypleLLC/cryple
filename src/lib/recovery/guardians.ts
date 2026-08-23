@@ -11,6 +11,7 @@ export type GuardianStatus = (typeof GUARDIAN_STATUSES)[number];
 export interface Guardian {
   id: string;
   username: string;
+  user_address?: string;
   status: GuardianStatus;
   encryption_public_key_x25519?: string;
   encryption_public_key_mlkem?: string;
@@ -177,6 +178,27 @@ export class GuardianKeysUnavailableError extends Error {
     this.name = 'GuardianKeysUnavailableError';
     this.username = username;
   }
+}
+
+export class GuardianAddressUnavailableError extends Error {
+  readonly username: string;
+
+  constructor(username: string) {
+    super(
+      `guardian "${username}" has not accepted their invitation yet, so their account ` +
+        'address is withheld and a share cannot be wrapped for them',
+    );
+    this.name = 'GuardianAddressUnavailableError';
+    this.username = username;
+  }
+}
+
+export function recipientFor(guardian: Guardian): GuardianRecipient {
+  if (guardian.user_address === undefined || guardian.user_address.length === 0) {
+    throw new GuardianAddressUnavailableError(guardian.username);
+  }
+
+  return toRecipient(guardian, guardian.user_address);
 }
 
 export function toRecipient(guardian: Guardian, userAddress: string): GuardianRecipient {
