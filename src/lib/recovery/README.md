@@ -220,15 +220,25 @@ fresh challenge, since action signatures are single-use.
 accidental extra guardian raises the owner's bar without adding anyone who will actually
 respond. Surface them as one unit; the number alone is misleading.
 
-`toRecipient` converts a listed guardian into a PQXDH recipient for
-[`buildSetupPayload`](#put-recoverysetup-and-its-digest). It throws
-`GuardianKeysUnavailableError` rather than wrapping to nothing when the guardian is not yet
-active — `encryption_public_key_*` are **absent** on non-active rows, not empty strings.
+`recipientFor` converts a listed guardian into a PQXDH recipient for
+[`buildSetupPayload`](#put-recoverysetup-and-its-digest), taking the recipient half of the
+`recovery-share` `info` string from the row's own `user_address`. It throws
+`GuardianAddressUnavailableError` when that field is absent and `GuardianKeysUnavailableError`
+when the encryption keys are — both meaning the same thing, that the guardian has not accepted
+yet and nothing can be wrapped for them. `toRecipient` is the lower half, taking an address from
+the caller; nothing in the UI supplies one.
 
-The same absence rule applies to `owner_user_address` and `owner_release_cycle` on
-`GET /recovery/guardianships`: present only on `active` rows. That endpoint is the **only**
-place a guardian can obtain either, and `owner_release_cycle` must be re-read before every
-release vote — it changes when a countdown is cancelled.
+The owner never types a guardian's address. `GET /recovery/guardians` supplies it, and it is the
+only place that does: `GET /users/lookup` resolves address → username and never the reverse. A
+share wrapped under the wrong address is accepted by every party and fails only at
+reconstruction.
+
+The same absence rule applies to `user_address` and `encryption_public_key_*` here, and to
+`owner_user_address` and `owner_release_cycle` on `GET /recovery/guardianships`: present only on
+`active` rows, **absent** rather than empty. The two address fields are the two halves of one
+consent handshake — neither side learns the other's address before it completes. That endpoint
+is the **only** place a guardian can obtain either of its two, and `owner_release_cycle` must be
+re-read before every release vote — it changes when a countdown is cancelled.
 
 ## The recovery session — recovering-device side
 

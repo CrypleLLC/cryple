@@ -5,17 +5,16 @@ import {
   buildSetupPayload,
   inviteGuardian,
   listGuardians,
+  recipientFor,
   requiresSoleGuardianWarning,
   revokeGuardian,
   shareCountForGuardians,
   submitRecoverySetup,
   summarizeQuorum,
-  toRecipient,
   type Guardian,
   type GuardianRecipient,
 } from '@/lib/recovery';
 import { unlockSeedVault } from '@/lib/pin';
-import { lookupUsername } from '@/lib/users';
 import type { RecoveryKitDetails } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
 import GuardianInbox from './GuardianInbox';
@@ -34,7 +33,6 @@ export default function GuardiansScreen() {
   const [guardians, setGuardians] = useState<Guardian[]>();
   const [threshold, setThreshold] = useState(2);
   const [username, setUsername] = useState('');
-  const [addresses, setAddresses] = useState<Record<string, string>>({});
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
@@ -106,15 +104,7 @@ export default function GuardiansScreen() {
         return;
       }
 
-      const recipients: GuardianRecipient[] = [];
-      for (const guardian of active) {
-        const entered = addresses[guardian.id] ?? '';
-        if (entered.trim().length === 0) {
-          setMessage(`Enter the account address for ${guardian.username} before setting up recovery.`);
-          return;
-        }
-        recipients.push(toRecipient(guardian, await resolveGuardianAddress(guardian, entered)));
-      }
+      const recipients: GuardianRecipient[] = active.map(recipientFor);
 
       const built = await buildSetupPayload({
         seedPhrase: opened.seedPhrase,
@@ -238,20 +228,6 @@ export default function GuardiansScreen() {
               onChange={(event) => setThreshold(Number(event.target.value))}
             />
 
-            {active.map((guardian) => (
-              <Field
-                key={guardian.id}
-                label={`Account address for ${guardian.username}`}
-                value={addresses[guardian.id] ?? ''}
-                autoComplete="off"
-                spellCheck={false}
-                hint="64 hex characters. Their share is wrapped to this address, so it is checked against their username first."
-                onChange={(event) =>
-                  setAddresses((current) => ({ ...current, [guardian.id]: event.target.value }))
-                }
-              />
-            ))}
-
             {soleGuardianRisk ? (
               <Notice tone="danger">
                 This person can recover your vault on their own. Only choose someone you fully trust.
@@ -281,23 +257,3 @@ export default function GuardiansScreen() {
   );
 }
 
-export class GuardianAddressMismatchError extends Error {
-  constructor(username: string, resolved: string) {
-    super(
-      `that address belongs to "${resolved}", not to "${username}" — a share wrapped to it ` +
-        'could never be opened',
-    );
-    this.name = 'GuardianAddressMismatchError';
-  }
-}
-
-async function resolveGuardianAddress(guardian: Guardian, address: string): Promise<string> {
-  const trimmed = address.trim().toLowerCase();
-  const resolved = await lookupUsername(trimmed);
-
-  if (resolved !== guardian.username) {
-    throw new GuardianAddressMismatchError(guardian.username, resolved);
-  }
-
-  return trimmed;
-}
