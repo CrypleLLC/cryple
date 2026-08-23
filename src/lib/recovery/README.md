@@ -259,10 +259,6 @@ carries no guardian identity). The session id is single-use, server-generated an
 scoped, so it provides the cross-session binding the addresses were there for. A test confirms a
 blob wrapped for one session will not open under another.
 
-⚠️ **Deployment ordering:** the client now sends two fields, but the running API still expects
-the single `ephemeral_public_key` until `api-general` Task 65 ships. This client is ahead of the
-server on that one endpoint.
-
 What is here:
 
 
@@ -288,8 +284,22 @@ attempt** and resume by polling it; a blind retry strands the first session with
 a `409` and on a locally-observed `expires_at`. Sessions live 30 minutes.
 
 `completeRecovery` accepts an `ownShare` alongside the collected ones — the user's Recovery Kit
-copy, typed or scanned from the PDF. That is the share that actually counts at recovery time,
-since the server-stored share 0 is wrapped to keys the user no longer has.
+copy, typed or scanned from the PDF. The server-stored share 0 is wrapped to keys the user no
+longer has, so the Kit is the only readable form of it.
+
+⚠️ **It cannot stand in for a guardian, though.** The server releases the collected shares only
+once **`k` guardians** have submitted (`recovery/service/service.go`, `collected < KThreshold`),
+and share 0 is never submitted to a session. A session can therefore collect at most `n - 1`
+shares, `ownShare` is redundancy *above* the threshold rather than one of the `k`, and a vault
+configured `k = n` can never complete this flow at all. `guardiansCanReachThreshold` in
+[`src/lib/app/seed-recovery.ts`](../app/seed-recovery.ts) says so on arrival.
+
+This contradicts `recovery-flow.md`, which describes the recommended 2-of-3 as "user + either of
+two guardians" — as implemented it is **two guardians**, and the user's own share is not counted.
+The gate is defensible: `POST /recovery/request` is public and unauthenticated, so guardian
+approval *is* the authentication, and crediting an unverifiable "I have my Kit" would let a
+stolen Kit plus one tricked guardian open a 2-of-3 vault. But the document and the code disagree
+about what a threshold means, and the UI follows the code.
 
 After reconstruction the flow rejoins the normal restore path (Task 10): set a new local PIN,
 re-wrap the seed, then `POST /sign-up` to restore.

@@ -308,6 +308,46 @@ cannot reissue it.
 the kit is surfaced from the Guardians screen rather than during first-run onboarding. Onboarding
 covers phrase, PIN and mode; there is nothing to put in a kit before a guardian exists.
 
+## Guardian-assisted seed recovery
+
+`seed-recovery.ts` is the state machine behind the **I lost my recovery phrase** entry point on
+the login page. Four steps: `request` → `waiting` → `reconstructing` → `recovered`, after which
+the phrase rejoins the ordinary import path (`choose-origin: import`, then `mnemonic-ready`), so
+the PIN step and `enrol` are the same code a normal sign-in runs.
+
+### The session cannot survive a reload, so nothing is persisted
+
+`POST /recovery/request` mints an **ephemeral hybrid key pair that exists only in page memory**,
+and every guardian wraps their share to it. A reload loses the private halves, and the shares
+already submitted become permanently unopenable — a stored `session.id` would resume a session
+whose replies can no longer be read. So the id is held in component state, the keys in a ref,
+and both are disposed on unmount. The screen says to keep the tab open because that is literally
+the constraint, not a nicety.
+
+This is also why the request is made exactly once: it is unsigned and **not retry-safe**, so a
+second call strands the first session with its own 30-minute TTL and its own collected shares.
+`restart` disposes the old keys before asking for anything new.
+
+### Guardians alone must meet the threshold
+
+`guardiansCanReachThreshold` exists because the server counts **only guardian submissions**
+toward `k`. Share 0 is the owner's Recovery Kit copy; it is stored wrapped to the owner's own
+encryption keys, which a recovering device does not have, and it is never submitted to a session.
+So the shares a session can ever collect number `n - 1`, and a vault configured `k = n` can never
+reach `shares_collected` — the screen says so on arrival rather than letting a 30-minute timer
+run out on something that was never going to complete.
+
+The Kit share is therefore passed as `ownShare` for **redundancy above the threshold**, never as
+a substitute for a guardian. See the caveat in [`src/lib/recovery/README.md`](../recovery/README.md)
+about what `recovery-flow.md` says the default means versus what the API implements.
+
+### What the user has to supply
+
+The **username**, which is on the Recovery Kit and is neither the email nor the account address.
+`GET /recovery/vault` and `POST /recovery/request` are both keyed by it, and neither has any
+other lookup. A user with neither phrase nor Kit has no way in, and the screen should keep
+saying so rather than letting them discover it one field at a time.
+
 ## The succession dashboard reads two statuses, not one
 
 `GET /succession/status` answers with two different facts and `buildReleaseView`
