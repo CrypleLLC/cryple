@@ -12,18 +12,21 @@ import {
   mnemonicSentence,
   onboardingReducer,
   PIN_STEP_COPY,
+  SEED_RECOVERY_COPY,
   SEED_WARNING,
   verifyBackup,
   type OnboardingOrigin,
   type OnboardingState,
 } from '@/lib/app';
 import { useCryple } from './CrypleProvider';
+import SeedRecovery from './SeedRecovery';
 import { Button, Card, CopyButton, Field, Notice, TextArea } from './ui';
 
 export default function Onboarding() {
   const { enrol } = useCryple();
   const [state, dispatch] = useReducer(onboardingReducer, INITIAL_ONBOARDING);
   const [busy, setBusy] = useState(false);
+  const [recovering, setRecovering] = useState(false);
 
   async function finish(paranoid: boolean, pin: string) {
     if (state.mnemonic === undefined) {
@@ -49,11 +52,30 @@ export default function Onboarding() {
     }
   }
 
+  function adoptRecoveredPhrase(mnemonic: string) {
+    setRecovering(false);
+    dispatch({ type: 'choose-origin', origin: 'import' });
+    dispatch({ type: 'mnemonic-ready', mnemonic: mnemonicSentence(mnemonic) });
+  }
+
+  if (recovering) {
+    return (
+      <div className="mx-auto max-w-2xl space-y-6">
+        <SeedRecovery
+          onRecovered={adoptRecoveredPhrase}
+          onCancel={() => setRecovering(false)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       {state.error ? <Notice tone="danger">{state.error}</Notice> : null}
 
-      {state.step === 'origin' ? <OriginStep dispatch={dispatch} /> : null}
+      {state.step === 'origin' ? (
+        <OriginStep dispatch={dispatch} onRecover={() => setRecovering(true)} />
+      ) : null}
       {state.step === 'backup' ? <BackupStep state={state} dispatch={dispatch} /> : null}
       {state.step === 'verify' ? <VerifyStep state={state} dispatch={dispatch} /> : null}
       {state.step === 'import' ? <ImportStep state={state} dispatch={dispatch} /> : null}
@@ -85,7 +107,7 @@ export default function Onboarding() {
 
 type Dispatch = (event: Parameters<typeof onboardingReducer>[1]) => void;
 
-function OriginStep({ dispatch }: { dispatch: Dispatch }) {
+function OriginStep({ dispatch, onRecover }: { dispatch: Dispatch; onRecover: () => void }) {
   const [tab, setTab] = useState<OnboardingOrigin>('generate');
   const [wordCount, setWordCount] = useState<MnemonicWordCount>(12);
 
@@ -184,6 +206,16 @@ function OriginStep({ dispatch }: { dispatch: Dispatch }) {
         <Button onClick={signingUp ? startSignUp : startSignIn}>
           {signingUp ? 'Create my recovery phrase' : 'Continue'}
         </Button>
+
+        {signingUp ? null : (
+          <button
+            type="button"
+            onClick={onRecover}
+            className="text-sm text-brand-600 underline-offset-4 hover:underline dark:text-brand-400"
+          >
+            {SEED_RECOVERY_COPY.entry}
+          </button>
+        )}
       </div>
     </Card>
   );

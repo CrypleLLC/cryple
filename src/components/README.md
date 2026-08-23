@@ -234,16 +234,36 @@ there never will be.
 needs the seed **phrase**, so the Guardians screen re-opens the local vault with
 `unlockSeedVault(pin)` for that one operation. That is a real re-prompt, and the field says why.
 
-It also asks for each active guardian's 64-hex **account address**, because
-`GET /recovery/guardians` returns usernames and encryption keys but no address, and PQXDH's `info`
-string binds one. Each entry is checked with `GET /users/lookup` and refused unless it resolves to
-that guardian's username — wrapping a share to the wrong address produces a blob the guardian can
-never open, and nothing server-side would catch it. The same check exists on the succession side
-as `resolveRecipient`.
+It no longer asks for guardian addresses. PQXDH's `info` string binds the recipient's
+`user_address`, and `GET /recovery/guardians` now returns it on `active` rows, so `recipientFor`
+reads it off the row. The screen used to make the owner type each 64-hex address and check it with
+`GET /users/lookup`; wrapping a share to a mistyped address produces a blob the guardian can never
+open and nothing server-side would catch it, so removing the field removed the failure.
 
 Quorum is shown as `min(configured, active)` alongside the guardian count, with an explicit
 warning when the configured threshold exceeds the number of guardians who can actually answer.
 The k=1 sole-guardian warning is rendered verbatim from the spec.
+
+## Getting back in without the phrase
+
+`SeedRecovery.tsx` sits behind an **I lost my recovery phrase** link on the sign-in tab, not
+behind a third tab — it is a rare path, and a tab implies parity with signing up and signing in.
+On success it hands the phrase to `Onboarding`, which dispatches the ordinary `import` origin, so
+the PIN step and `enrol` are shared code rather than a parallel flow.
+
+The ephemeral hybrid key pair lives in a `useRef` and is disposed on unmount, on restart and on
+completion. It is never persisted, because it cannot usefully be: a reload loses the private
+halves and every share already submitted becomes unopenable. That is why the screen keeps saying
+to leave the tab open, and why the request is issued exactly once — it is unsigned and not
+retry-safe.
+
+Polling runs in an effect with an `AbortController`, so closing the screen stops it. A
+`SessionExpiredError` is rendered as its own copy rather than through `reportError`, because the
+remedy — start again, guardians must re-send — is specific and an API code cannot express it.
+
+The reducer and every derived number live in [`src/lib/app/seed-recovery.ts`](../lib/app/seed-recovery.ts)
+so they are testable without a DOM, which is where the "guardians alone must meet the threshold"
+rule is enforced and explained.
 
 ## Product boundaries this shell respects
 

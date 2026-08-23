@@ -10,6 +10,7 @@ export * from './documents';
 export * from './label';
 export * from './succession-view';
 export * from './recovery-kit';
+export * from './seed-recovery';
 export * from './heartbeat';
 export * from './anchoring';
 export * from './inheritance';
