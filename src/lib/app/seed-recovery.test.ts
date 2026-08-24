@@ -5,10 +5,11 @@ import {
   collectedShares,
   describeProgress,
   guardianShareCount,
-  guardiansCanReachThreshold,
+  guardiansStillNeeded,
   INITIAL_SEED_RECOVERY,
   minutesRemaining,
   seedRecoveryReducer,
+  thresholdIsReachable,
 } from './seed-recovery';
 
 const EXPIRES_AT = '2026-08-23T12:30:00Z';
@@ -118,11 +119,29 @@ describe('what the session can and cannot reach', () => {
   });
 
   it('accepts the recommended 2-of-3, where two guardians meet the threshold', () => {
-    expect(guardiansCanReachThreshold(session({ n_shares: 3, k_threshold: 2 }))).toBe(true);
+    expect(thresholdIsReachable(session({ n_shares: 3, k_threshold: 2 }), false)).toBe(true);
   });
 
   it('refuses a vault whose threshold no set of guardians can meet', () => {
-    expect(guardiansCanReachThreshold(session({ n_shares: 3, k_threshold: 3 }))).toBe(false);
+    expect(thresholdIsReachable(session({ n_shares: 3, k_threshold: 3 }), false)).toBe(false);
+  });
+
+  it('counts the Recovery Kit as a share, so 3-of-3 becomes reachable with it', () => {
+    expect(thresholdIsReachable(session({ n_shares: 3, k_threshold: 3 }), true)).toBe(true);
+  });
+
+  it('needs one guardian fewer on a 2-of-3 when the kit is held', () => {
+    expect(guardiansStillNeeded(session({ n_shares: 3, k_threshold: 2 }), true)).toBe(1);
+    expect(guardiansStillNeeded(session({ n_shares: 3, k_threshold: 2 }), false)).toBe(2);
+  });
+
+  it('is satisfied by the kit plus one guardian on a 2-of-3', () => {
+    expect(guardiansStillNeeded(collected(1), true)).toBe(0);
+    expect(guardiansStillNeeded(collected(1), false)).toBe(1);
+  });
+
+  it('never asks for fewer than no guardians once the threshold is passed', () => {
+    expect(guardiansStillNeeded(collected(2), true)).toBe(0);
   });
 
   it('counts collected shares as none when the field is absent', () => {
@@ -138,16 +157,30 @@ describe('what the session can and cannot reach', () => {
 });
 
 describe('progress copy', () => {
-  it('names the threshold and the guardian count before anything arrives', () => {
-    expect(describeProgress(session())).toBe('Waiting for 2 of your 2 guardians.');
+  it('names what is still outstanding before anything arrives', () => {
+    expect(describeProgress(session(), false)).toBe(
+      'Waiting for 2 more guardians of your 2.',
+    );
   });
 
-  it('counts up once shares start arriving', () => {
-    expect(describeProgress(collected(1))).toBe('1 of 2 shares in.');
+  it('says the kit already counts, and asks for one guardian fewer', () => {
+    expect(describeProgress(session(), true)).toBe(
+      'Your Recovery Kit counts as one piece. Waiting for 1 more guardian of your 2.',
+    );
   });
 
-  it('stops counting once the threshold is met', () => {
-    expect(describeProgress(collected(2))).toBe('Every share needed has arrived.');
+  it('counts down as shares arrive', () => {
+    expect(describeProgress(collected(1), false)).toBe(
+      'Waiting for 1 more guardian of your 2.',
+    );
+  });
+
+  it('stops counting once the kit and one guardian meet a 2-of-3', () => {
+    expect(describeProgress(collected(1), true)).toBe('Every piece needed has arrived.');
+  });
+
+  it('stops counting once guardians alone meet the threshold', () => {
+    expect(describeProgress(collected(2), false)).toBe('Every piece needed has arrived.');
   });
 });
 

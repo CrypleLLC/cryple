@@ -16,11 +16,11 @@ import {
   decodeRecoveryKitShare,
   describeProgress,
   guardianShareCount,
-  guardiansCanReachThreshold,
   INITIAL_SEED_RECOVERY,
   minutesRemaining,
   SEED_RECOVERY_COPY,
   seedRecoveryReducer,
+  thresholdIsReachable,
 } from '@/lib/app';
 import { useCryple } from './CrypleProvider';
 import { Button, Card, Field, Notice, Spinner, TextArea } from './ui';
@@ -37,6 +37,7 @@ export default function SeedRecovery({
   const [username, setUsername] = useState('');
   const [kit, setKit] = useState('');
   const [busy, setBusy] = useState(false);
+  const [hasOwnShare, setHasOwnShare] = useState(false);
 
   const keys = useRef<EphemeralSessionKeys | undefined>(undefined);
   const ownShare = useRef<Uint8Array | undefined>(undefined);
@@ -62,6 +63,7 @@ export default function SeedRecovery({
     try {
       ownShare.current =
         kit.trim().length === 0 ? undefined : await decodeRecoveryKitShare(kit);
+      setHasOwnShare(ownShare.current !== undefined);
 
       const started = await startRecovery({ username: checked.username });
       keys.current = started.keys;
@@ -95,6 +97,7 @@ export default function SeedRecovery({
       try {
         const settled = await pollRecoverySession(sessionId, {
           signal: controller.signal,
+          ownShareCount: hasOwnShare ? 1 : 0,
           onUpdate: (updated) => dispatch({ type: 'session-updated', session: updated }),
         });
         dispatch({ type: 'threshold-reached', session: settled });
@@ -113,7 +116,7 @@ export default function SeedRecovery({
     })();
 
     return () => controller.abort();
-  }, [watching, sessionId, reportError]);
+  }, [watching, sessionId, hasOwnShare, reportError]);
 
   const vault = state.vault;
   const reconstructing = state.step === 'reconstructing';
@@ -157,6 +160,8 @@ export default function SeedRecovery({
       disposeEphemeralKeys(keys.current);
       keys.current = undefined;
     }
+    ownShare.current = undefined;
+    setHasOwnShare(false);
     dispatch({ type: 'restart' });
   }
 
@@ -219,15 +224,17 @@ export default function SeedRecovery({
 
         {session !== undefined && state.step !== 'request' ? (
           <div className="space-y-4">
-            {!guardiansCanReachThreshold(session) ? (
+            {!thresholdIsReachable(session, hasOwnShare) ? (
               <Notice tone="danger">{SEED_RECOVERY_COPY.unreachable}</Notice>
             ) : null}
 
             <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-              <p className="text-sm font-medium">{describeProgress(session)}</p>
+              <p className="text-sm font-medium">
+                {describeProgress(session, hasOwnShare)}
+              </p>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                {collectedShares(session)} of {session.k_threshold} needed ·{' '}
-                {guardianShareCount(session)} guardian
+                {collectedShares(session) + (hasOwnShare ? 1 : 0)} of {session.k_threshold}{' '}
+                needed · {guardianShareCount(session)} guardian
                 {guardianShareCount(session) === 1 ? '' : 's'} asked ·{' '}
                 {minutesRemaining(session)} minutes left
               </p>

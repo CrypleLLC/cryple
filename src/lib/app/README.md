@@ -328,18 +328,32 @@ This is also why the request is made exactly once: it is unsigned and **not retr
 second call strands the first session with its own 30-minute TTL and its own collected shares.
 `restart` disposes the old keys before asking for anything new.
 
-### Guardians alone must meet the threshold
+### The Recovery Kit is one of the `k`
 
-`guardiansCanReachThreshold` exists because the server counts **only guardian submissions**
-toward `k`. Share 0 is the owner's Recovery Kit copy; it is stored wrapped to the owner's own
-encryption keys, which a recovering device does not have, and it is never submitted to a session.
-So the shares a session can ever collect number `n - 1`, and a vault configured `k = n` can never
-reach `shares_collected` — the screen says so on arrival rather than letting a 30-minute timer
-run out on something that was never going to complete.
+Share 0 is the owner's Recovery Kit copy. It is never submitted to a session — the server-stored
+copy is wrapped to the owner's own encryption keys, which a recovering device does not have — so
+a session collects at most `n - 1` shares and the server can never see the whole quorum.
+**Counting the threshold is this module's job**, because only the screen knows whether the user
+pasted their Kit.
 
-The Kit share is therefore passed as `ownShare` for **redundancy above the threshold**, never as
-a substitute for a guardian. See the caveat in [`src/lib/recovery/README.md`](../recovery/README.md)
-about what `recovery-flow.md` says the default means versus what the API implements.
+Every function here therefore takes `hasOwnShare` and adds it to what guardians have sent:
+
+| Function | Answers |
+| --- | --- |
+| `reachableShares` | how many pieces this session could ever assemble |
+| `thresholdIsReachable` | whether that can meet `k` at all — drives the dead-end notice |
+| `guardiansStillNeeded` | how many guardians are outstanding right now |
+| `describeProgress` | the same, as a sentence, naming the Kit when it is counted |
+
+So the recommended 2-of-3 needs **one** guardian from a user who has their Kit and **two** from
+one who does not, and a vault configured `k = n` completes only with the Kit. The dead-end notice
+fires when even every guardian plus whatever the device holds cannot reach `k` — the screen says
+so on arrival rather than letting a 30-minute timer run out on something that was never going to
+complete, and it points at the Kit field, since pasting the Kit is often what makes it reachable.
+
+`SeedRecovery.tsx` holds `hasOwnShare` in state rather than reading the `ownShare` ref, because
+the ref does not re-render the progress panel. The decoded share itself stays in the ref — it is
+key material and never belongs in React state.
 
 ### What the user has to supply
 

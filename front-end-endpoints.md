@@ -932,7 +932,7 @@ Sessions live for `RECOVERY_SESSION_TTL_MINUTES` (**default 30 minutes**). Persi
 
 ### `GET /recovery/session/{id}` — public
 
-Polled by the recovering client. **Shares are withheld until the threshold is met** — below `k`, `shares` is absent; at or above `k`, `status` flips to `shares_collected` and every collected share is returned at once.
+Polled by the recovering client. **Every share submitted so far is returned**, even below `k` — the server cannot count share 0 (the owner's Recovery Kit copy, never uploaded), so it cannot know whether the threshold is met and does not try. Counting `k` is the client's job. `status` flips to `shares_collected` only once **every** guardian has answered (`n_shares - 1` submissions), which means "nobody else is coming", not "you can start".
 
 **`200 OK`** (below threshold)
 
