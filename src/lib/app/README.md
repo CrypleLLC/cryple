@@ -13,6 +13,8 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | `vault.ts` | The vault index view model, received-ciphertext integrity check, and the local secret name/value format |
 | `notes.ts` | The notes file-grid view model — title, thumbnail, selection, character budget and autosave state |
 | `succession-view.ts` | Release status, vote audit and heir view models |
+| `heartbeat.ts` | What the switch card says, and how urgent it is |
+| `switch-periods.ts` | The inactivity/contest period options, and which the deployed contract accepts |
 | `recovery-kit.ts` | The printable share-0 Recovery Kit |
 | `label.ts` | Sealing and reading the owner's private note about an heir |
 | `inheritance.ts` | The selectable list behind "Set inheritance", and the additive save |
@@ -386,6 +388,44 @@ on `chain.status` when the difference matters.
 `lastCheckIn` is therefore optional and has three renderings: a date, "not
 configured on-chain" when the smart account has never been configured, and
 "unavailable" during an outage.
+
+## Choosing the switch periods
+
+`switch-periods.ts` is the model behind the two selects on `HeartbeatCard`: how long silence has
+to last before heirs can start a release, and how long the owner then has to stop it with
+**I'm alive**. It is pure — the chain access lives in
+[`lib/chain`](../chain/README.md#the-periods-and-the-floors-the-deployment-fixes).
+
+`PERIOD_OPTIONS` is the fixed list: **1, 3, 5, 10, 30 minutes and 24 hours**. These are testing
+durations, deliberately — they exist so a release and its cancel can be exercised inside one
+sitting rather than one month.
+
+### The list is offered in full; the chain decides what is selectable
+
+`DeadManSwitch.minInactivityPeriod` / `minContestPeriod` are **immutable**, so the deployed
+contract's floors are a fact the client discovers rather than a rule it sets. `selectablePeriods`
+marks each option `allowed` against a floor read live by `fetchSwitchLimits`, and the select
+renders the rejected ones **disabled with the reason**, not hidden. Hiding them would make a
+redeployment look like a UI change; greying them out says the option exists and this contract
+refuses it.
+
+Against the current Sepolia deployment (300 / 120) that means **1 and 3 minutes are unselectable
+for inactivity, and 1 minute for the contest period**. Both open up on their own if the switch is
+redeployed with lower floors — no client change is involved.
+
+`nearestAllowedPeriod` raises a below-floor choice to the smallest option that clears it, so a
+stored default of 10 minutes never arrives at the contract as a value it will revert on.
+
+### Saving periods is a check-in, and the copy says so
+
+`configure()` resets `lastCheckIn`, so saving new periods restarts the clock. `periodsChanged`
+gates the **Save these periods** button on the selects actually differing from what the chain
+holds, so the button is inert until there is something to save and a user cannot spend gas
+re-writing the values already there.
+
+`formatMoment` renders timestamps with the **time**, not just the date. At 24-hour periods a date
+was enough; at one-minute periods "last checked in Aug 24, 2026 · next due Aug 24, 2026" tells the
+user nothing, which is the whole point of the short options.
 
 ## Choosing what an heir inherits
 
