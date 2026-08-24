@@ -12,6 +12,7 @@ export * from './succession-view';
 export * from './recovery-kit';
 export * from './seed-recovery';
 export * from './heartbeat';
+export * from './switch-periods';
 export * from './anchoring';
 export * from './inheritance';
 export * from './claim';

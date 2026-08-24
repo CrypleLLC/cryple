@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { p256 } from '@noble/curves/nist.js';
 import { hexToBytes } from '@/lib/encoding';
-import { fetchSwitchRecord, planHeartbeat, type HeartbeatIdentity } from './check-in';
+import {
+  fetchSwitchLimits,
+  fetchSwitchRecord,
+  planHeartbeat,
+  type HeartbeatIdentity,
+} from './check-in';
 import { publicKeyFromPrivate } from './operation';
 import {
   fetchCurrentEpoch,
@@ -33,6 +38,23 @@ describe.skipIf(!live)('live Arbitrum Sepolia heartbeat', () => {
     expect(record.lastCheckIn).toBeGreaterThan(1787153000);
     expect(record.triggeredAt).toBeUndefined();
   }, 60_000);
+
+  it('reads the immutable period floors the deployed switch enforces', async () => {
+    const limits = await fetchSwitchLimits();
+    expect(limits.minInactivitySeconds).toBe(300);
+    expect(limits.minContestSeconds).toBe(120);
+  }, 60_000);
+
+  it('plans a reconfigure rather than a check-in when periods are being changed', async () => {
+    const plan = await planHeartbeat(identity, {
+      reconfigure: true,
+      inactivityPeriodSeconds: 300,
+      contestPeriodSeconds: 120,
+    });
+
+    expect(plan.operation).toBe('reconfigure');
+    expect(plan.userOperation.callData).toContain((300).toString(16).padStart(64, '0'));
+  }, 120_000);
 
   it('derives the same smart account the deployed factory does', () => {
     expect(smartAccountAddress(identity.publicKeyUncompressed)).toMatch(/^0x[0-9a-f]{40}$/);

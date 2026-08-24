@@ -61,14 +61,41 @@ convenience; this device's derivation is the authority.
 
 ## The flow
 
-`planHeartbeat` reads chain state and decides which of three operations is due, then measures,
+`planHeartbeat` reads chain state and decides which of four operations is due, then measures,
 then prices it:
 
 | Account state | Operation | What one user operation does |
 | --- | --- | --- |
 | no code | `deploy-and-configure` | deploys the account through the factory **and** calls `configure()` |
 | deployed, `statusOf == 0` | `configure` | starts the switch |
+| deployed and configured, `reconfigure: true` | `reconfigure` | calls `configure()` again with new periods |
 | deployed and configured | `check-in` | `checkIn()` |
+
+**`reconfigure` is opt-in and must be, because it is not a check-in with extra steps.**
+`configure()` overwrites `inactivityPeriod` and `contestPeriod`, resets `lastCheckIn` to now,
+**and revokes a running contest** — so calling it by default would silently change a user's
+settings every time they meant to say "I'm alive". The caller sets `reconfigure: true` only when
+the periods are actually being changed; everything else still routes to `checkIn()`.
+
+### The periods, and the floors the deployment fixes
+
+`configure(uint32 inactivityPeriod, uint32 contestPeriod, …)` takes both as seconds, and
+`HeartbeatOptions` carries them through as `inactivityPeriodSeconds` / `contestPeriodSeconds`.
+They default to `MVP_INACTIVITY_PERIOD_SECONDS` (600) and `MVP_CONTEST_PERIOD_SECONDS` (300).
+
+`DeadManSwitch` rejects anything under `minInactivityPeriod` / `minContestPeriod` with
+`PeriodTooShort`. Both are **`immutable` constructor arguments**, so they cannot be raised or
+lowered after deployment — a shorter period needs a *new* contract, not a transaction.
+
+| Deployment | `minInactivityPeriod` | `minContestPeriod` |
+| --- | --- | --- |
+| Arbitrum Sepolia, `0x6951a65C…` (current) | 300 (5 minutes) | 120 (2 minutes) |
+| `Deploy.s.sol` production floor | 30 days | 7 days |
+
+`fetchSwitchLimits()` reads both getters off the live contract rather than hardcoding them, so a
+redeployment with different floors needs no client change. **Read the floors; never assume them** —
+a period below the floor does not fail at submission, it reverts inside the userOp, which surfaces
+as a generic AA failure well after the user pressed the button.
 
 `submitHeartbeat` then hashes via `entryPoint.getUserOpHash` (an `eth_call`, not a local EIP-712
 reimplementation — v0.8 changed the hashing and the contract is the only authority worth
