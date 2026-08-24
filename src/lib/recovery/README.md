@@ -276,8 +276,10 @@ is the guardian vote rather than a credential. **Persist `session.id` before the
 attempt** and resume by polling it; a blind retry strands the first session with its own
 30-minute TTL and its own shares.
 
-**Shares are withheld below the threshold.** Under `k`, `shares` is absent; at or above it,
-`status` flips to `shares_collected` and every collected share arrives at once.
+**Shares arrive as they are submitted.** `shares` holds whatever guardians have sent so far,
+which may be fewer than `k`. `status` flips to `shares_collected` only once **every** guardian
+has answered (`n - 1` submissions) — that means "nobody else is coming", not "you can start".
+**Never gate reconstruction on the status**; count the shares.
 
 **Poll, do not wait** — there are no webhooks. `pollRecoverySession` defaults to 3s, takes an
 `AbortSignal` so polling stops when the screen closes, and raises `SessionExpiredError` both on
@@ -287,19 +289,34 @@ a `409` and on a locally-observed `expires_at`. Sessions live 30 minutes.
 copy, typed or scanned from the PDF. The server-stored share 0 is wrapped to keys the user no
 longer has, so the Kit is the only readable form of it.
 
-⚠️ **It cannot stand in for a guardian, though.** The server releases the collected shares only
-once **`k` guardians** have submitted (`recovery/service/service.go`, `collected < KThreshold`),
-and share 0 is never submitted to a session. A session can therefore collect at most `n - 1`
-shares, `ownShare` is redundancy *above* the threshold rather than one of the `k`, and a vault
-configured `k = n` can never complete this flow at all. `guardiansCanReachThreshold` in
-[`src/lib/app/seed-recovery.ts`](../app/seed-recovery.ts) says so on arrival.
+**The Kit is one of the `k`, not a spare above them.** `hasReachedThreshold(session, ownShareCount)`
+counts guardian submissions plus the shares the device already holds, and `pollRecoverySession`
+takes `ownShareCount` so it stops one guardian earlier when the Kit was supplied. The recommended
+2-of-3 is therefore what `recovery-flow.md` says it is: **the user plus either guardian**. A vault
+configured `k = n` completes only with the Kit — every guardian plus share 0.
 
-This contradicts `recovery-flow.md`, which describes the recommended 2-of-3 as "user + either of
-two guardians" — as implemented it is **two guardians**, and the user's own share is not counted.
-The gate is defensible: `POST /recovery/request` is public and unauthenticated, so guardian
-approval *is* the authentication, and crediting an unverifiable "I have my Kit" would let a
-stolen Kit plus one tricked guardian open a 2-of-3 vault. But the document and the code disagree
-about what a threshold means, and the UI follows the code.
+**Only the client can count the threshold.** `k_threshold` counts all `n` shares including share 0,
+which is never uploaded; the server sees at most `n - 1` of them and cannot know whether the
+recovering device holds its Kit. Comparing guardian submissions against `k_threshold` server-side
+— which is what the code did until this was fixed — quietly demanded `k + 1` pieces of any owner
+who had their Kit, turning the recommended 2-of-3 into a 3-of-3.
+
+### Why counting the Kit is not a weakening
+
+The former gate was argued for on the grounds that `POST /recovery/request` is public and
+unsigned, so guardian approval *is* the authentication, and an unverifiable "I have my Kit"
+should not be credited. Three things are wrong with that:
+
+- **A stolen Kit plus one guardian opening a 2-of-3 vault is the configuration working**, not a
+  bypass. That is precisely what the owner chose when they picked `k = 2` over `k = 3`, and what
+  the setup UI promises. The defence against a stolen Kit is the threshold the owner selected and
+  the guardian's out-of-band check that the requester is really them — never a server count.
+- **The gate never prevented that attack**, it only raised every requester's bar by one. An
+  attacker holding the Kit who could trick one guardian could usually trick two; the owner who
+  lost their phone could not conjure a second guardian at 2am.
+- **Nothing is disclosed by releasing shares early.** Fewer than `k` Shamir shares are
+  information-theoretically independent of the REK, and every relayed blob is sealed to the
+  session's ephemeral keys, which only the recovering device holds.
 
 After reconstruction the flow rejoins the normal restore path (Task 10): set a new local PIN,
 re-wrap the seed, then `POST /sign-up` to restore.

@@ -69,8 +69,23 @@ export function guardianShareCount(session: RecoverySession): number {
   return Math.max(session.n_shares - USER_SHARE_COUNT, 0);
 }
 
-export function guardiansCanReachThreshold(session: RecoverySession): boolean {
-  return guardianShareCount(session) >= session.k_threshold;
+export function reachableShares(session: RecoverySession, hasOwnShare: boolean): number {
+  return guardianShareCount(session) + (hasOwnShare ? USER_SHARE_COUNT : 0);
+}
+
+export function thresholdIsReachable(
+  session: RecoverySession,
+  hasOwnShare: boolean,
+): boolean {
+  return reachableShares(session, hasOwnShare) >= session.k_threshold;
+}
+
+export function guardiansStillNeeded(
+  session: RecoverySession,
+  hasOwnShare: boolean,
+): number {
+  const held = collectedShares(session) + (hasOwnShare ? USER_SHARE_COUNT : 0);
+  return Math.max(session.k_threshold - held, 0);
 }
 
 export function minutesRemaining(session: RecoverySession, now: Date = new Date()): number {
@@ -78,17 +93,21 @@ export function minutesRemaining(session: RecoverySession, now: Date = new Date(
   return Math.max(Math.ceil(remaining / 60_000), 0);
 }
 
-export function describeProgress(session: RecoverySession): string {
-  const collected = collectedShares(session);
-  const needed = session.k_threshold;
+export function describeProgress(session: RecoverySession, hasOwnShare: boolean): string {
+  const outstanding = guardiansStillNeeded(session, hasOwnShare);
 
-  if (collected >= needed) {
-    return 'Every share needed has arrived.';
+  if (outstanding === 0) {
+    return 'Every piece needed has arrived.';
   }
-  if (collected === 0) {
-    return `Waiting for ${needed} of your ${guardianShareCount(session)} guardians.`;
+
+  const guardians = guardianShareCount(session);
+  const plural = outstanding === 1 ? 'guardian' : 'guardians';
+
+  if (hasOwnShare) {
+    return `Your Recovery Kit counts as one piece. Waiting for ${outstanding} more ${plural} of your ${guardians}.`;
   }
-  return `${collected} of ${needed} shares in.`;
+
+  return `Waiting for ${outstanding} more ${plural} of your ${guardians}.`;
 }
 
 export const SEED_RECOVERY_COPY = {
@@ -105,8 +124,8 @@ export const SEED_RECOVERY_COPY = {
 
   kitLabel: 'Your Recovery Kit share (optional)',
   kitHint:
-    'Starts with CRK1. Add it if you have it — it is a spare in case one guardian share will ' +
-    'not open, and it is never a substitute for a guardian.',
+    'Starts with CRK1. Add it if you have it — it counts as one of the pieces, so it is one ' +
+    'guardian fewer you need to reach.',
 
   keepOpen:
     'Keep this tab open. Your guardians send their pieces to keys that exist only on this page, ' +
@@ -117,9 +136,10 @@ export const SEED_RECOVERY_COPY = {
     'ones already sent cannot be reused.',
 
   unreachable:
-    'Your vault asks for more pieces than you have guardians, so guardians alone cannot open ' +
-    'it. Nothing here can complete. If you still hold your recovery phrase, sign in with it ' +
-    'and set recovery up again with a lower threshold.',
+    'Your vault asks for more pieces than the ones you can still reach. Even every guardian ' +
+    'answering would not be enough, so nothing here can complete. If you still hold your ' +
+    'Recovery Kit, add it above — it counts as a piece. Otherwise, if you still hold your ' +
+    'recovery phrase, sign in with it and set recovery up again with a lower threshold.',
 
   recovered:
     'Your recovery phrase is back. Write it down again before you continue — this is the only ' +

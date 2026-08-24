@@ -108,8 +108,23 @@ export function isSessionExpired(
   return sessionExpiresAt(session).getTime() <= now.getTime();
 }
 
-export function hasReachedThreshold(session: RecoverySession): boolean {
-  return session.status === 'shares_collected' && (session.shares?.length ?? 0) > 0;
+export function collectedGuardianShares(session: RecoverySession): number {
+  return session.shares?.length ?? 0;
+}
+
+export function hasReachedThreshold(
+  session: RecoverySession,
+  ownShareCount = 0,
+): boolean {
+  if (session.k_threshold < 1) {
+    return false;
+  }
+
+  return collectedGuardianShares(session) + ownShareCount >= session.k_threshold;
+}
+
+export function allGuardiansResponded(session: RecoverySession): boolean {
+  return session.status === 'shares_collected';
 }
 
 export interface PollOptions {
@@ -117,6 +132,7 @@ export interface PollOptions {
   signal?: AbortSignal;
   onUpdate?: (session: RecoverySession) => void;
   timeoutMs?: number;
+  ownShareCount?: number;
 }
 
 /**
@@ -128,6 +144,7 @@ export async function pollRecoverySession(
   options: PollOptions = {},
 ): Promise<RecoverySession> {
   const interval = options.intervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+  const ownShareCount = options.ownShareCount ?? 0;
 
   for (;;) {
     if (options.signal?.aborted) {
@@ -137,7 +154,7 @@ export async function pollRecoverySession(
     const session = await getRecoverySession(sessionId, { timeoutMs: options.timeoutMs });
     options.onUpdate?.(session);
 
-    if (hasReachedThreshold(session)) {
+    if (hasReachedThreshold(session, ownShareCount)) {
       return session;
     }
     if (isSessionExpired(session)) {
@@ -183,7 +200,7 @@ export async function completeRecovery(
 ): Promise<string> {
   const { session, keys, vault, ownShare } = options;
 
-  if (!hasReachedThreshold(session)) {
+  if (!hasReachedThreshold(session, ownShare === undefined ? 0 : 1)) {
     throw new Error('the session has not collected its threshold of shares yet');
   }
 
