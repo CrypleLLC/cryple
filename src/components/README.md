@@ -30,7 +30,7 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `HeirTabs.tsx` | One tab per heir — what they inherit, and the actions on it |
 | `SetInheritanceModal.tsx` | Choosing which vault items an heir inherits |
 | `RecoveryKitCard.tsx` | The printable share-0 surface |
-| `ui.tsx` | Card / Button / Field / TextArea / Badge / Notice / Modal primitives |
+| `ui.tsx` | Card / Button / Field / TextArea / Select / Badge / Notice / Modal primitives |
 | `icons.tsx` | The stroke-icon set shared by navigation and primitives |
 | `StagingBanner.tsx` | The walking red warning banner, dev-only — see [`app`](../app/README.md#the-staging-banner) |
 
@@ -121,6 +121,16 @@ removal, and heir removal.
 **Release status, the vote audit and the heartbeat card stay outside the tabs.** They describe the
 account's switch, not one heir, and nesting them under a name would suggest a countdown could run
 per heir. It cannot — there is one switch.
+
+`HeartbeatCard.tsx` also owns the two period selects — how long silence lasts before heirs can act,
+and how long the owner then has to stop it. The options and the floor logic live in
+[`lib/app/switch-periods.ts`](../lib/app/README.md#choosing-the-switch-periods); the card holds the
+two selected values in state and the on-chain floors from `fetchSwitchLimits`.
+
+**The card has two actions once the switch is running, and they are not the same call.** *I'm alive*
+sends `checkIn()`. *Save these periods* sends `configure()` again, which also resets the clock, so
+it is a separate button rather than a side effect of checking in — and it stays disabled until
+`periodsChanged` says the selects differ from what the chain holds.
 
 **The vault is opened once for the whole screen, not per tab.** Every title in the panel comes from
 decrypted content — a share carries `item_id` and `item_type` and nothing else, because the server
@@ -275,9 +285,10 @@ recorded here rather than being visible in the code:
 - **No session list or "sign out all devices".**
 - **No key-rotation flow.** `keys_rotated: true` renders "this heir closed their account — remove
   them and choose another", never a re-wrap prompt.
-- **No UI waiting on `released`, `cancelled` or `completed` in the off-chain status.** The
-  succession dashboard renders only `monitoring` and `counting_down` there. Release is reported on
-  `chain.status`, which the dashboard reads but does not yet act on — the heir path is Task 54.
+- **No off-chain release status to render.** `GET /succession/status` carries `chain` alone since
+  [Task 91](../../../api-general/.docs/tasks/tasks.md#task-91), so the dashboard's headline comes
+  from `chain.status` — the only place a release state exists. There is no vote-audit card either:
+  guardians no longer vote on a release.
 - **Last check-in has three renderings, not one.** A date when the chain has one, "Not configured
   on-chain" when the smart account has never been configured, and "Unavailable" when the API could
   not read its mirror. The third is an outage on our side and must never read as the second.

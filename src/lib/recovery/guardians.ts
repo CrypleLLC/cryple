@@ -19,11 +19,14 @@ export interface Guardian {
   created_at: string;
 }
 
+// One owner who named this caller as a guardian. `owner_user_address` arrives
+// only once the invitation is accepted, and is what an active guardian needs to
+// build the PQXDH info string when re-wrapping their share into a recovery
+// session. There is no release cycle here: guardians take no part in a release.
 export interface Guardianship {
   id: string;
   owner_username: string;
   owner_user_address?: string;
-  owner_release_cycle?: number;
   status: GuardianStatus;
   created_at: string;
 }

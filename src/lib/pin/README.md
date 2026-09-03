@@ -14,12 +14,12 @@ Server_Auth_Token = hex(PBKDF2-HMAC-SHA256(PIN, salt=utf8(user_address), 600_000
 localWrapKey      = PBKDF2-HMAC-SHA256(PIN, salt=32 random bytes,        600_000, 32)   → never leaves the device
 ```
 
-|  | `Server_Auth_Token` | Local wrap key |
-| --- | --- | --- |
-| Module | `server-auth-token.ts` | `seed-vault.ts` |
-| Salt | UTF-8 bytes of the 64-char hex `user_address` — **64 bytes, not the 32 raw bytes it encodes** | 32 random bytes, fresh **per device** |
-| Reproducible elsewhere? | Yes — any device, from the seed alone | No, and deliberately so |
-| Leaves the device? | Yes, as `password`, and only on Paranoid accounts | Never |
+|                         | `Server_Auth_Token`                                                                           | Local wrap key                        |
+| ----------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------- |
+| Module                  | `server-auth-token.ts`                                                                        | `seed-vault.ts`                       |
+| Salt                    | UTF-8 bytes of the 64-char hex `user_address` — **64 bytes, not the 32 raw bytes it encodes** | 32 random bytes, fresh **per device** |
+| Reproducible elsewhere? | Yes — any device, from the seed alone                                                         | No, and deliberately so               |
+| Leaves the device?      | Yes, as `password`, and only on Paranoid accounts                                             | Never                                 |
 
 `kdf.ts` holds the one shared primitive, `stretchPin(pin, salt)`. It takes the salt as a
 required argument and knows nothing about `user_address` or about random local salts, so
@@ -27,7 +27,7 @@ neither caller can accidentally receive the other's salt. That is the whole reas
 shaped that way — do not add a convenience wrapper that builds a salt internally.
 
 **The salt is the most likely place for a client to diverge.** `pin.test.ts` asserts both
-that the token matches the fixture and that salting with the 32 *raw* bytes produces a
+that the token matches the fixture and that salting with the 32 _raw_ bytes produces a
 different value.
 
 ## API
@@ -70,22 +70,28 @@ localStorage["encrypted_seed"] = { "v": 1, "salt": "…", "iv": "…", "ct": "�
 `v` is the KDF version marker. It is checked on read and an unknown version **throws**
 rather than being guessed at — a future move off PBKDF2 needs it to re-wrap old blobs.
 
-**Only Paranoid accounts have a vault.** The spec's § Local Seed Encryption is headed "Both
-Modes", but this client gives a Standard account no PIN at all
-([`lib/app` § Onboarding](../app/README.md)), and there is nothing else to wrap the seed under —
-so a Standard device stores nothing and re-derives from the phrase each session. `hasSeedVault()`
-is therefore also the answer to "is this device Paranoid", which is why the app's `locked` phase
-and the PIN-entry `Unlock` screen are reached only by Paranoid accounts.
+**Every account has a vault, in both modes.** The spec's § Local Seed Encryption is headed
+"Both Modes" and this client matches it: the PIN is always set, and `paranoid` decides only
+whether that same PIN is _also_ the server's second factor
+([`lib/app` § Every account has a PIN](../app/README.md#every-account-has-a-pin)). A Standard
+device stores a vault too, so the app's `locked` phase and the PIN-entry `Unlock` screen are
+reached by every account.
+
+**`hasSeedVault()` does not mean "this device is Paranoid".** It did once, when a Standard
+account had no PIN and therefore nothing to wrap the seed under. That equivalence is dead and
+must not be reintroduced: the function answers only _does this device remember a phrase_. The
+account's mode is `has_password` from `GET /users/me` — the same flag that decides whether
+`Server_Auth_Token` is sent at all.
 
 `UnlockResult` is a union rather than a thrown error because the caller must render four
 different outcomes:
 
-| `status` | Meaning |
-| --- | --- |
-| `unlocked` | carries `seedPhrase` |
-| `invalid-pin` | carries `attemptsRemaining` |
-| `wiped` | the third failure just destroyed the local copy |
-| `no-vault` | nothing stored on this device — offer restore-from-mnemonic |
+| `status`      | Meaning                                                     |
+| ------------- | ----------------------------------------------------------- |
+| `unlocked`    | carries `seedPhrase`                                        |
+| `invalid-pin` | carries `attemptsRemaining`                                 |
+| `wiped`       | the third failure just destroyed the local copy             |
+| `no-vault`    | nothing stored on this device — offer restore-from-mnemonic |
 
 ### The 3-attempt wipe
 
@@ -97,8 +103,16 @@ The counter is persisted as a `failed` field **inside** the vault record, so it 
 page reload — a counter held in memory would reset on every refresh and defeat the policy
 entirely. This is a local-only extension to the record shape shown in the spec; the record
 never leaves the device, so it carries no wire-contract risk. A local attacker with
-devtools can still edit it; the wipe is a speed bump against casual on-device attack, and
-the real defence is that the PIN is a *second* factor and useless without the seed.
+devtools can still edit it, so the wipe is a speed bump against a casual on-device attack
+rather than a defence against someone holding the device. What costs such an attacker is
+`stretchPin`'s 600,000 iterations over a **per-device random salt**: every candidate PIN pays
+it in full, and no work carries from one device to another.
+
+**Paranoid mode adds nothing against a stolen device**, and the old claim that it did was
+wrong. The same PIN opens the local vault and derives `Server_Auth_Token`, so an attacker who
+brute-forces the vault learns the PIN itself and now holds both factors. Paranoid's threat
+model is a stolen **phrase** — someone who has the words but not this device — which is
+exactly the case where the server-side factor is the wall.
 
 Wiping the vault does not delete the account. The user restores with their seed phrase.
 
@@ -114,7 +128,7 @@ error instead of a `ReferenceError`.
 600,000 iterations is 0.3–1s on a laptop and several seconds on a low-end phone. Pay it
 **once per session** and hold the result in memory — that is what
 [`lib/session`](../session/README.md) is for. A per-request derivation is broken UX and a
-per-request *prompt* is the wrong design.
+per-request _prompt_ is the wrong design.
 
 ## Never
 

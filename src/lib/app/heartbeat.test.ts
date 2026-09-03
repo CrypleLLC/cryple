@@ -8,11 +8,6 @@ const unix = (date: string) => Math.floor(new Date(date).getTime() / 1000);
 
 function record(chain: Partial<ReleaseStatusRecord['chain']> = {}): ReleaseStatusRecord {
   return {
-    status: 'monitoring',
-    votes: 0,
-    required_votes: 1,
-    release_cycle: 0,
-    inactivity_threshold_days: 30,
     chain: {
       indexed: true,
       smart_account_address: '0xebd631e5f50b23ea0281620f6995d9d18e5cae20',

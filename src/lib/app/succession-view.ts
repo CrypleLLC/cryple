@@ -1,10 +1,7 @@
 import {
-  verifyReport,
   type Beneficiary,
   type ChainStatus,
   type ReleaseStatusRecord,
-  type ReleaseVoteReport,
-  type VerifiedReleaseVote,
 } from '@/lib/succession';
 
 export const LAST_CHECK_IN_CAVEAT =
@@ -15,69 +12,56 @@ export const CHAIN_UNAVAILABLE_CAVEAT =
   'The chain status could not be read. This says nothing about the switch itself — retry.';
 
 export const CONFIGURATION_CAVEAT =
-  'The inactivity threshold and the guardian quorum are configured on-chain, not here.';
+  'The inactivity and contest periods are configured on-chain, not here.';
+
+export const THRESHOLD_UNCONFIGURED = 'Not configured on-chain';
 
 export interface ReleaseView {
-  status: ReleaseStatusRecord['status'];
   headline: string;
-  votes: number;
-  requiredVotes: number;
-  releaseCycle: number;
-  countdownStartedAt?: Date;
-  inactivityThresholdDays: number;
+  inactivityPeriodSeconds?: number;
+  contestPeriodSeconds?: number;
   chainStatus: ChainStatus;
   chainUnavailable: boolean;
+  released: boolean;
   smartAccountAddress: string;
   lastCheckIn?: Date;
   triggerableAt?: Date;
 }
 
+const HEADLINES: Record<ChainStatus, string> = {
+  unconfigured: 'Your dead man\u2019s switch is not on-chain yet. Nothing is being monitored.',
+  active: 'No release has been requested. Your vault is monitoring normally.',
+  contest: 'A release has been triggered. Check in to cancel it before the contest period ends.',
+  released: 'Your vault has been released. Your heirs can open what you left them.',
+  unknown: 'The chain could not be read, so the switch\u2019s state is unknown right now.',
+};
+
 function fromUnixSeconds(seconds: number | undefined): Date | undefined {
   return seconds === undefined ? undefined : new Date(seconds * 1000);
 }
 
+/**
+ * The chain is the only source of release state. The API mirrors it and holds
+ * no status of its own, so there is nothing here that could disagree with it.
+ */
 export function buildReleaseView(record: ReleaseStatusRecord): ReleaseView {
-  const countingDown = record.status === 'counting_down';
   const lastCheckIn = fromUnixSeconds(record.chain.last_check_in);
   const triggerableAt = fromUnixSeconds(record.chain.triggerable_at);
 
   return {
-    status: record.status,
-    headline: countingDown
-      ? 'Your guardians have voted to release. The countdown is running.'
-      : 'No release has been requested. Your vault is monitoring normally.',
-    votes: record.votes,
-    requiredVotes: record.required_votes,
-    releaseCycle: record.release_cycle,
-    ...(record.trigger_started_at === undefined
+    headline: HEADLINES[record.chain.status],
+    ...(record.chain.inactivity_period_seconds === undefined
       ? {}
-      : { countdownStartedAt: new Date(record.trigger_started_at) }),
-    inactivityThresholdDays: record.inactivity_threshold_days,
+      : { inactivityPeriodSeconds: record.chain.inactivity_period_seconds }),
+    ...(record.chain.contest_period_seconds === undefined
+      ? {}
+      : { contestPeriodSeconds: record.chain.contest_period_seconds }),
     chainStatus: record.chain.status,
     chainUnavailable: record.chain.status === 'unknown',
+    released: record.chain.status === 'released',
     smartAccountAddress: record.chain.smart_account_address,
     ...(lastCheckIn === undefined ? {} : { lastCheckIn }),
     ...(triggerableAt === undefined ? {} : { triggerableAt }),
-  };
-}
-
-export interface AuditedVotes {
-  ownerUserAddress: string;
-  releaseCycle: number;
-  votes: VerifiedReleaseVote[];
-  verifiedCount: number;
-  unverifiedCount: number;
-}
-
-export function auditVotes(report: ReleaseVoteReport): AuditedVotes {
-  const votes = verifyReport(report);
-
-  return {
-    ownerUserAddress: report.owner_user_address,
-    releaseCycle: report.release_cycle,
-    votes,
-    verifiedCount: votes.filter((entry) => entry.valid).length,
-    unverifiedCount: votes.filter((entry) => !entry.valid).length,
   };
 }
 

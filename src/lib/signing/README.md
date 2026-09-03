@@ -84,7 +84,7 @@ Sending a token on a Standard account fails exactly as hard as omitting it on a 
 so both mistakes are prevented here rather than at the call site.
 
 **The signer's own mode decides.** When a guardian acts on someone else's account
-(`pin-reset-vote`, `recovery-share-submit`, `succession-release-vote`) it is the *guardian's*
+(`pin-reset-vote`, `recovery-share-submit`) it is the *guardian's*
 second factor that is demanded — never the owner's. Requiring the owner's would defeat
 guardian recovery, whose premise is that the owner is unavailable. `ACTIONS[…].signer` records
 this.
@@ -106,9 +106,6 @@ N challenges.
 
 ### Actions with their own gotchas
 
-- **`succession-release-vote` binds `release_cycle`.** Fetch the current cycle from
-  `GET /succession/status` *immediately before* signing — a cycle-*n* signature is refused in
-  cycle *n+1*. The first argument is the owner's `user_address`, not their username.
 - **`recovery-setup` signs a digest of the whole payload**, not an intent. That digest is
   built in the recovery domain (Task 16), not here; this module only signs the hex string.
 - **`guardian-accept` needs a signature**, not just the JWT. Accepting releases the owner's

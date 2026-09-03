@@ -19,13 +19,23 @@ export const MVP_CONTEST_PERIOD_SECONDS = 300;
 export const SWITCH_STATUSES = ['unconfigured', 'active', 'contest', 'released'] as const;
 export type SwitchStatus = (typeof SWITCH_STATUSES)[number];
 
-export type HeartbeatOperation = 'deploy-and-configure' | 'configure' | 'check-in';
+export type HeartbeatOperation =
+  | 'deploy-and-configure'
+  | 'configure'
+  | 'reconfigure'
+  | 'check-in';
 export type HeartbeatIdentity = ChainIdentity;
 export type HeartbeatStage = OperationStage;
 
 export interface HeartbeatOptions extends OperationOptions {
   inactivityPeriodSeconds?: number;
   contestPeriodSeconds?: number;
+  reconfigure?: boolean;
+}
+
+export interface SwitchLimits {
+  minInactivitySeconds: number;
+  minContestSeconds: number;
 }
 
 export interface HeartbeatPlan extends OperationPlan {
@@ -52,6 +62,18 @@ export async function isConfigured(
   const data = encodeCall('statusOf(address)', [addressValue(smartAccountAddress)]);
   const result = await ethCall(DEAD_MAN_SWITCH_ADDRESS, data, signal);
   return BigInt(result) !== 0n;
+}
+
+export async function fetchSwitchLimits(signal?: AbortSignal): Promise<SwitchLimits> {
+  const [inactivity, contest] = await Promise.all([
+    ethCall(DEAD_MAN_SWITCH_ADDRESS, encodeCall('minInactivityPeriod()', []), signal),
+    ethCall(DEAD_MAN_SWITCH_ADDRESS, encodeCall('minContestPeriod()', []), signal),
+  ]);
+
+  return {
+    minInactivitySeconds: Number(BigInt(inactivity)),
+    minContestSeconds: Number(BigInt(contest)),
+  };
 }
 
 export async function fetchSwitchRecord(
@@ -88,20 +110,25 @@ export async function planHeartbeat(
   const deployed = await isDeployed(sender, options.signal);
   const configured = deployed && (await isConfigured(sender, options.signal));
 
+  const reconfiguring = configured && options.reconfigure === true;
+
   const operation: HeartbeatOperation = !deployed
     ? 'deploy-and-configure'
-    : configured
-      ? 'check-in'
-      : 'configure';
+    : !configured
+      ? 'configure'
+      : reconfiguring
+        ? 'reconfigure'
+        : 'check-in';
 
-  const callData = configured
-    ? checkInCallData()
-    : configureCallData(
-        options.inactivityPeriodSeconds ?? MVP_INACTIVITY_PERIOD_SECONDS,
-        options.contestPeriodSeconds ?? MVP_CONTEST_PERIOD_SECONDS,
-        MVP_GUARDIAN_ROOT,
-        MVP_GUARDIAN_THRESHOLD,
-      );
+  const callData =
+    configured && !reconfiguring
+      ? checkInCallData()
+      : configureCallData(
+          options.inactivityPeriodSeconds ?? MVP_INACTIVITY_PERIOD_SECONDS,
+          options.contestPeriodSeconds ?? MVP_CONTEST_PERIOD_SECONDS,
+          MVP_GUARDIAN_ROOT,
+          MVP_GUARDIAN_THRESHOLD,
+        );
 
   return { ...(await planOperation(identity, callData, options)), operation };
 }

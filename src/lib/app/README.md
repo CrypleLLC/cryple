@@ -13,6 +13,8 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | `vault.ts` | The vault index view model, received-ciphertext integrity check, and the local secret name/value format |
 | `notes.ts` | The notes file-grid view model — title, thumbnail, selection, character budget and autosave state |
 | `succession-view.ts` | Release status, vote audit and heir view models |
+| `heartbeat.ts` | What the switch card says, and how urgent it is |
+| `switch-periods.ts` | The inactivity/contest period options, and which the deployed contract accepts |
 | `recovery-kit.ts` | The printable share-0 Recovery Kit |
 | `label.ts` | Sealing and reading the owner's private note about an heir |
 | `inheritance.ts` | The selectable list behind "Set inheritance", and the additive save |
@@ -328,18 +330,32 @@ This is also why the request is made exactly once: it is unsigned and **not retr
 second call strands the first session with its own 30-minute TTL and its own collected shares.
 `restart` disposes the old keys before asking for anything new.
 
-### Guardians alone must meet the threshold
+### The Recovery Kit is one of the `k`
 
-`guardiansCanReachThreshold` exists because the server counts **only guardian submissions**
-toward `k`. Share 0 is the owner's Recovery Kit copy; it is stored wrapped to the owner's own
-encryption keys, which a recovering device does not have, and it is never submitted to a session.
-So the shares a session can ever collect number `n - 1`, and a vault configured `k = n` can never
-reach `shares_collected` — the screen says so on arrival rather than letting a 30-minute timer
-run out on something that was never going to complete.
+Share 0 is the owner's Recovery Kit copy. It is never submitted to a session — the server-stored
+copy is wrapped to the owner's own encryption keys, which a recovering device does not have — so
+a session collects at most `n - 1` shares and the server can never see the whole quorum.
+**Counting the threshold is this module's job**, because only the screen knows whether the user
+pasted their Kit.
 
-The Kit share is therefore passed as `ownShare` for **redundancy above the threshold**, never as
-a substitute for a guardian. See the caveat in [`src/lib/recovery/README.md`](../recovery/README.md)
-about what `recovery-flow.md` says the default means versus what the API implements.
+Every function here therefore takes `hasOwnShare` and adds it to what guardians have sent:
+
+| Function | Answers |
+| --- | --- |
+| `reachableShares` | how many pieces this session could ever assemble |
+| `thresholdIsReachable` | whether that can meet `k` at all — drives the dead-end notice |
+| `guardiansStillNeeded` | how many guardians are outstanding right now |
+| `describeProgress` | the same, as a sentence, naming the Kit when it is counted |
+
+So the recommended 2-of-3 needs **one** guardian from a user who has their Kit and **two** from
+one who does not, and a vault configured `k = n` completes only with the Kit. The dead-end notice
+fires when even every guardian plus whatever the device holds cannot reach `k` — the screen says
+so on arrival rather than letting a 30-minute timer run out on something that was never going to
+complete, and it points at the Kit field, since pasting the Kit is often what makes it reachable.
+
+`SeedRecovery.tsx` holds `hasOwnShare` in state rather than reading the `ownShare` ref, because
+the ref does not re-render the progress panel. The decoded share itself stays in the ref — it is
+key material and never belongs in React state.
 
 ### What the user has to supply
 
@@ -348,13 +364,18 @@ The **username**, which is on the Recovery Kit and is neither the email nor the 
 other lookup. A user with neither phrase nor Kit has no way in, and the screen should keep
 saying so rather than letting them discover it one field at a time.
 
-## The succession dashboard reads two statuses, not one
+## The succession dashboard reads one status, and it is the chain's
 
-`GET /succession/status` answers with two different facts and `buildReleaseView`
-keeps them apart. `status` is the **off-chain guardian countdown** and only ever
-reads `monitoring` or `counting_down`. `chain.status` is the **contract's own
-state**, and it is the only one that can say `released` — anything gating "can
-this inheritance be opened" reads that one.
+`GET /succession/status` answers with `chain` alone, and `buildReleaseView`
+derives its headline from `chain.status` — the contract's own state, and the only
+place a release exists.
+
+It used to answer with two. The off-chain half was the guardian countdown and
+could only ever read `monitoring` or `counting_down`, so a released vault was
+headlined "monitoring normally" one panel away from "your vault has been
+released". [Task 91](../../../../api-general/.docs/tasks/tasks.md#task-91)
+removed the guardian release vote and the column with it, which is why there is
+now one status and no way for the two to disagree.
 
 **Every timestamp inside `chain` is unix seconds; everything outside it is
 RFC 3339.** The `chain` values are block timestamps the API copies rather than
@@ -372,6 +393,44 @@ on `chain.status` when the difference matters.
 `lastCheckIn` is therefore optional and has three renderings: a date, "not
 configured on-chain" when the smart account has never been configured, and
 "unavailable" during an outage.
+
+## Choosing the switch periods
+
+`switch-periods.ts` is the model behind the two selects on `HeartbeatCard`: how long silence has
+to last before heirs can start a release, and how long the owner then has to stop it with
+**I'm alive**. It is pure — the chain access lives in
+[`lib/chain`](../chain/README.md#the-periods-and-the-floors-the-deployment-fixes).
+
+`PERIOD_OPTIONS` is the fixed list: **1, 3, 5, 10, 30 minutes and 24 hours**. These are testing
+durations, deliberately — they exist so a release and its cancel can be exercised inside one
+sitting rather than one month.
+
+### The list is offered in full; the chain decides what is selectable
+
+`DeadManSwitch.minInactivityPeriod` / `minContestPeriod` are **immutable**, so the deployed
+contract's floors are a fact the client discovers rather than a rule it sets. `selectablePeriods`
+marks each option `allowed` against a floor read live by `fetchSwitchLimits`, and the select
+renders the rejected ones **disabled with the reason**, not hidden. Hiding them would make a
+redeployment look like a UI change; greying them out says the option exists and this contract
+refuses it.
+
+Against the current Sepolia deployment (300 / 120) that means **1 and 3 minutes are unselectable
+for inactivity, and 1 minute for the contest period**. Both open up on their own if the switch is
+redeployed with lower floors — no client change is involved.
+
+`nearestAllowedPeriod` raises a below-floor choice to the smallest option that clears it, so a
+stored default of 10 minutes never arrives at the contract as a value it will revert on.
+
+### Saving periods is a check-in, and the copy says so
+
+`configure()` resets `lastCheckIn`, so saving new periods restarts the clock. `periodsChanged`
+gates the **Save these periods** button on the selects actually differing from what the chain
+holds, so the button is inert until there is something to save and a user cannot spend gas
+re-writing the values already there.
+
+`formatMoment` renders timestamps with the **time**, not just the date. At 24-hour periods a date
+was enough; at one-minute periods "last checked in Aug 24, 2026 · next due Aug 24, 2026" tells the
+user nothing, which is the whole point of the short options.
 
 ## Choosing what an heir inherits
 

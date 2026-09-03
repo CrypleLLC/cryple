@@ -6,6 +6,7 @@ import type {
   InputHTMLAttributes,
   KeyboardEvent as ReactKeyboardEvent,
   ReactNode,
+  SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from 'react';
 import {
@@ -141,6 +142,37 @@ export function TextArea({
     <label className="block">
       <span className={LABEL_CLASS}>{label}</span>
       <textarea className={`${INPUT_CLASS} h-28 resize-y font-mono ${className}`} {...props} />
+      {hint ? <span className={HINT_CLASS}>{hint}</span> : null}
+    </label>
+  );
+}
+
+export interface SelectChoice {
+  value: string;
+  label: string;
+  disabled?: boolean;
+}
+
+export function Select({
+  label,
+  hint,
+  choices,
+  ...props
+}: SelectHTMLAttributes<HTMLSelectElement> & {
+  label: string;
+  hint?: string;
+  choices: readonly SelectChoice[];
+}) {
+  return (
+    <label className="block">
+      <span className={LABEL_CLASS}>{label}</span>
+      <select className={INPUT_CLASS} {...props}>
+        {choices.map((choice) => (
+          <option key={choice.value} value={choice.value} disabled={choice.disabled}>
+            {choice.label}
+          </option>
+        ))}
+      </select>
       {hint ? <span className={HINT_CLASS}>{hint}</span> : null}
     </label>
   );

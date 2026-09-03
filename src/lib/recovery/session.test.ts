@@ -226,12 +226,30 @@ describe('POST /recovery/request', () => {
 });
 
 describe('polling the session', () => {
-  it('withholds shares below the threshold', async () => {
+  it('reports no shares while no guardian has answered', async () => {
     mockFetch({ status: 200, body: { data: session() } });
     const current = await getRecoverySession(SESSION_ID);
 
     expect(current.status).toBe('pending');
     expect(current.shares).toBeUndefined();
+    expect(hasReachedThreshold(current)).toBe(false);
+    expect(hasReachedThreshold(current, 1)).toBe(false);
+  });
+
+  it("counts the owner's Recovery Kit toward a 2-of-3, so one guardian is enough", async () => {
+    mockFetch({
+      status: 200,
+      body: {
+        data: session({
+          shares: [{ re_encrypted_share: 'a', submitted_at: '2026-07-26T12:05:00Z' }],
+        }),
+      },
+    });
+
+    const current = await getRecoverySession(SESSION_ID);
+
+    expect(current.status).toBe('pending');
+    expect(hasReachedThreshold(current, 1)).toBe(true);
     expect(hasReachedThreshold(current)).toBe(false);
   });
 
@@ -280,7 +298,10 @@ describe('polling the session', () => {
         body: {
           data: session({
             status: 'shares_collected',
-            shares: [{ re_encrypted_share: 'a', submitted_at: 'x' }],
+            shares: [
+              { re_encrypted_share: 'a', submitted_at: 'x' },
+              { re_encrypted_share: 'b', submitted_at: 'y' },
+            ],
           }),
         },
       },
@@ -294,6 +315,28 @@ describe('polling the session', () => {
 
     expect(seen).toEqual(['pending', 'pending', 'shares_collected']);
     expect(result.status).toBe('shares_collected');
+  });
+
+  it('stops polling one guardian earlier when the Recovery Kit is held', async () => {
+    mockFetch(
+      { status: 200, body: { data: session() } },
+      {
+        status: 200,
+        body: {
+          data: session({ shares: [{ re_encrypted_share: 'a', submitted_at: 'x' }] }),
+        },
+      },
+    );
+
+    const seen: string[] = [];
+    const result = await pollRecoverySession(SESSION_ID, {
+      intervalMs: 1,
+      ownShareCount: 1,
+      onUpdate: (s) => seen.push(s.status),
+    });
+
+    expect(seen).toEqual(['pending', 'pending']);
+    expect(result.shares).toHaveLength(1);
   });
 
   it('stops polling once the session has expired', async () => {
@@ -393,7 +436,20 @@ describe('the whole recovery, end to end through real PQXDH', () => {
 
     await expect(
       completeRecovery({
-        session: session({ status: 'shares_collected', shares: collected }),
+        session: session({ k_threshold: 3, status: 'shares_collected', shares: collected }),
+        keys,
+        vault: { encrypted_seed: encryptedSeed, n_shares: 3, k_threshold: 3, version: 'v1' },
+        ownShare: undefined,
+      }),
+    ).rejects.toThrow(/threshold/);
+  });
+
+  it("trusts the vault's k over the session's when the two disagree", async () => {
+    const { encryptedSeed, keys, collected } = await scenario(3, [1]);
+
+    await expect(
+      completeRecovery({
+        session: session({ k_threshold: 1, status: 'shares_collected', shares: collected }),
         keys,
         vault: { encrypted_seed: encryptedSeed, n_shares: 3, k_threshold: 3, version: 'v1' },
       }),

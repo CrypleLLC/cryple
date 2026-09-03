@@ -300,7 +300,6 @@ describe('listing', () => {
         id: '7b3d5e1c-4f89-11d3-9a0c-0305e82c3301',
         owner_username: 'a92f4c1d8e0b',
         owner_user_address: 'a'.repeat(64),
-        owner_release_cycle: 1,
         status: 'active',
         created_at: '2026-07-26T12:00:00Z',
       },
@@ -309,7 +308,7 @@ describe('listing', () => {
     expect(rows[0].owner_user_address).toBeUndefined();
     expect('owner_user_address' in rows[0]).toBe(false);
     expect(pendingInvitations(rows)).toHaveLength(1);
-    expect(rows[1].owner_release_cycle).toBe(1);
+    expect(rows[1].owner_user_address).toBe('a'.repeat(64));
   });
 });
 

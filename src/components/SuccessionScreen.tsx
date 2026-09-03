@@ -4,20 +4,20 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   getReleaseStatus,
   listBeneficiaries,
-  listReleaseVotes,
   registerBeneficiary,
   type Beneficiary,
   type ReleaseStatusRecord,
 } from '@/lib/succession';
 import {
-  auditVotes,
   buildReleaseView,
   CHAIN_UNAVAILABLE_CAVEAT,
   CONFIGURATION_CAVEAT,
+  formatMoment,
+  formatPeriod,
   LAST_CHECK_IN_CAVEAT,
   NO_HEIRS_YET,
   heirLabelSealer,
-  type AuditedVotes,
+  THRESHOLD_UNCONFIGURED,
   type ReleaseView,
 } from '@/lib/app';
 import { listSecrets } from '@/lib/secrets';
@@ -27,7 +27,7 @@ import { useAuthedContext, useCryple } from './CrypleProvider';
 import HeartbeatCard from './HeartbeatCard';
 import HeirTabs from './HeirTabs';
 import VaultProtectionCard from './VaultProtectionCard';
-import { Button, Card, Empty, Field, Notice, PanelGrid, Spinner } from './ui';
+import { Button, Card, Empty, Field, Notice, Spinner } from './ui';
 
 export default function SuccessionScreen() {
   const context = useAuthedContext();
@@ -35,7 +35,6 @@ export default function SuccessionScreen() {
 
   const [release, setRelease] = useState<ReleaseView>();
   const [statusRecord, setStatusRecord] = useState<ReleaseStatusRecord>();
-  const [audit, setAudit] = useState<AuditedVotes>();
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>();
   const [username, setUsername] = useState('');
   const [label, setLabel] = useState('');
@@ -44,15 +43,13 @@ export default function SuccessionScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [status, votes, heirs] = await Promise.all([
+      const [status, heirs] = await Promise.all([
         getReleaseStatus(context),
-        listReleaseVotes(context),
         listBeneficiaries(context),
       ]);
 
       setRelease(buildReleaseView(status));
       setStatusRecord(status);
-      setAudit(auditVotes(votes));
       setBeneficiaries(heirs);
       setMessage(undefined);
     } catch (error) {
@@ -110,31 +107,41 @@ export default function SuccessionScreen() {
           <Spinner />
         ) : (
           <div className="space-y-3">
-            <Notice tone={release.status === 'counting_down' ? 'warning' : 'info'}>
+            <Notice
+              tone={
+                release.chainStatus === 'contest' || release.chainStatus === 'released'
+                  ? 'warning'
+                  : 'info'
+              }
+            >
               {release.headline}
             </Notice>
 
             <dl className="grid gap-3 text-sm sm:grid-cols-2">
               <div>
-                <dt className="text-slate-500">Guardian votes</dt>
+                <dt className="text-slate-500">Inactivity threshold</dt>
                 <dd>
-                  {release.votes} of {release.requiredVotes}
+                  {release.inactivityPeriodSeconds === undefined
+                    ? THRESHOLD_UNCONFIGURED
+                    : formatPeriod(release.inactivityPeriodSeconds)}
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-500">Countdown attempt</dt>
-                <dd>#{release.releaseCycle}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">Inactivity threshold</dt>
-                <dd>{release.inactivityThresholdDays} days</dd>
+                <dt className="text-slate-500">Contest period</dt>
+                <dd>
+                  {release.contestPeriodSeconds === undefined
+                    ? THRESHOLD_UNCONFIGURED
+                    : formatPeriod(release.contestPeriodSeconds)}
+                </dd>
               </div>
               <div>
                 <dt className="text-slate-500">Last check-in</dt>
                 <dd>
                   {release.chainUnavailable
                     ? 'Unavailable'
-                    : (release.lastCheckIn?.toLocaleDateString() ?? 'Not configured on-chain')}
+                    : (release.lastCheckIn === undefined
+                      ? THRESHOLD_UNCONFIGURED
+                      : formatMoment(release.lastCheckIn))}
                 </dd>
               </div>
             </dl>
@@ -160,67 +167,29 @@ export default function SuccessionScreen() {
         <HeirTabs beneficiaries={beneficiaries} onChanged={() => void load()} />
       )}
 
-      <PanelGrid>
-        <Card
-          title="Votes on record"
-          subtitle="Each signature is rebuilt and checked here, not taken on the server's word."
-          flush
-        >
-          {audit === undefined ? (
-            <Spinner />
-          ) : audit.votes.length === 0 ? (
-            <Empty>No guardian has voted in this cycle.</Empty>
-          ) : (
-            <ul className="divide-y divide-slate-200 dark:divide-slate-800">
-              {audit.votes.map((entry) => (
-                <li
-                  key={`${entry.vote.guardian_username}-${entry.vote.challenge}`}
-                  className="flex items-center justify-between gap-4 px-5 py-3"
-                >
-                  <div>
-                    <p className="text-sm font-medium">{entry.vote.guardian_username}</p>
-                    <p className="text-xs text-slate-500">
-                      {new Date(entry.vote.voted_at).toLocaleString()} · cycle{' '}
-                      {entry.vote.release_cycle}
-                    </p>
-                  </div>
-                  <span
-                    className={`text-xs font-medium ${
-                      entry.valid ? 'text-emerald-600' : 'text-red-600'
-                    }`}
-                  >
-                    {entry.valid ? 'signature verified' : 'signature did NOT verify'}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card title="Name an heir">
-          <div className="space-y-4">
-            <Field
-              label="Their Cryple username"
-              value={username}
-              autoComplete="off"
-              onChange={(event) => setUsername(event.target.value)}
-            />
-            <Field
-              label="A private note to yourself"
-              value={label}
-              autoComplete="off"
-              hint="Encrypted before it leaves this device. The server never sees it."
-              onChange={(event) => setLabel(event.target.value)}
-            />
-            <Button
-              disabled={busy || username.trim().length === 0 || label.trim().length === 0}
-              onClick={() => void register()}
-            >
-              Name this heir
-            </Button>
-          </div>
-        </Card>
-      </PanelGrid>
+      <Card title="Name an heir">
+        <div className="space-y-4">
+          <Field
+            label="Their Cryple username"
+            value={username}
+            autoComplete="off"
+            onChange={(event) => setUsername(event.target.value)}
+          />
+          <Field
+            label="A private note to yourself"
+            value={label}
+            autoComplete="off"
+            hint="Encrypted before it leaves this device. The server never sees it."
+            onChange={(event) => setLabel(event.target.value)}
+          />
+          <Button
+            disabled={busy || username.trim().length === 0 || label.trim().length === 0}
+            onClick={() => void register()}
+          >
+            Name this heir
+          </Button>
+        </div>
+      </Card>
     </div>
   );
 }

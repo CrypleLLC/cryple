@@ -58,14 +58,15 @@ the reading is in this repository, and there is no key on the server side to do 
 
 ### Unlocking a device
 
-You choose how signing in works, once, when you set up:
+Both modes use a 6-digit PIN, chosen once when you set up. It encrypts the copy of your phrase kept in
+this browser and locks the app, so day to day you come back with six digits instead of twenty-four
+words — on a reload, and after fifteen idle minutes. What you are choosing is what _else_ that PIN
+does:
 
-- **Standard** — your recovery phrase alone. No PIN anywhere. Nothing about your account is kept
-  on the device, so you type your phrase again whenever the session ends: on every reload, and
-  after fifteen idle minutes.
-- **Paranoid** — a 6-digit PIN _and_ your phrase, both required, the PIN checked by the server.
-  That same PIN also encrypts a copy of your phrase in this browser, so day to day you unlock with
-  six digits instead of twenty-four words.
+- **Standard** — the PIN never leaves the device. Signing in is your recovery phrase alone, so
+  forgetting the PIN costs you nothing: log out, sign back in with your phrase, set a new one.
+- **Paranoid** — the same PIN is _also_ checked by the server, so your phrase alone will not sign
+  you in anywhere. A forgotten PIN is reset through your guardians rather than by you.
 
 Paranoid mode exists for one scenario: someone steals your recovery phrase. Without your PIN it is
 not enough. You can upgrade from Standard to Paranoid later, but **never the reverse** — a stolen

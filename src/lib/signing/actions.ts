@@ -74,11 +74,6 @@ export const ACTIONS = {
     signer: 'owner',
   },
   'share-delete': { args: ['share_id'], secondFactor: true, signer: 'owner' },
-  'succession-release-vote': {
-    args: ['owner_user_address', 'release_cycle'],
-    secondFactor: true,
-    signer: 'guardian',
-  },
 } as const satisfies Record<string, ActionSpec>;
 
 export type ActionLabel = keyof typeof ACTIONS;

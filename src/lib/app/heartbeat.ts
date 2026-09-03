@@ -21,7 +21,11 @@ export interface HeartbeatView {
 }
 
 export function describeOperation(operation: HeartbeatOperation): string {
-  return operation === 'check-in' ? "I'm alive" : 'Turn on my switch';
+  if (operation === 'check-in') {
+    return "I'm alive";
+  }
+
+  return operation === 'reconfigure' ? 'Save these periods' : 'Turn on my switch';
 }
 
 function view(
