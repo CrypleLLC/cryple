@@ -155,10 +155,9 @@ Sign-in and sign-up omit the action and args (`challenge:timestamp`) — a two-f
 
 The **authoritative action list, with each action's argument order and whether it takes a second factor, is the table in [auth/signed-actions.md](../api-general/.docs/auth/signed-actions.md#actions)**. Read it rather than inferring from an endpoint name. What it makes non-obvious:
 
-- **The signer's own mode decides.** When a guardian acts on someone else's account (`pin-reset-vote`, `recovery-share-submit`, `succession-release-vote`), it is the **guardian's** second factor that is demanded — never the owner's.
+- **The signer's own mode decides.** When a guardian acts on someone else's account (`pin-reset-vote`, `recovery-share-submit`), it is the **guardian's** second factor that is demanded — never the owner's.
 - **Three carve-outs take no second factor, structurally**: `enable-second-factor` (none exists yet), the owner's `pin-reset-request` / `-revoke` / `-confirm` (they lost the PIN), and `POST /recovery/request` (unsigned entirely — the caller lost the seed). Do not "fix" these.
 - **`guardian-accept` needs a signature**, not just the JWT. Accepting is what releases the owner's identity to the guardian and what raises the owner's recovery quorum — a bearer token must not be able to forge the second leg of a consent handshake.
-- **`succession-release-vote` binds `release_cycle`.** Fetch the current cycle from `GET /succession/status` before signing; a signature for cycle *n* is refused in cycle *n+1*.
 - **`secret-delete` is the one batchable action.** Its ids are **sorted ascending and de-duplicated** before the payload is rebuilt, and `DELETE /secrets/{id}` is the one-element case of the same label.
 - **`recovery-setup` signs a digest of the whole payload**, not an intent:
 

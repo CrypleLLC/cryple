@@ -285,9 +285,10 @@ recorded here rather than being visible in the code:
 - **No session list or "sign out all devices".**
 - **No key-rotation flow.** `keys_rotated: true` renders "this heir closed their account — remove
   them and choose another", never a re-wrap prompt.
-- **No UI waiting on `released`, `cancelled` or `completed` in the off-chain status.** The
-  succession dashboard renders only `monitoring` and `counting_down` there. Release is reported on
-  `chain.status`, which the dashboard reads but does not yet act on — the heir path is Task 54.
+- **No off-chain release status to render.** `GET /succession/status` carries `chain` alone since
+  [Task 91](../../../api-general/.docs/tasks/tasks.md#task-91), so the dashboard's headline comes
+  from `chain.status` — the only place a release state exists. There is no vote-audit card either:
+  guardians no longer vote on a release.
 - **Last check-in has three renderings, not one.** A date when the chain has one, "Not configured
   on-chain" when the smart account has never been configured, and "Unavailable" when the API could
   not read its mirror. The third is an outage on our side and must never read as the second.

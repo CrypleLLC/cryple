@@ -364,13 +364,18 @@ The **username**, which is on the Recovery Kit and is neither the email nor the 
 other lookup. A user with neither phrase nor Kit has no way in, and the screen should keep
 saying so rather than letting them discover it one field at a time.
 
-## The succession dashboard reads two statuses, not one
+## The succession dashboard reads one status, and it is the chain's
 
-`GET /succession/status` answers with two different facts and `buildReleaseView`
-keeps them apart. `status` is the **off-chain guardian countdown** and only ever
-reads `monitoring` or `counting_down`. `chain.status` is the **contract's own
-state**, and it is the only one that can say `released` — anything gating "can
-this inheritance be opened" reads that one.
+`GET /succession/status` answers with `chain` alone, and `buildReleaseView`
+derives its headline from `chain.status` — the contract's own state, and the only
+place a release exists.
+
+It used to answer with two. The off-chain half was the guardian countdown and
+could only ever read `monitoring` or `counting_down`, so a released vault was
+headlined "monitoring normally" one panel away from "your vault has been
+released". [Task 91](../../../../api-general/.docs/tasks/tasks.md#task-91)
+removed the guardian release vote and the column with it, which is why there is
+now one status and no way for the two to disagree.
 
 **Every timestamp inside `chain` is unix seconds; everything outside it is
 RFC 3339.** The `chain` values are block timestamps the API copies rather than

@@ -71,7 +71,7 @@ GET /succession/beneficiaries?limit=25&cursor=bzoyNQ
 Paginated: `GET /succession/beneficiaries` ·
 `GET /succession/beneficiaries/{id}/shares` · `GET /succession/shares` ·
 `GET /succession/anchors` · `GET /succession/inheritances/{owner}/anchors` ·
-`GET /succession/inheritances/{owner}/items/{id}/updates` · `GET /succession/votes` ·
+`GET /succession/inheritances/{owner}/items/{id}/updates` ·
 `GET /recovery/guardians` · `GET /recovery/guardianships` ·
 `GET /recovery/sessions/pending` · `GET /recovery/pin-reset/pending` ·
 `GET /auth/pin-reset/{id}/votes`.
@@ -878,7 +878,6 @@ Accounts **the caller guards for others** — the inbox for accepting invitation
       "id": "7b3d…",
       "owner_username": "a92f4c1d8e0b",
       "owner_user_address": "a92f4c1d8e0b…64 hex chars…",
-      "owner_release_cycle": 1,
       "status": "active",
       "created_at": "2026-07-26T12:00:00Z"
     }
@@ -886,7 +885,7 @@ Accounts **the caller guards for others** — the inbox for accepting invitation
 }
 ```
 
-`owner_user_address` and `owner_release_cycle` are **present only on `active` rows** — both keys are omitted entirely while `pending_invite`, not sent as `""`/`0`. They are the two values a guardian must sign over to cast a release vote, and this endpoint is the **only** place either is supplied: `GET /succession/status` is owner-scoped and will show you your own switch, not theirs. Cache `owner_user_address` when the guardian accepts, but re-read `owner_release_cycle` before every vote: it changes when a countdown is cancelled, and a signature made for the wrong cycle is refused. See [`POST /succession/votes`](#post-successionvotes).
+`owner_user_address` is **present only on `active` rows** — the key is omitted entirely while `pending_invite`, not sent as `""`. It is what a guardian needs to build the PQXDH `info` string when re-wrapping their share into a recovery session, and this endpoint is the **only** place it is supplied. **`owner_release_cycle` is gone** (2026-09-03): it existed solely so a guardian could sign a release vote, and guardians take no part in a release any more ([Task 91](../api-general/.docs/tasks/tasks.md#task-91)).
 
 **Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
 
@@ -1257,7 +1256,7 @@ Note this one **is** protected while the rest of the PIN-reset flow is public. T
 }
 ```
 
-Rebuild `challenge : timestamp : "pin-reset-vote" : request_id` and verify against `guardian_public_key`, exactly as for [`GET /succession/votes`](#get-successionvotes).
+Rebuild `challenge : timestamp : "pin-reset-vote" : request_id` and verify against `guardian_public_key`. The response deliberately hands over no ready-made payload string: verifying against the server's own rendering of what was signed proves nothing.
 
 **Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
 
@@ -1631,48 +1630,11 @@ The owner's retained leaf sets, same shapes as [the owner's own routes](#put-suc
 
 > **This API never tells you an item verified, and you must never ask it to.** There is no `verified` field on any response and there will not be one. Step 2 reads the chain directly — a root this server hands you proves nothing, because this server is exactly what the verification is meant to be independent of. If step 3 or 5 fails, show the failure; do not decrypt and hope.
 
-### `POST /succession/votes`
-
-Called by a **guardian** (their own JWT) to attest the owner is deceased/incapacitated. Reaching quorum moves the trigger from `monitoring` to `counting_down`. Signed action `succession-release-vote` with the **owner's `user_address`** and the **current `release_cycle`** as its arguments, in that order.
-
-> **The cycle argument is required as of 2026-07-29 and is a breaking change.** A signature that omits it is refused with `401`. Read it as `owner_release_cycle` from [`GET /recovery/guardianships`](#get-recoveryguardianships--protected) immediately before signing — not from `GET /succession/status`, which is owner-scoped and reports _your_ switch, not theirs. Binding the cycle stops a vote cast in one countdown from being re-attributed to the next.
-
-**Request**
-
-```json
-{
-  "owner_username": "3f1c8a2b9d4e",
-  "challenge": "7f3b…",
-  "timestamp": 1785000000,
-  "signature": "base64…",
-  "password": "the GUARDIAN's own 64-hex token, Paranoid Mode only"
-}
-```
-
-**`200 OK`**
-
-```json
-{
-  "message": "Release vote recorded successfully",
-  "data": {
-    "status": "counting_down",
-    "votes": 2,
-    "required_votes": 2,
-    "release_cycle": 1,
-    "inactivity_threshold_days": 180,
-    "trigger_started_at": "2026-07-26T12:00:00Z",
-    "chain": { "...": "same shape as GET /succession/status" }
-  }
-}
-```
-
-**A quorum no longer guarantees `counting_down`.** Since Task 52a the countdown starts only when the chain agrees the owner has gone silent; a quorum reached while `chain.status` is `active` and the trigger deadline has not passed records the vote and leaves `status` at `monitoring`. Read `status` from the response rather than assuming the vote moved it.
-
-**Errors:** `400 INVALID_BODY` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` (bad/stale/replayed action signature) · `404 NOT_FOUND` (unknown owner, or caller is not an active guardian) · `409 CONFLICT` (already released) · `500 INTERNAL_ERROR`.
-
 ### `GET /succession/status`
 
-The **owner's own** dead-man's-switch state. Creates the trigger record on first read, so it never 404s for a valid account.
+The **owner's own** dead-man's-switch state, as the chain reports it. Never 404s for a valid account.
+
+> **Changed 2026-09-03 — breaking.** This response used to carry an off-chain `status`, `votes`, `required_votes`, `release_cycle`, `inactivity_threshold_days` and `trigger_started_at` beside `chain`. All of them are gone, together with the guardian release vote that produced them ([Task 91](../api-general/.docs/tasks/tasks.md#task-91)). `chain` is now the whole answer.
 
 **`200 OK`**
 
@@ -1680,11 +1642,6 @@ The **owner's own** dead-man's-switch state. Creates the trigger record on first
 {
   "message": "Release status retrieved successfully",
   "data": {
-    "status": "monitoring",
-    "votes": 0,
-    "required_votes": 1,
-    "release_cycle": 1,
-    "inactivity_threshold_days": 180,
     "chain": {
       "indexed": true,
       "smart_account_address": "0x4dcb2c4a8d8b42f58522ed7e116bb33fc75843b1",
@@ -1698,11 +1655,11 @@ The **owner's own** dead-man's-switch state. Creates the trigger record on first
 }
 ```
 
-> ⚠️ **`status` and `chain.status` are two different things, and merging them is a bug.** `status` is the *off-chain guardian countdown* and only ever reads `monitoring` or `counting_down`. `chain.status` is the contract's own state and is the only one that can say `released`. **Anything that gates on "can this inheritance be opened" reads `chain.status`.** See [§13](#13-enumerations).
+> ⚠️ **`chain.status` is the only status here, and it is the contract's own.** There is no second, off-chain status to confuse it with any more. **Anything that gates on "can this inheritance be opened" reads `chain.status`.** See [§13](#13-enumerations).
 
-> ⚠️ **`chain` timestamps are unix seconds (numbers); everything outside `chain` is RFC 3339 (strings).** That is deliberate — the chain values are block timestamps, and reformatting them would make this API disagree with the chain in a way nobody could see. Do not feed `chain.last_check_in` to a date parser expecting ISO 8601.
+> ⚠️ **`chain` timestamps are unix seconds (numbers), not RFC 3339 strings.** That is deliberate — they are block timestamps, and reformatting them would make this API disagree with the chain in a way nobody could see. Do not feed `chain.last_check_in` to a date parser expecting ISO 8601.
 
-> ⚠️ **`trigger_started_at` and the optional `chain.*` timestamps are absent, not `null`.** The server **omits the key entirely** when unset — there is no `"trigger_started_at": null` in any response. Type them `| undefined` and test with `in` or `!== undefined`; a client typing them `| null`, or branching on `=== null`, takes the wrong path on every response.
+> ⚠️ **The optional `chain.*` timestamps are absent, not `null`.** The server **omits the key entirely** when unset — there is no `"trigger_started_at": null` in any response. Type them `| undefined` and test with `in` or `!== undefined`; a client typing them `| null`, or branching on `=== null`, takes the wrong path on every response.
 
 **`chain.indexed: false` means "not configured on-chain", never "safe."** Every other `chain` field is then absent. It is the state of a smart account whose owner has not yet run `configure()` — or, rarely, one whose events the indexer has not read. `smart_account_address` is populated either way, because it is derived at sign-up and known long before the smart account exists on-chain.
 
@@ -1712,132 +1669,13 @@ The **owner's own** dead-man's-switch state. Creates the trigger record on first
 
 `chain.triggerable_at` is `last_check_in + inactivity_period_seconds`, present only while `chain.status` is `active`. It is what a countdown UI counts down to. It is derived per request rather than stored, because the contract recomputes it on every read and a stored copy would go stale on each check-in.
 
-`required_votes` is clamped to the number of **active** guardians (minimum 1), so it can be lower than the configured quorum while guardians are still pending.
-
-`votes` counts only approvals from guardians who are **still active** and were cast in the **current countdown attempt**. Revoking a guardian therefore lowers the tally — expect it to move after a `DELETE /recovery/guardians/{id}`, and re-read this endpoint rather than caching a previous count. (The per-attempt scoping matters once the chain indexer lands: an owner who cancels a countdown on-chain must not find the old quorum still standing when the switch returns to `monitoring`.)
-
-`release_cycle` is the countdown attempt those votes are being counted in. A guardian must sign it as part of `succession-release-vote` — but **not from here**: this endpoint is owner-scoped and reports _your_ switch, not the switches you guard. Guardians read the value they must sign from `owner_release_cycle` on [`GET /recovery/guardianships`](#get-recoveryguardianships--protected). What this field is for is your own view of your own countdown.
+**There is no vote tally here, and no guardian can affect a release.** `POST /succession/votes` and `GET /succession/votes` were removed on 2026-09-03 ([Task 91](../api-general/.docs/tasks/tasks.md#task-91)): a quorum could only start its countdown once the chain already said the owner had gone silent, at which point `trigger()` is permissionless and the keeper sends it anyway. Guardians are a recovery role — seed recovery and the guardian-gated PIN reset.
 
 **Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
 
 > **Not in this API:** the heartbeat/check-in itself, and the switch's on-chain configuration. Both are **owner actions signed on the owner's device** — nothing server-side can check in on a user's behalf, and that is the invariant the whole product rests on. The chain indexer mirrors the results here; it cannot produce them.
 >
-> **The "I'm alive — cancel" button is a chain transaction, not a call to this API.** There is deliberately no `PATCH /succession/cancel`: a second exit the chain never witnessed could clear a countdown while the chain was genuinely in Contest. The button calls `DeadManSwitch.checkIn()`, the indexer sees `Revoked`, and `status` returns to `monitoring` with `release_cycle` incremented.
->
-> `inactivity_threshold_days` at the top level is the owner's *preference* and is still API-configurable in principle; `chain.inactivity_period_seconds` is what actually fires the switch once the account is configured. When they disagree, the chain value is the true one.
-
-### `GET /succession/votes`
-
-_Paginated — `?limit=` / `?cursor=`; `page` describes the nested `data.votes` array ([§3.1](#31-pagination))._
-
-The **owner's own** view of the evidence behind their vote count, for the current cycle. Guardians see only their own record here, not the owners they guard.
-
-**`200 OK`**
-
-```json
-{
-  "message": "Release votes retrieved successfully",
-  "data": {
-    "action": "succession-release-vote",
-    "owner_user_address": "c259bee5…",
-    "release_cycle": 1,
-    "votes": [
-      {
-        "guardian_username": "5bdf04be3bc6",
-        "guardian_public_key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE…",
-        "release_cycle": 1,
-        "signature": "base64…",
-        "challenge": "2318ddae…",
-        "timestamp": 1785345646,
-        "voted_at": "2026-07-29T17:20:46Z"
-      }
-    ]
-  }
-}
-```
-
-`votes` is `[]` when nobody has voted, never `null`.
-
-Each entry carries everything needed to check the approval independently: rebuild `challenge : timestamp : action : owner_user_address : release_cycle`, SHA-256 it, and verify against `guardian_public_key` (ECDSA P-256, IEEE P1363 — the same encoding you produce when signing). The response deliberately does **not** hand you a ready-made payload string: verifying a signature against the server's own account of what was signed proves nothing, so rebuild it from the labelled fields.
-
-Like `GET /succession/status`, this read is scoped to **your own** record and to the **current** cycle. Votes from a previous cycle, and votes cast by guardians you have since revoked, are not listed — the list therefore matches `votes` on the status endpoint entry for entry.
-
-**Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
-
----
-
----
-
-## 13. Enumerations
-
-**Guardian status** (`GET /recovery/guardians`, `/recovery/guardianships`)
-
-| Value            | Meaning                                                     |
-| ---------------- | ----------------------------------------------------------- |
-| `pending_invite` | Invited; must call `PATCH /recovery/guardians/{id}/accept`. |
-| `active`         | Accepted; can hold shares and vote.                         |
-| `revoked`        | No longer a guardian.                                       |
-
-**Recovery session status** (`GET /recovery/session/{id}`)
-
-| Value              | Meaning                                           |
-| ------------------ | ------------------------------------------------- |
-| `pending`          | Collecting guardian shares.                       |
-| `shares_collected` | Threshold reached; `shares` are returned.         |
-| `expired`          | TTL elapsed; further reads return `409 CONFLICT`. |
-
-Those three are the only values the API ever emits. The database column also allows `completed`, which **no code path writes** — it survives only inside an internal guard clause. Do not write a `completed` branch; it is unreachable. A session that has served its shares stays `shares_collected` until it expires.
-
-**PIN reset status** (`GET /auth/pin-reset/{id}`)
-
-| Value            | Meaning                                                                   |
-| ---------------- | ------------------------------------------------------------------------- |
-| `pending_quorum` | Awaiting guardian votes.                                                  |
-| `contest_period` | Quorum reached; owner may still revoke until `contest_period_ends_at`.    |
-| `authorized`     | Contest period elapsed; `PATCH /auth/pin-reset/confirm` will be accepted. |
-| `revoked`        | Cancelled by the owner.                                                   |
-| `completed`      | New second factor installed.                                              |
-
-**Beneficiary status** (`GET /succession/beneficiaries`)
-
-| Value    | Meaning                                                                                                                                 |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `active` | Registered and usable. The API always writes this value; the schema also allows `pending_invite`, which no endpoint currently produces. |
-
-**Release trigger status** — `data.status` on `GET /succession/status`
-
-The **off-chain guardian countdown**, and only that. These two are the only values it can hold; a `CHECK` constraint enforces it in the database.
-
-| Value           | Meaning                                       |
-| --------------- | --------------------------------------------- |
-| `monitoring`    | No guardian countdown running.                |
-| `counting_down` | Quorum of guardians voted; countdown running. |
-
-**Chain switch status** — `data.chain.status` on `GET /succession/status`
-
-The `DeadManSwitch` contract's own state, mirrored by the chain indexer. **This is the one that decides whether an inheritance can be opened.**
-
-| Value          | Meaning                                                                        |
-| -------------- | ------------------------------------------------------------------------------ |
-| `unconfigured` | The owner has never called `configure()`. Also what you get when `indexed` is `false`. |
-| `unknown`      | **Not a contract state.** The API could not read the chain mirror. Says nothing about the switch — retry rather than rendering it as a state. |
-| `active`       | The switch is armed and the owner is checking in. Counts down to `triggerable_at`. |
-| `contest`      | Someone called `trigger()` after the deadline. The owner can still cancel by checking in, until `releasable_at`. |
-| `released`     | `finalize()` ran. **Terminal — there is no on-chain undo.**                     |
-
-The two vocabularies are deliberately disjoint so that no code can confuse one for the other. **Nothing off-chain ever reads `released`**; if you are waiting for a release, watch `chain.status`.
-
-**The old single-status shape is gone.** Before 2026-08-16 this field was documented as possibly reaching `released` or `cancelled`; it never could, and it now formally cannot — those two values were removed from the column and a `CHECK` enforces the remaining pair. Release lives on `chain.status`. If you have a client branching on `status === "released"`, it is dead code and always was.
-
----
-
-## 15. Notes Endpoints
-
-🔒 All protected. A "note" is one encrypted plain-text note — a letter, a set of instructions, anything the user types. The server stores the same three opaque strings a secret carries and never decrypts anything.
-
-**Why this is not `/secrets`.** Notes get **edited**. `POST /secrets` is create-or-return and there is no `PUT /secrets`, because a seed phrase is written once. A letter is revised, so notes get their own resource with `PUT /notes/{id}`. Everything else deliberately matches the secrets contract: client-supplied `id`, the same idempotency rule, the same `{"code":…}` errors, the same `404` for "not yours".
-
-**The 5000-character limit is yours to enforce.** The server never sees plaintext, so it cannot count characters. What it enforces is a ceiling on the base64 `ciphertext` string: **32,768 characters**. That is derived from the worst case — 5000 four-byte UTF-8 characters seal to 26,708 base64 characters — so a client that honours the 5000-character rule can never hit it. Exceeding it is `400 BAD_REQUEST`, indistinguishable on the wire from any other bad request. Enforce 5000 characters in your editor; treat the server ceiling as a backstop against your own bugs, not as the user-facing limit.
+> **The "I'm alive — cancel" button is a chain transaction, not a call to this API.** There is deliberately no `PATCH /succession/cancel`: a second exit the chain never witnessed could clear a countdown while the chain was genuinely in Contest. The button calls `DeadManSwitch.checkIn()`, the indexer sees `Revoked`, and `chain.status` returns to `active`.
 
 ### `POST /notes`
 

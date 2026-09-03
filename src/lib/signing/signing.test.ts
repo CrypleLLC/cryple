@@ -62,8 +62,8 @@ describe('payload construction', () => {
 
   it('appends multiple arguments in the documented order', () => {
     expect(
-      buildActionPayload(CHALLENGE, TIMESTAMP, 'succession-release-vote', [userAddress, 7]),
-    ).toBe(`${CHALLENGE}:${TIMESTAMP}:succession-release-vote:${userAddress}:7`);
+      buildActionPayload(CHALLENGE, TIMESTAMP, 'share-assign', ['ben-1', 'item-2']),
+    ).toBe(`${CHALLENGE}:${TIMESTAMP}:share-assign:ben-1:item-2`);
   });
 
   it('rejects arguments containing the field separator', () => {
@@ -185,8 +185,8 @@ describe('secret-delete is the one batchable action', () => {
 });
 
 describe('the action table matches the authoritative spec', () => {
-  it('covers all 20 actions', () => {
-    expect(Object.keys(ACTIONS)).toHaveLength(20);
+  it('covers all 19 actions', () => {
+    expect(Object.keys(ACTIONS)).toHaveLength(19);
   });
 
   it('makes document-delete batchable, like secret-delete and note-delete', () => {
@@ -238,16 +238,8 @@ describe('the action table matches the authoritative spec', () => {
   it('records who signs, so a guardian action demands the guardian second factor', () => {
     expect(ACTIONS['pin-reset-vote'].signer).toBe('guardian');
     expect(ACTIONS['recovery-share-submit'].signer).toBe('guardian');
-    expect(ACTIONS['succession-release-vote'].signer).toBe('guardian');
     expect(ACTIONS['guardian-accept'].signer).toBe('invitee');
     expect(ACTIONS['account-delete'].signer).toBe('owner');
-  });
-
-  it('binds release_cycle after the owner address on a release vote', () => {
-    expect(ACTIONS['succession-release-vote'].args).toEqual([
-      'owner_user_address',
-      'release_cycle',
-    ]);
   });
 });
 
