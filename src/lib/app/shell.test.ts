@@ -2,13 +2,12 @@ import { describe, expect, it } from 'vitest';
 import vectors from '@/test/fixtures/test-vectors.json';
 import type { Guardianship, PendingPinReset, PendingSession } from '@/lib/recovery';
 import type { SecretMetaRecord, SecretRecord } from '@/lib/secrets';
-import type { Beneficiary, ReleaseStatusRecord, ReleaseVoteReport } from '@/lib/succession';
+import type { Beneficiary, ReleaseStatusRecord } from '@/lib/succession';
 import { deriveKeyTreeFromSeed } from '@/lib/keys';
 import { hexToBytes } from '@/lib/encoding';
 import { buildActionPayload, createChallenge, currentTimestamp, signPayload } from '@/lib/signing';
 import {
   actionableCount,
-  auditVotes,
   buildBeneficiaryViews,
   buildInbox,
   buildReleaseView,
@@ -423,11 +422,6 @@ describe('the vault index', () => {
 describe('the succession dashboard stays inside the reachable states', () => {
   function status(overrides: Partial<ReleaseStatusRecord> = {}): ReleaseStatusRecord {
     return {
-      status: 'monitoring',
-      votes: 0,
-      required_votes: 2,
-      release_cycle: 1,
-      inactivity_threshold_days: 180,
       chain: {
         indexed: true,
         smart_account_address: '0x4dcb2c4a8d8b42f58522ed7e116bb33fc75843b1',
@@ -440,62 +434,73 @@ describe('the succession dashboard stays inside the reachable states', () => {
     };
   }
 
-  it('renders the monitoring state without implying a countdown', () => {
+  it('renders the monitoring state without implying a release', () => {
     const view = buildReleaseView(status());
 
-    expect(view.status).toBe('monitoring');
-    expect(view.countdownStartedAt).toBeUndefined();
+    expect(view.chainStatus).toBe('active');
+    expect(view.released).toBe(false);
     expect(view.headline).toMatch(/monitoring normally/);
   });
 
-  it('renders the countdown once a quorum starts one', () => {
+  it('reports the periods the chain holds, not the unused off-chain day count', () => {
     const view = buildReleaseView(
-      status({ status: 'counting_down', votes: 2, trigger_started_at: '2026-07-26T12:00:00Z' }),
+      status({
+        chain: {
+          indexed: true,
+          smart_account_address: '0x4dcb2c4a8d8b42f58522ed7e116bb33fc75843b1',
+          status: 'active',
+          last_check_in: 1785110400,
+          inactivity_period_seconds: 300,
+          contest_period_seconds: 120,
+        },
+      }),
     );
 
-    expect(view.headline).toMatch(/countdown is running/);
-    expect(view.countdownStartedAt?.toISOString()).toBe('2026-07-26T12:00:00.000Z');
+    expect(view.inactivityPeriodSeconds).toBe(300);
+    expect(view.contestPeriodSeconds).toBe(120);
   });
 
-  it('audits each vote by rebuilding the payload, and separates verified from not', () => {
-    const challenge = createChallenge();
-    const timestamp = currentTimestamp();
-    const good = signPayload(
-      buildActionPayload(challenge, timestamp, 'succession-release-vote', [OWNER_ADDRESS, 1]),
-      tree.identity.privateKey,
+  it('leaves both periods absent when the switch is not configured on-chain', () => {
+    const view = buildReleaseView(
+      status({
+        chain: {
+          indexed: false,
+          smart_account_address: '0x4dcb2c4a8d8b42f58522ed7e116bb33fc75843b1',
+          status: 'unconfigured',
+        },
+      }),
     );
 
-    const report: ReleaseVoteReport = {
-      action: 'succession-release-vote',
-      owner_user_address: OWNER_ADDRESS,
-      release_cycle: 1,
-      votes: [
-        {
-          guardian_username: 'g1',
-          guardian_public_key: vectors.identity_key_p256.public_key_spki_base64,
-          release_cycle: 1,
-          signature: good,
-          challenge,
-          timestamp,
-          voted_at: '2026-07-29T17:20:46Z',
-        },
-        {
-          guardian_username: 'g2',
-          guardian_public_key: vectors.identity_key_p256.public_key_spki_base64,
-          release_cycle: 1,
-          signature: good,
-          challenge: createChallenge(),
-          timestamp,
-          voted_at: '2026-07-29T17:21:46Z',
-        },
-      ],
-    };
+    expect(view.inactivityPeriodSeconds).toBeUndefined();
+    expect(view.contestPeriodSeconds).toBeUndefined();
+  });
 
-    const audited = auditVotes(report);
+  it('reads the release state from the chain, the only place that holds it', () => {
+    const contest = buildReleaseView(
+      status({
+        chain: {
+          indexed: true,
+          smart_account_address: '0x4dcb2c4a8d8b42f58522ed7e116bb33fc75843b1',
+          status: 'contest',
+        },
+      }),
+    );
 
-    expect(audited.verifiedCount).toBe(1);
-    expect(audited.unverifiedCount).toBe(1);
-    expect(audited.ownerUserAddress).toBe(OWNER_ADDRESS);
+    expect(contest.headline).toMatch(/release has been triggered/);
+    expect(contest.released).toBe(false);
+
+    const released = buildReleaseView(
+      status({
+        chain: {
+          indexed: true,
+          smart_account_address: '0x4dcb2c4a8d8b42f58522ed7e116bb33fc75843b1',
+          status: 'released',
+        },
+      }),
+    );
+
+    expect(released.headline).toMatch(/has been released/);
+    expect(released.released).toBe(true);
   });
 
   it('labels a closed heir account instead of rendering an empty username', () => {

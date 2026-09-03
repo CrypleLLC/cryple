@@ -179,8 +179,8 @@ the client has a bug — and errors carry no message to render, so the check has
 | `listGuardianships` | `GET /recovery/guardianships` | — | paginated |
 
 **Both directions of a guardian-set change need the seed key.** Adding is not the safe half: a
-guardian the owner did not choose counts toward the PIN-reset quorum, can fetch a Shamir share,
-and can cast a release vote.
+guardian the owner did not choose counts toward the PIN-reset quorum and can fetch a Shamir share.
+They cannot touch an inheritance — guardians take no part in a release.
 
 **Invite signs the `guardian_username`**, so a signature made for one username is refused for
 another. The server checks that signature **before** looking the username up, so this endpoint
@@ -234,11 +234,12 @@ share wrapped under the wrong address is accepted by every party and fails only 
 reconstruction.
 
 The same absence rule applies to `user_address` and `encryption_public_key_*` here, and to
-`owner_user_address` and `owner_release_cycle` on `GET /recovery/guardianships`: present only on
-`active` rows, **absent** rather than empty. The two address fields are the two halves of one
-consent handshake — neither side learns the other's address before it completes. That endpoint
-is the **only** place a guardian can obtain either of its two, and `owner_release_cycle` must be
-re-read before every release vote — it changes when a countdown is cancelled.
+`owner_user_address` on `GET /recovery/guardianships`: present only on `active` rows, **absent**
+rather than empty. The two address fields are the two halves of one consent handshake — neither
+side learns the other's address before it completes. That endpoint is the **only** place a guardian
+can obtain the owner's address, which they need for the PQXDH `info` string when re-wrapping their
+share. The `owner_release_cycle` that used to sit beside it is gone with the release vote
+([Task 91](../../../../api-general/.docs/tasks/tasks.md#task-91)).
 
 ## The recovery session — recovering-device side
 

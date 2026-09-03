@@ -1,10 +1,9 @@
 # `succession`
 
-Milestone 4 — Tasks 21, 22 and 23. Naming heirs, wrapping item keys to them, and the
-guardian-cast release vote.
+Milestone 4 — Tasks 21 and 22. Naming heirs, wrapping item keys to them, and reading the chain's
+view of the owner's switch.
 
-Every route here is **owner-scoped except the vote**, which is guardian-scoped. **None of them
-serves an heir**, and that is by design before a release: an heir is named unilaterally, holds
+Every route here is **owner-scoped**. **None of them serves an heir**, and that is by design before a release: an heir is named unilaterally, holds
 nothing, and has no invite, acceptance, decline or inbox to build. After a release the heir claim
 path is real but unbuilt and its paths are unsettled. Do not add heir-facing screens.
 
@@ -16,9 +15,7 @@ path is real but unbuilt and its paths are unsettled. Do not add heir-facing scr
 | `assignShare` / `assignSecretById` | `POST /succession/shares` 🔒 | `share-assign`, upsert; any of the three item types |
 | `listShares` | `GET /succession/beneficiaries/{id}/shares` 🔒 | paginated |
 | `deleteShare` | `DELETE /succession/shares/{id}` 🔒 | `share-delete` |
-| `castReleaseVote` | `POST /succession/votes` 🔒 | guardian-scoped, `succession-release-vote` |
-| `getReleaseStatus` | `GET /succession/status` 🔒 | owner's own switch |
-| `listReleaseVotes` / `verifyReport` | `GET /succession/votes` 🔒 | paginated over a **nested** array |
+| `getReleaseStatus` | `GET /succession/status` 🔒 | the chain's view of the owner's own switch |
 
 ## Beneficiaries
 
@@ -124,50 +121,28 @@ transaction, and the response does not report how many went with it. `findItemAs
 "who inherits this item" from the per-beneficiary share lists so the UI can warn first. Treat any
 cached `share_count` as stale after a delete and re-read the beneficiary list.
 
-## Release votes
+## Release status
 
-### The cycle comes from the guardianship row, never from `/succession/status`
+`getReleaseStatus` returns `{ chain }` and nothing else. There is no off-chain status, vote tally
+or countdown beside it, so nothing this module reads can disagree with the chain about whether a
+vault has been released.
 
-`GET /succession/status` is **owner-scoped** — it reports *your* switch, not the switches you
-guard. Its `release_cycle` is the wrong number for a guardian to sign, and binding the wrong cycle
-is refused with `401`.
+**Guardians used to vote here and no longer do.** `castReleaseVote`, `listReleaseVotes`,
+`verifyReport` and the `succession-release-vote` action were removed on 2026-09-03 by
+[Task 91](../../../../api-general/.docs/tasks/tasks.md#task-91): the vote could only start its
+countdown once the chain already agreed the owner had gone silent, at which point `trigger()` is
+permissionless and the keeper sends it unprompted. It advanced no timeline and gated no heir.
+Guardians are a recovery role — see [`recovery`](../recovery/README.md).
 
-`castReleaseVote` reads `owner_user_address` and `owner_release_cycle` from
-`GET /recovery/guardianships` immediately before signing, on every call. A test asserts
-`/succession/status` is never fetched on the vote path.
-
-> `tasks.md` Task 23 says to fetch the cycle from `GET /succession/status`. That line is stale:
-> [front-end-endpoints.md](../../../front-end-endpoints.md) states the opposite explicitly under
-> `POST /succession/votes` and again under `GET /succession/status`, and the guide wins on wire
-> behaviour. The implementation follows the endpoint doc.
-
-Both values are **absent, not empty**, on `pending_invite` rows. `toVotableOwner` refuses a
-non-active row, a missing address and a missing cycle separately rather than defaulting a cycle —
-guessing `1` would produce a signature that is rejected for reasons the user cannot see.
-
-The vote demands the **guardian's own** second factor. `release_cycle` is signed as a colon-joined
-string via the shared payload builder; a cycle-*n* signature does not verify as cycle *n+1*, which
-a test pins.
-
-### Auditing the count
-
-`GET /succession/votes` paginates over the **nested** `data.votes` array while `data` itself stays
-an object, so `collectPages` does not fit — `listReleaseVotes` runs its own cursor loop, keeps the
-last envelope's `action` / `owner_user_address` / `release_cycle`, and concatenates the pages.
-
-`verifyReleaseVotes` / `verifyReport` rebuild
-`challenge : timestamp : "succession-release-vote" : owner_user_address : release_cycle` **from the
-labelled fields** and verify against each `guardian_public_key`. The response deliberately hands
-over no ready-made payload string: verifying against the server's own account of what was signed
-proves nothing. Each entry's own `release_cycle` is used, so a vote relabelled into the current
-cycle fails. Verification never throws — a malformed signature or key yields `valid: false`.
+`buildReleaseView` in [`app`](../app/README.md) derives its headline from `chain.status` alone,
+which is the only place a release state exists.
 
 ## What this module does not do
 
 - **No heir screens**, per the boundary above.
-- **No UI for `released` or `cancelled` on the off-chain half.** `ReleaseStatus` types only
-  `monitoring` and `counting_down`, and a `CHECK` on the column now enforces that. Release lives on
-  `chain.status`, which is typed separately as `ChainStatus`.
+- **No off-chain release state at all.** The API used to serve a `status` beside `chain` that
+  could only ever read `monitoring` or `counting_down`, so a released vault rendered as monitoring.
+  The field is gone; `ChainStatus` is the only status type this module exports.
 - **`chain.status` carries one value the contract does not define: `unknown`.** It means the API
   could not read its chain mirror — an infrastructure fault, not a fact about the switch. It is
   surfaced as `ReleaseView.chainUnavailable` so a screen can say "retry" rather than "not set up".
