@@ -1,4 +1,4 @@
-export type SignerRole = 'owner' | 'guardian' | 'invitee';
+export type SignerRole = 'owner';
 
 export interface ActionSpec {
   readonly args: readonly string[];
@@ -8,27 +8,6 @@ export interface ActionSpec {
 }
 
 export const ACTIONS = {
-  'pin-reset-request': { args: ['user_address'], secondFactor: false, signer: 'owner' },
-  'pin-reset-vote': { args: ['request_id'], secondFactor: true, signer: 'guardian' },
-  'pin-reset-revoke': { args: ['request_id'], secondFactor: false, signer: 'owner' },
-  'pin-reset-confirm': {
-    args: ['request_id', 'new_server_auth_token'],
-    secondFactor: false,
-    signer: 'owner',
-  },
-  'guardian-invite': {
-    args: ['guardian_username'],
-    secondFactor: true,
-    signer: 'owner',
-  },
-  'guardian-accept': { args: ['invitation_id'], secondFactor: true, signer: 'invitee' },
-  'guardian-revoke': { args: ['guardian_id'], secondFactor: true, signer: 'owner' },
-  'recovery-setup': { args: ['setup_digest'], secondFactor: true, signer: 'owner' },
-  'recovery-share-submit': {
-    args: ['session_id', 're_encrypted_share'],
-    secondFactor: true,
-    signer: 'guardian',
-  },
   'enable-second-factor': {
     args: ['new_server_auth_token'],
     secondFactor: false,

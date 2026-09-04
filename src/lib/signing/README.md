@@ -10,13 +10,11 @@ Task 8 of [tasks.md](../../../tasks.md). Implements
 
 ## The authorization rule
 
-> **The JWT authorizes reads and additions. Anything that destroys or replaces existing data,
-> and anything touching the guardian graph, needs the seed key — plus
-> the second factor when the signer is in Paranoid Mode.**
+> **The JWT authorizes reads and additions. Anything that destroys or replaces existing data
+> needs the seed key — plus the second factor when the signer is in Paranoid Mode.**
 
-So `GET` anything and `POST /secrets` need only the token. Every `DELETE`,
-`PUT /recovery/setup`, `PUT /users/password`, and every guardian or
-recovery-session mutation needs a signature from this module.
+So `GET` anything and `POST /secrets` need only the token. Every `DELETE`, plus
+`POST /users/second-factor` and `PUT /users/password`, needs a signature from this module.
 
 ## The two payload shapes
 
@@ -83,19 +81,22 @@ local state does not survive a reinstall and "restore on a new device" is the no
 Sending a token on a Standard account fails exactly as hard as omitting it on a Paranoid one,
 so both mistakes are prevented here rather than at the call site.
 
-**The signer's own mode decides.** When a guardian acts on someone else's account
-(`pin-reset-vote`, `recovery-share-submit`) it is the *guardian's*
-second factor that is demanded — never the owner's. Requiring the owner's would defeat
-guardian recovery, whose premise is that the owner is unavailable. `ACTIONS[…].signer` records
-this.
+**The signer's own mode decides — the *signer's*, not the account owner's.** Every action in
+`ACTIONS` today is signed by the account's own owner, so `signer` is `'owner'` on all six and the
+distinction costs nothing. Keep it anyway: it is load-bearing the moment private sharing adds an
+action one account signs against another's data, and it was load-bearing before, when guardians
+signed against an owner's account.
 
-**Three carve-outs take no second factor, structurally** — do not "fix" them:
+**One carve-out takes no second factor, structurally** — do not "fix" it:
 
 | Action | Why |
 | --- | --- |
 | `enable-second-factor` | None exists yet; that is what the call creates. |
-| `pin-reset-request` / `-revoke` / `-confirm` | Signed by an owner who **lost** the PIN. |
-| `POST /recovery/request` | Unsigned entirely — the caller lost the seed. Not in this table. |
+
+Four more carve-outs existed until 2026-09-04, all belonging to the guardian-gated PIN reset:
+that flow was for an owner who had **lost** the PIN, so demanding it would have defeated the
+flow. It left with recovery, and with it the last route in this API that a caller could reach
+without a token.
 
 ### `secret-delete` is the only batchable action
 
@@ -106,11 +107,13 @@ N challenges.
 
 ### Actions with their own gotchas
 
-- **`recovery-setup` signs a digest of the whole payload**, not an intent. That digest is
-  built in the recovery domain (Task 16), not here; this module only signs the hex string.
-- **`guardian-accept` needs a signature**, not just the JWT. Accepting releases the owner's
-  identity to the guardian and raises the owner's recovery quorum — a bearer token must not be
-  able to forge the second leg of a consent handshake.
+- **Both second-factor actions sign the new token itself**, not the intent, so nothing between
+  the client and the server can substitute a value of its own on a validly-signed call. That
+  matters more since 2026-09-04: with no reset path, an account that comes out of enrolment with
+  the wrong PIN is finished.
+- **Sign the value, not the intent** generalises. Nine retired actions all followed it, and the
+  next action this table gains — a share addressed to a recipient — has to bind the recipient
+  or a proxy can redirect it. The retired specs are live in `dms-shamir`.
 
 ## Failure modes the UI must not try to distinguish
 

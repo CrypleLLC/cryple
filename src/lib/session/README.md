@@ -138,10 +138,11 @@ from `has_password`, never from the offering tab's cached state.
   the whole flow is the PIN-wrapped vault record owned by [`lib/pin`](../pin/README.md).
 - Nothing here is logged. Never add a `console.log` of a keystore instance — its fields are
   private keys.
-- The mnemonic is deliberately **not** retained. `unlock` derives from it and drops it. The
-  one flow that needs the seed phrase itself (recovery setup, Task 16, which encrypts it
-  under the REK) calls `unlockSeedVault` directly for that one-off, rather than the keystore
-  holding a plaintext mnemonic for the whole session.
+- The mnemonic is deliberately **not** retained. `unlock` derives from it and drops it. The one
+  flow that needed the seed phrase itself — recovery setup, retired 2026-09-04 — called
+  `unlockSeedVault` directly for that one-off rather than having the keystore hold a plaintext
+  mnemonic all session. **Keep that shape**: a flow needing the phrase re-opens the local vault,
+  it does not get the keystore to keep one.
 
 ## Tests
 

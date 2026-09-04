@@ -23,9 +23,6 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `documents/DocumentToolbar.tsx` | The TipTap formatting toolbar |
 | `documents/useDocumentSync.ts` | Binds `DocumentSync` to a component's lifetime |
 | `documents/extensions.ts` | The TipTap extension set, bound to the document's `Y.Doc` |
-| `GuardiansScreen.tsx` | Guardians, recovery setup, Recovery Kit |
-| `GuardianInbox.tsx` | The merged guardian queue, 1-minute poll |
-| `RecoveryKitCard.tsx` | The printable share-0 surface |
 | `ui.tsx` | Card / Button / Field / TextArea / Select / Badge / Notice / Modal primitives |
 | `icons.tsx` | The stroke-icon set shared by navigation and primitives |
 | `StagingBanner.tsx` | The walking red warning banner, dev-only — see [`app`](../app/README.md#the-staging-banner) |
@@ -40,8 +37,9 @@ sticky top header with a horizontally scrolling nav row.
 Navigation is one registry, `NAV_ITEMS` in `AppShell.tsx`. Each entry is
 `{ id, label, description, icon, screen, actions? }`; adding a section (a document editor is still
 planned) means adding one entry and its screen component — the sidebar, the mobile nav and the
-top-bar heading all render from the same array. Notes was added exactly that way, as one entry
-between Vault and Guardians. `actions` is the optional slot for a
+top-bar heading all render from the same array. Notes was added exactly that way, as one entry;
+Guardians was **removed** exactly that way on 2026-09-04, by deleting one. `actions` is the
+optional slot for a
 component rendered in the top bar beside Lock / Log out, for controls that belong to the whole
 screen rather than to one panel; the Vault's global reveal toggle is the first of them. State
 shared between such a control and its screen lives in a provider wrapping the shell, as
@@ -55,9 +53,8 @@ the way console tables do. The content column is full-width with a small gutter,
 column. Panels that do not need the full width sit inside a `PanelGrid` — a two-column grid from
 `md` up, a single stacked column on mobile. Grid items stretch, so neighbours in the same row
 share a height and their borders line up regardless of how much content each holds. A lone panel
-occupies half the content width and two sit side by side. Guardians puts all four of its panels
-outside it at full width and grids the rest; Vault keeps its table full width and grids the form.
-Wide tables and dashboards stay outside a grid.
+occupies half the content width and two sit side by side. Vault keeps its table full width and
+grids the form. Wide tables and dashboards stay outside a grid.
 
 The brand color is `#667eea`, defined once as the `brand` scale in
 [`globals.css`](../app/globals.css) via Tailwind's `@theme`. It is used sparingly — primary
@@ -127,43 +124,6 @@ locked, zeroing what was derived.
 The mode step states the one-way door before either button. There is no "disable PIN" control and
 there never will be.
 
-## Recovery setup asks for the PIN again
-
-`SessionKeystore` holds the derived key tree, not the mnemonic — deliberately. Splitting a REK
-needs the seed **phrase**, so the Guardians screen re-opens the local vault with
-`unlockSeedVault(pin)` for that one operation. That is a real re-prompt, and the field says why.
-
-It no longer asks for guardian addresses. PQXDH's `info` string binds the recipient's
-`user_address`, and `GET /recovery/guardians` now returns it on `active` rows, so `recipientFor`
-reads it off the row. The screen used to make the owner type each 64-hex address and check it with
-`GET /users/lookup`; wrapping a share to a mistyped address produces a blob the guardian can never
-open and nothing server-side would catch it, so removing the field removed the failure.
-
-Quorum is shown as `min(configured, active)` alongside the guardian count, with an explicit
-warning when the configured threshold exceeds the number of guardians who can actually answer.
-The k=1 sole-guardian warning is rendered verbatim from the spec.
-
-## Getting back in without the phrase
-
-`SeedRecovery.tsx` sits behind an **I lost my recovery phrase** link on the sign-in tab, not
-behind a third tab — it is a rare path, and a tab implies parity with signing up and signing in.
-On success it hands the phrase to `Onboarding`, which dispatches the ordinary `import` origin, so
-the PIN step and `enrol` are shared code rather than a parallel flow.
-
-The ephemeral hybrid key pair lives in a `useRef` and is disposed on unmount, on restart and on
-completion. It is never persisted, because it cannot usefully be: a reload loses the private
-halves and every share already submitted becomes unopenable. That is why the screen keeps saying
-to leave the tab open, and why the request is issued exactly once — it is unsigned and not
-retry-safe.
-
-Polling runs in an effect with an `AbortController`, so closing the screen stops it. A
-`SessionExpiredError` is rendered as its own copy rather than through `reportError`, because the
-remedy — start again, guardians must re-send — is specific and an API code cannot express it.
-
-The reducer and every derived number live in [`src/lib/app/seed-recovery.ts`](../lib/app/seed-recovery.ts)
-so they are testable without a DOM, which is where the "guardians alone must meet the threshold"
-rule is enforced and explained.
-
 ## Product boundaries this shell respects
 
 Taken from [AGENTS.md § Product boundaries](../../AGENTS.md); each of these is an absence, so it is
@@ -205,7 +165,7 @@ without a DOM.
 
 ## Notes is the one screen with no panel
 
-`NotesScreen` is a section like Vault or Guardians — same `NAV_ITEMS` entry, same top bar — but
+`NotesScreen` is a section like Vault or Documents — same `NAV_ITEMS` entry, same top bar — but
 it deliberately **does not use `Card`**. The files render straight into the content column with
 no panel border around them, because the console panel idiom exists to group controls, and a
 file browser's content *is* the grouping. A border there would read as a second, redundant frame

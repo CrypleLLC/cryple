@@ -17,9 +17,10 @@ things.
 **Losing access.** Forget the master password on a properly encrypted vault and it is gone. The
 provider cannot help without holding a key, and if they hold a key they can read your data.
 
-Cryple treats that as an encryption problem rather than a customer support problem: recovery works
-through people you nominate, and nobody at Cryple holds a key that could help — or that could be
-compelled.
+Cryple treats that as an encryption problem rather than a customer support problem. Nobody at
+Cryple holds a key that could help — or that could be compelled. The trade is stated plainly
+rather than hidden: **what you hold is what you have**, and the app's job is to make sure you
+know that before you need it, not after.
 
 ## How it works
 
@@ -41,12 +42,11 @@ one way only, so the server can recognise your account without ever learning the
 Everything is encrypted in your browser before it is sent. The server receives sealed data and
 stores it.
 
-It can see: that your account exists, how many items you have, roughly how large they are, when
-they changed, and that you have guardians.
+It can see: that your account exists, how many items you have, roughly how large they are, and
+when they changed.
 
-It cannot see: your recovery phrase, your PIN, any item's contents, the private note you attached
-for a guardian. Even the labels you write are encrypted, so
-the server knows a relationship exists but not who anyone is to you.
+It cannot see: your recovery phrase, your PIN, or any item's contents. Even the labels you write
+are encrypted.
 
 This is why "we cannot read your data" is checkable rather than a promise. The code that would do
 the reading is in this repository, and there is no key on the server side to do it with.
@@ -61,7 +61,7 @@ does:
 - **Standard** — the PIN never leaves the device. Signing in is your recovery phrase alone, so
   forgetting the PIN costs you nothing: log out, sign back in with your phrase, set a new one.
 - **Paranoid** — the same PIN is _also_ checked by the server, so your phrase alone will not sign
-  you in anywhere. A forgotten PIN is reset through your guardians rather than by you.
+  you in anywhere. **Forgetting it ends the account.** There is no reset, by anyone, ever.
 
 Paranoid mode exists for one scenario: someone steals your recovery phrase. Without your PIN it is
 not enough. You can upgrade from Standard to Paranoid later, but **never the reverse** — a stolen
@@ -73,47 +73,39 @@ rounds of a slow key-derivation function, which is why unlocking pauses for a mo
 is the point: it makes guessing PINs expensive. It is paid once per session, not per action.
 
 **Three wrong PINs erase the copy on that device.** Your vault is untouched — you get back in with
-your recovery phrase, or through your guardians.
+your recovery phrase.
 
-### Getting back in: guardians
+### There is no account recovery, and that is the design
 
-Guardians are people you trust — family, close friends. They do not get access to your vault. They
-hold a piece of the key that unlocks a recovery.
+An earlier version of Cryple let people you nominated hold pieces of a key that could rebuild your
+phrase. It was removed on 2026-09-04, and the reasoning is worth stating rather than hiding:
 
-Nobody becomes a guardian by being named. You invite them by username, and the invitation waits in
-their own guardian inbox until they accept it — an accepted guardian is one who agreed and knows
-they agreed. Until then they count for nothing. Accepting cannot be undone from their side; only
-you can remove a guardian.
+- A guardian had to already have a Cryple account, so the feature only worked for people whose
+  friends had already installed an unfamiliar app and written down a seed phrase of their own.
+- "Your friends can restore your access" is the sentence that makes a privacy-minded reader ask
+  who else can get in. For a product whose whole claim is that nobody can, the answer has to stay
+  *nobody*.
 
-The app takes a recovery key, encrypts your phrase with it, then splits that key into pieces using
-a scheme where any _k_ of _n_ pieces rebuild it and anything fewer reveals **nothing at all**. Not
-a partial answer, not a head start. Two pieces of a three-piece, three-required split are as
-useless as zero.
-
-You always hold one piece yourself, printed as a Recovery Kit. So three guardians means four
-pieces. The common setup is two-of-three: you plus either of two guardians. That way one
-unavailable guardian does not lock you out, and one guardian acting alone cannot do anything.
-
-Each guardian's piece is encrypted specifically for them, so they cannot read each other's, and
-the server cannot read any. During a recovery the server only passes messages along.
-
-Two things to be clear about, because they are choices you make and not defaults you can ignore:
-
-- **If you set the threshold to one guardian, that guardian can recover your vault alone.** The
-  app warns you in those words when you configure it.
-- If enough guardians collude, they rebuild your recovery phrase. In Paranoid mode they still hit
-  the PIN and cannot get in. In Standard mode they are in. Choose accordingly.
+So: **your phrase and your PIN are yours to keep.** In exchange, the answer to "who else could get
+into my vault" is nothing, with no asterisk. The app's obligation is to be honest about that
+up front — a printable kit at sign-up, plain words before you turn on Paranoid mode, and a later
+nudge to check that the copy you saved is the copy that works.
 
 ### Why post-quantum
 
-A vault runs on a timescale of decades. Encrypted data captured today can be stored and
-attacked later, and a sufficiently capable quantum computer would break the classical algorithms
-in common use now.
+A vault runs on a timescale of decades. Encrypted data captured today can be stored and attacked
+later, and a sufficiently capable quantum computer would break the classical algorithms in common
+use now.
 
-So whenever Cryple encrypts something for another person — a guardian's piece of your recovery key
-— it uses two independent algorithms at once and combines them. One is the well-understood
-classical choice; the other is a post-quantum standard. An attacker has to break **both**. If
-either survives, your data stays sealed.
+Your vault at rest does not depend on those algorithms: it is sealed with symmetric encryption,
+which a quantum computer weakens but does not break. The hybrid construction matters for the other
+case — **encrypting something for another person**, where the classical algorithms are what a
+future attacker would target. So when Cryple wraps a key for someone else, it uses two independent
+algorithms at once and combines them: one well-understood classical choice, one post-quantum
+standard. An attacker has to break **both**.
+
+That machinery is built, frozen and tested against fixed vectors. It has no caller at the moment —
+private sharing, where you send one item to another person, is what will use it next.
 
 ## Running it locally
 
@@ -163,7 +155,6 @@ constants, [front-end-guide.md](./front-end-guide.md) and
 | [`lib/pqxdh`](./src/lib/pqxdh/README.md)           | Hybrid post-quantum encryption for another person   |
 | [`lib/sealed`](./src/lib/sealed/README.md)         | The versioned encrypted-blob format                 |
 | [`lib/secrets`](./src/lib/secrets/README.md)       | Vault items                                         |
-| [`lib/recovery`](./src/lib/recovery/README.md)     | Guardians, key splitting, recovery, PIN reset       |
 | [`lib/app`](./src/lib/app/README.md)               | Product logic behind the interface                  |
 | [`components`](./src/components/README.md)         | The React screens                                   |
 

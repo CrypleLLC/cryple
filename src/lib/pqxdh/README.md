@@ -1,13 +1,27 @@
 # `lib/pqxdh` — hybrid wrapping for a specific recipient
 
-The **only** way this client encrypts data for someone else. Two uses in MVP scope and nothing
-else: guardian share wrapping for recovery.
+The **only** way this client encrypts data for someone else.
 
 Task 14 of [tasks.md](../../../tasks.md). Implements
 [crypto/pqxdh.md](../../../../api-general/.docs/crypto/pqxdh.md) — a **FROZEN** spec.
 
+> ## Nothing calls this module today, and it is not dead code
+>
+> Its two usages belonged to digital inheritance and to guardian recovery, and both left the
+> product (2026-09-03 and 2026-09-04). **This module stays because private sharing is the same
+> primitive aimed at a different recipient** — send a secret, note, document or file to another
+> account by wrapping the item's DEK to their published keys. That is Task 102 in
+> [api-general's task list](../../../../api-general/.docs/tasks/tasks.md), and it is also why
+> `lib/keys` still derives the X25519 and ML-KEM branches and why `user_keys` is still written
+> at sign-up.
+>
+> **This is where the post-quantum claim actually lives.** Vault data at rest is AES-256-GCM
+> under a key derived from the seed, and symmetric encryption is already quantum-resistant —
+> Grover halves the exponent and nothing more. The hybrid construction only does work when
+> encrypting **to someone else**.
+
 > Changing any constant here is a breaking change requiring a new `version` byte and
-> re-wrapping every stored blob. A recovery blob is designed to stay decryptable for
+> re-wrapping every stored blob. A wrapped blob is designed to stay decryptable for
 > **decades** — that is the window this construction is sized for.
 
 ## The construction
@@ -41,14 +55,18 @@ const opened = await pqxdhUnwrap(blob, { x25519PrivateKey, mlkemSecretKey }, con
 
 | Label | Context | Recipient key source |
 | --- | --- | --- |
-| `recovery-share` | Wrapping an SSS share of the REK for a guardian | Guardian's registered keys |
-| `recovery-session` | Guardian re-wrapping a share to a recovering device | Session `ephemeral_public_key` |
+| `recovery-share` | *Retired.* Wrapping an SSS share of the REK for a guardian | Guardian's registered keys |
+| `recovery-session` | *Retired.* Guardian re-wrapping a share to a recovering device | Session `ephemeral_public_key` |
+
+**Both labels are dead**, and `PQXDH_USAGES` still lists them for one reason: `recovery-share`
+is the usage recorded in `test-vectors.json`, so the fixture test needs it. Task 102 assigns the
+sharing label and changes the spec, this constant, the generator and the vectors **in one
+coordinated commit** — do not rename them piecemeal before then.
 
 **Never reuse a label for a new purpose** — a new usage gets a new label. The label is what
-stops a session key derived for one purpose from being valid in another.
-
-For `recovery-session` the "recipient" is the **recovering account's own `user_address`** — the
-ephemeral key belongs to that account's session, not to a third party.
+stops a session key derived for one purpose from being valid in another. Retired labels are not
+free to recycle either: a blob wrapped under `recovery-share` in `dms-shamir` must never open
+under a sharing key here.
 
 ## The constants that must not drift
 
@@ -87,7 +105,7 @@ servers from setup time; release timing is enforced elsewhere and is a documente
 limitation.
 
 It deliberately provides **no forward secrecy** against compromise of the recipient's long-term
-keys — and must not, since a recovery blob has to stay openable years later.
+keys — and must not, since a wrapped blob has to stay openable years later.
 
 **Recipient key authenticity is out of scope.** The wrap is only as trustworthy as the public
 keys used, and those come from Cryple's database. A malicious backend could substitute its own

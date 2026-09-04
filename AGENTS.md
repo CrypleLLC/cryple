@@ -26,7 +26,6 @@ The wire contract does not specify what goes *into* those fields. Every derivati
 | [auth/signed-actions.md](../api-general/.docs/auth/signed-actions.md) | The action-signature envelope and the **authoritative action table**. |
 | [auth/two-factor-PIN.md](../api-general/.docs/auth/two-factor-PIN.md) | `Server_Auth_Token` derivation, PIN rules, **local seed encryption at rest**. |
 | [auth/user-address.md](../api-general/.docs/auth/user-address.md) | `user_address` derivation and format. |
-| [recovery-flow.md](../api-general/.docs/recovery-flow.md) | REK, Shamir parameters, guardian delivery paths, device-wipe policy. |
 | [onchain-architecture.md](../api-general/.docs/onchain-architecture.md) | ERC-4337 signer, heartbeat, and an explicit "what the chain does NOT do". |
 | [pivot-scope.md](../api-general/.docs/pivot-scope.md) | What is in scope, cut, or postponed. |
 
@@ -36,7 +35,6 @@ The wire contract does not specify what goes *into* those fields. Every derivati
 
 - `domain/auth/service/service_test.go` — the whole client-visible auth contract as tests: replayed challenges rejected, freshness in both directions, ASN.1/DER signatures rejected, signature bound to its timestamp / action / arguments, a sign-in signature refused as an action signature, mode mismatches failing symmetrically, every credential failure returning one indistinguishable error, restore-with-drifted-keys refused.
 - `domain/*/http/http_test.go` — exact request/response shapes per route, which routes need a token, non-canonical UUID rejection, the 350 ms public-response floor, opaque `500`s.
-- `domain/recovery/service/service_test.go` — `SetupDigest` is exported precisely so it can be cross-checked; `TestSetupDigest_*` pin share-order independence and every field the digest commits to. Port those two tests into this client's suite against your own digest implementation.
 
 No Go test consumes `test-vectors.json` — the generator produces it and nothing re-reads it. **This client's fixture test is therefore the only cross-client check of the derivations**, which is one more reason it is not optional.
 
@@ -71,7 +69,7 @@ Required dependencies not yet installed: `@noble/curves` (SLIP-0010 P-256 signin
 
 ## PQXDH — the only way to wrap anything for someone else
 
-Used for one thing: guardian share wrapping for recovery.
+**Nothing calls this today, and it must not be deleted.** Its usages belonged to digital inheritance and to guardian recovery, both of which left the product (2026-09-03 and 2026-09-04). It stays because **private sharing** — sending one item to another account — is the same primitive aimed at a different recipient, and is the next feature (Task 102 in `../api-general/.docs/tasks/tasks.md`). It is also the only place the post-quantum claim does any work: vault data at rest is symmetric and already quantum-resistant, so the hybrid construction only earns its keep when encrypting **to someone else**.
 
 ```
 ephemeral   = fresh X25519 key pair, per wrapped payload
@@ -87,8 +85,8 @@ blob = 0x01 ‖ kemCiphertext(1088) ‖ ephemeralX25519Pub(32) ‖ iv(12) ‖ AE
 ```
 
 - **AES-256-GCM, not ChaCha20-Poly1305.** Earlier drafts named both; GCM won because ChaCha is absent from WebCrypto. No AAD — context binding lives in `info`.
-- `usage` is one of `recovery-share`, `recovery-session`. Never reuse a label for a new purpose.
-- Sender and recipient addresses in `info` are the 64-char lowercase hex strings, joined literally with `|`. For `recovery-session` the "recipient" is the recovering account's own `user_address`.
+- `usage` is one of `recovery-share`, `recovery-session` — **both retired**, kept only because `recovery-share` is the usage `test-vectors.json` records. Task 102 assigns the sharing label and changes the spec, `PQXDH_USAGES`, the generator and the vectors in one commit. Never reuse a label for a new purpose, and never recycle a retired one.
+- Sender and recipient addresses in `info` are the 64-char lowercase hex strings, joined literally with `|`.
 - **Reject unknown version bytes** rather than guessing, and check the blob length against the layout before attempting decryption.
 
 ## The second factor and the seed at rest
@@ -104,11 +102,11 @@ encrypted_seed    = { v: 1, salt, iv(12 random), ct: AES-256-GCM(localWrapKey, i
 - The `Server_Auth_Token` salt is the **UTF-8 bytes of the 64-character hex string** — 64 bytes, not the 32 raw bytes it encodes. This is the most likely place for a client to diverge.
 - The local salt is random **per device**, so the same PIN yields a different wrapping key on each device. That is correct; this value is never compared across devices. Keep the `v` KDF-version marker — a future move off PBKDF2 needs it to re-wrap old blobs.
 - **PIN rules, enforced client-side**: exactly 6 ASCII digits; no ascending/descending sequence (`123456`, `654321`); no all-repeating digit (`111111`).
-- **3 failed local PIN attempts wipes the device copy.** That is product policy from `recovery-flow.md`, not a suggestion — build it.
+- **3 failed local PIN attempts wipes the device copy.** Product policy, not a suggestion — build it.
 - 600k iterations is 0.3–1s on a laptop, several seconds on a low-end phone. Pay it **once per session** and hold the derived material in memory; a per-request derivation is a broken UX, and a per-request *prompt* is the wrong design (see the signature model below).
 - The raw PIN never leaves the device in either mode.
 
-**Mode transitions are one-directional.** Standard → Paranoid via `POST /users/second-factor` (action `enable-second-factor`, refused if a factor already exists). Paranoid → Paranoid via `PUT /users/password` (needs the current token) or the guardian-gated reset. **Paranoid → Standard does not exist** — never build a "disable PIN" affordance. The asymmetry is deliberate: the PIN's whole threat model is a compromised seed, so the seed key alone must never be able to replace a PIN that is already set.
+**Mode transitions are one-directional.** Standard → Paranoid via `POST /users/second-factor` (action `enable-second-factor`, refused if a factor already exists). Paranoid → Paranoid via `PUT /users/password`, which needs the current token and is **the only way a PIN ever changes** — the guardian-gated reset left on 2026-09-04, so a forgotten Paranoid PIN ends the account. **Paranoid → Standard does not exist** — never build a "disable PIN" affordance. The asymmetry is deliberate: the PIN's whole threat model is a compromised seed, so the seed key alone must never be able to replace a PIN that is already set.
 
 ## The current `src/` is obsolete — do not use it as a reference
 
@@ -135,14 +133,13 @@ Nothing below exists in `src/` yet. All of it is specified — build against the
 1. **Seed → the full key tree**, reproducing `test-vectors.json`. Everything else depends on this being right, so it lands first with its fixture test.
 2. **Signed-request helper.** Build the challenge/action envelope **once**, as one function, not per call site — it is the single hardest part and the most repeated.
 3. **Session key custody.** Unlock the seed once per session, hold the derived signing key and `Server_Auth_Token` in memory, and sign from there. Design for "unlock once", never "prompt per action".
-4. **PQXDH wrap/unwrap** for guardian shares.
-5. **Shamir secret sharing** over the REK for `PUT /recovery/setup`, split client-side, plus the `recovery-setup` digest below.
+4. **PQXDH wrap/unwrap** — built, frozen, and currently without a caller; private sharing is what will use it.
 6. **JWT lifecycle**: store, attach, treat `401 UNAUTHORIZED` as session-over.
 7. **Local seed vault**: PIN-wrapped `encrypted_seed`, 3-attempt wipe, PIN format rules.
 
 ## Signed actions — the authorization rule
 
-> **The JWT authorizes reads and additions. Anything that destroys or replaces existing data, and anything touching the guardian graph, needs the seed key — plus the second factor when the signer is in Paranoid Mode.**
+> **The JWT authorizes reads and additions. Anything that destroys or replaces existing data needs the seed key — plus the second factor when the signer is in Paranoid Mode.**
 
 ```
 payload = <challenge> ":" <timestamp> ":" <action> [":" <arg> …]     colon-joined, SHA-256, P-256, IEEE P1363
@@ -152,20 +149,9 @@ Sign-in and sign-up omit the action and args (`challenge:timestamp`) — a two-f
 
 The **authoritative action list, with each action's argument order and whether it takes a second factor, is the table in [auth/signed-actions.md](../api-general/.docs/auth/signed-actions.md#actions)**. Read it rather than inferring from an endpoint name. What it makes non-obvious:
 
-- **The signer's own mode decides.** When a guardian acts on someone else's account (`pin-reset-vote`, `recovery-share-submit`), it is the **guardian's** second factor that is demanded — never the owner's.
-- **Three carve-outs take no second factor, structurally**: `enable-second-factor` (none exists yet), the owner's `pin-reset-request` / `-revoke` / `-confirm` (they lost the PIN), and `POST /recovery/request` (unsigned entirely — the caller lost the seed). Do not "fix" these.
-- **`guardian-accept` needs a signature**, not just the JWT. Accepting is what releases the owner's identity to the guardian and what raises the owner's recovery quorum — a bearer token must not be able to forge the second leg of a consent handshake.
+- **The signer's own mode decides**, not the account owner's. Every action today is signed by the account's own owner, so the two coincide; the distinction becomes load-bearing again when private sharing adds an action one account signs against another's data.
+- **One carve-out takes no second factor, structurally**: `enable-second-factor`, because the call is what creates the factor. Do not "fix" it. Four more existed until 2026-09-04, all belonging to the guardian-gated PIN reset.
 - **`secret-delete` is the one batchable action.** Its ids are **sorted ascending and de-duplicated** before the payload is rebuilt, and `DELETE /secrets/{id}` is the one-element case of the same label.
-- **`recovery-setup` signs a digest of the whole payload**, not an intent:
-
-  ```
-  canonical = encrypted_seed | n_shares | k_threshold | version
-            | share_index ":" guardian_username ":" pq_hybrid_encrypted_share   (one per share, sorted by share_index)
-  argument  = lowercase hex SHA-256(canonical)
-  ```
-
-  `version` is the literal string you send — **empty if you omitted it**, since the digest is computed before the server normalizes it to `v1`. Sign what you send. Share 0 has no guardian, so its middle field is empty.
-
 - **The challenge is consumed before the second factor is checked**, so a wrong PIN spends it and the retry needs a fresh triple. Both legs return the same error, so a client cannot tell a bad signature from a wrong PIN — surface one generic message.
 
 ## API rules that will bite you
@@ -181,29 +167,22 @@ Derived from the guide and the specs; these are the ones a client gets wrong by 
 - **Errors carry no message.** All user-facing copy is built client-side from `code` + the endpoint called. A `404` from `/sign-up`, `/sign-in` or `/auth/verify` is deliberately ambiguous — render one generic "could not sign in", never "user not found".
 - **`401 UNAUTHORIZED` (token expired) and `401 INVALID_CREDENTIALS` (account/second factor) are different.** Only the first means "sign in again from scratch"; the second can appear on a plain `GET`.
 - **Re-running `POST /sign-up` is the documented restore-on-new-device path**, and it re-sends all three keys. The server compares the two encryption keys against the stored ones and returns the generic `404` if either differs. A `404` on restore with a correct signature therefore means **your derivation is wrong**, not that the account is missing — check against the test vectors first. Nothing is overwritten by the rejected call.
-- **Keys are immutable; there is no rotation.** A mismatch is refused rather than accepted precisely because accepting would silently orphan every share guardians already hold against the old keys.
+- **Keys are immutable; there is no rotation.** A mismatch is refused rather than accepted precisely because accepting would silently orphan every blob already wrapped to the old keys. Nothing wraps to them today, which is exactly why backend Task 63 was promoted alongside private sharing rather than left post-MVP.
 - **Optional fields are absent, never `null`.** Type them `?` / `| undefined` and test with `in` or `!== undefined`. `| null` takes the wrong branch on every response.
 - **UUIDs are canonical lowercase hyphenated only**, in paths and bodies. Echo back exactly what the API gave you — the same string goes into the signed payload, so "what you send" and "what you sign" must be the same bytes.
-- **Status codes**: `201` created, `204` nothing to say, `200` everything else. Do not key a helper on the verb — `DELETE /recovery/guardians/{id}` and `DELETE /secrets` (batch) both return `200` with a body you must read.
+- **Status codes**: `201` created, `204` nothing to say, `200` everything else. Do not key a helper on the verb — `DELETE /secrets` (batch) returns `200` with a body you must read.
 - **Retries are not uniformly safe** (guide § Retry safety). `POST /secrets` without a client-generated `id` and `POST /recovery/request` each create a second row; a retried `DELETE`/`PATCH` returns `404`/`409` meaning *already done*; `POST /users/second-factor` returns a `401` you cannot distinguish from failure — resolve it with `GET /users/me`.
-- **Poll, don't wait.** No webhooks, SSE or WebSockets. Recovery sessions expire in 30 minutes (poll every few seconds while on screen); guardian inboxes poll on the order of a minute.
+- **Poll, don't wait.** No webhooks, SSE or WebSockets. Nothing in the current API needs polling; a sharing inbox will be the first thing that does.
 - **Public endpoints have a 350 ms response floor.** Never use timings as a signal; never set timeouts below ~2 s.
 - **No custom request headers** — only `Content-Type` and `Authorization` are allowed by CORS. Never set `credentials: "include"`.
 - **1 MiB body cap.** Budget ~700 KiB of plaintext per secret; oversized bodies return `400 INVALID_BODY`, same as malformed JSON.
 - **Eight lists paginate; `GET /secrets` does not.** Follow `next_cursor` until `has_more` is `false` — a short page is not the last page. Cursors are opaque: never build, parse or persist one. Render the vault index from `GET /secrets?fields=meta`, and hash the ciphertext *you* received rather than trusting `ciphertext_sha256`.
 - **Auth needs Redis server-side and it fails closed.** A total auth outage with valid credentials is an infrastructure symptom, not a client bug — do not add retry logic that hammers it.
 
-## Recovery shape
-
-- **Seed recovery splits a REK, not the seed.** The seed is AES-GCM-encrypted under a Recovery Encryption Key; the REK is Shamir-split. Share 0 is the user's own Recovery Kit copy and always counts as one share, so **n = guardians + 1**. Default and recommended: **2-of-3** (user + either of two guardians).
-- **k=1 with one guardian means that guardian alone can reconstruct the seed.** The setup UI must say so explicitly: *"This person can recover your vault on their own. Only choose someone you fully trust."*
-- Guardians never see a plaintext share. The recovering device generates an ephemeral key pair per session; each guardian re-wraps their share to it with PQXDH `usage = recovery-session`. The server is a relay.
-- Even colluding guardians cannot open a Paranoid Mode vault — they reconstruct the seed but still need the PIN for a JWT.
-- Quorum is `min(configuredMinimum, activeGuardians)`, so a forced or accidental extra guardian **raises the owner's bar without adding a participant**. Surface the guardian count and the effective quorum together.
-
 ## Product boundaries — do not build these
 
 - **No "sign out all devices" / session list.** The API has no revocation. Logout means deleting your own copy of the token.
+- **No guardians, no seed recovery, no PIN reset.** Removed 2026-09-04 and not coming back. A forgotten Paranoid PIN is terminal, and the UI must say so before the PIN is set.
 - **No key rotation flow, and no "disable PIN".** Rotation is a protocol change (backend Task 63), not an endpoint.
 - **Check-in / dead-man's-switch configuration is on-chain**, not in this API.
 - **Nothing from `.docs/storage-plan.md`.** The file vault is postponed post-MVP; it is the one `.docs` file that is not a build target.
@@ -244,7 +223,7 @@ Regenerating the vectors is a backend operation (`go run ./tools/cryplevectors` 
 Earlier revisions of this file carried open questions. All but one are answered by `../api-general/.docs/` and the API source; the resolutions are recorded here so they are not re-asked.
 
 - **Seed → `user_address`, seed → keys, fate of the local unlock password**: resolved by the frozen specs, inlined in the sections above.
-- **Free vs Premium gating: do not build any.** The API has no tier, plan, or entitlement concept anywhere — no config field, no enforcement, nothing on the wire. The only server-side rule on recovery setup is `1 ≤ k_threshold ≤ n_shares` (`recovery/service/service.go`). The Free-tier-1-guardian / Premium-k-of-n split in `recovery-flow.md` is product-plan copy, not API behaviour. Build k-of-n configuration as the API supports it; keep the k=1 trust warning, which is a safety requirement, not a tier.
+- **Free vs Premium gating: do not build any.** The API has no tier, plan, or entitlement concept anywhere — no config field, no enforcement, nothing on the wire. When a paid tier arrives it will be storage and file limits, not a feature flag on anything that exists today.
 
 **The one gap: the KEK that produces the owner's own `wrapped_dek` for `POST /secrets`.** This is confirmed unspecified, and deliberately so:
 

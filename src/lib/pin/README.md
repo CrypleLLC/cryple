@@ -95,7 +95,7 @@ different outcomes:
 
 ### The 3-attempt wipe
 
-Product policy from [recovery-flow.md](../../../../api-general/.docs/recovery-flow.md), not a
+Product policy, not a
 suggestion. Three consecutive failed unlocks delete the record. A successful unlock clears
 the counter.
 

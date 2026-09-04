@@ -46,7 +46,7 @@ const { status, message, data, page } = await request<T>({
 | `200` | A read, a transition, or a create-or-return that returned |
 | `204` | Succeeded, nothing to say — **no body at all** |
 
-`DELETE /recovery/guardians/{id}` and `DELETE /secrets` (batch) answer `200` **with a body you
+`DELETE /secrets` (batch) answers `200` **with a body you
 must read**. The rule is *"`204` or a body"*, never *"`DELETE` means `204`"*.
 
 ### Errors
@@ -115,7 +115,7 @@ script and stays valid until `exp` no matter what the owner does afterwards.
 retry needs a fresh `{challenge, timestamp, signature}` triple — the challenge is consumed
 *before* the signature is verified, so replaying a triple always fails. See
 [front-end-guide.md § Retry safety](../../../front-end-guide.md) for which calls tolerate a
-retry at all: `POST /secrets` without a client-generated `id` and `POST /recovery/request`
+retry at all: `POST /secrets` without a client-generated `id`
 each create a second row, and `POST /users/second-factor` returns a `401` you cannot
 distinguish from failure — resolve that one with `GET /users/me`.
 

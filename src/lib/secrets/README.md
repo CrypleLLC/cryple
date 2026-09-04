@@ -54,7 +54,7 @@ ciphertext = base64( 0x01 ‖ iv(12) ‖ AES-256-GCM(dek, iv, plaintext) ‖ tag
 **Ratified 2026-08-08** as `crypto/ECDSA.md` § Sealed Blob Format (Decision B) — byte-for-byte
 what was already here, so `codec.ts` and `@/lib/sealed` needed no changes, only confirmation
 against the regenerated `sealed_blob` test vector. The same envelope also now covers
-`recovery_vaults.encrypted_seed`.
+`notes.ciphertext` and the document snapshot.
 
 It still leads with a **version byte**, and `openPayload` still **rejects an unknown one** rather
 than guessing — a future layout change stays detectable instead of silently misparsed.

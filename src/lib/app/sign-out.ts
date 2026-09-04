@@ -21,8 +21,8 @@ const LOG_OUT_ERASING_DEVICE: SessionExit = {
   description: "Ends this session and removes this device's copy of your recovery phrase.",
   destructive: true,
   confirm:
-    'Log out and erase this device? You will need your recovery phrase to get back in. Your ' +
-    'vault and your guardians are untouched.',
+    'Log out and erase this device? You will need your recovery phrase to get back in — ' +
+    'nobody can issue you another. Your vault itself is untouched.',
 };
 
 const LOG_OUT_NOTHING_STORED: SessionExit = {

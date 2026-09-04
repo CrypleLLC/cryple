@@ -33,15 +33,6 @@ export function VaultIcon(props: IconProps) {
   );
 }
 
-export function GuardiansIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M12 3.5 5 6.2v4.9c0 4.2 2.9 7.5 7 9.4 4.1-1.9 7-5.2 7-9.4V6.2L12 3.5Z" />
-      <path d="m9.2 11.8 2 2 3.6-3.8" />
-    </Icon>
-  );
-}
-
 export function SecurityIcon(props: IconProps) {
   return (
     <Icon {...props}>

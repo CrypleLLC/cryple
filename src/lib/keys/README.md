@@ -36,7 +36,7 @@ scope and the sealed-blob envelope it wraps into.
 | Export | Purpose |
 | --- | --- |
 | `deriveKeyTree(mnemonic, passphrase?)` | Mnemonic → the whole tree. Validates the checksum first. |
-| `deriveKeyTreeFromSeed(seed)` | Same, from 64 raw seed bytes. Used by the tests and by recovery. |
+| `deriveKeyTreeFromSeed(seed)` | Same, from 64 raw seed bytes. Used by the tests. |
 | `deriveUserAddress(seed)` | `SHA-256(seed)` as lowercase hex. |
 | `deriveIdentityKey` / `deriveX25519Key` / `deriveMlKem768Key` / `deriveVaultKek` | Individual leaves. |
 | `zeroKeyTree(tree)` | Zeroes every private buffer in the tree in place. |

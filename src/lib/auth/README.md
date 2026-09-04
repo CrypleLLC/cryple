@@ -29,7 +29,7 @@ untouched on failure.
 ```
 
 **Enrollment is immutable — there is no key rotation, and a mismatch is refused rather than
-accepted.** Accepting one would silently orphan every share that guardians had
+accepted.** Accepting one would silently orphan every blob that other accounts had
 already wrapped to the old keys. This is what Task 3's fixture test protects, and it is why
 that fixture gates every milestone.
 
