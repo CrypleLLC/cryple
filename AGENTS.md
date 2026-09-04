@@ -27,7 +27,6 @@ The wire contract does not specify what goes *into* those fields. Every derivati
 | [auth/two-factor-PIN.md](../api-general/.docs/auth/two-factor-PIN.md) | `Server_Auth_Token` derivation, PIN rules, **local seed encryption at rest**. |
 | [auth/user-address.md](../api-general/.docs/auth/user-address.md) | `user_address` derivation and format. |
 | [recovery-flow.md](../api-general/.docs/recovery-flow.md) | REK, Shamir parameters, guardian delivery paths, device-wipe policy. |
-| [succession_protocol.md](../api-general/.docs/succession_protocol.md) | Heir DEK-wrapping machinery. |
 | [onchain-architecture.md](../api-general/.docs/onchain-architecture.md) | ERC-4337 signer, heartbeat, and an explicit "what the chain does NOT do". |
 | [pivot-scope.md](../api-general/.docs/pivot-scope.md) | What is in scope, cut, or postponed. |
 
@@ -41,7 +40,7 @@ The wire contract does not specify what goes *into* those fields. Every derivati
 
 No Go test consumes `test-vectors.json` — the generator produces it and nothing re-reads it. **This client's fixture test is therefore the only cross-client check of the derivations**, which is one more reason it is not optional.
 
-The four specs marked **FROZEN** (`crypto/ECDSA.md`, `crypto/pqxdh.md`, `auth/two-factor-PIN.md`, `onchain-architecture.md`) are Milestone 0 output. Every path, label, iteration count and version byte in them is part of account identity. **Do not change one, and do not "fix" one inline** — a divergent constant does not throw, it produces a different account or an unopenable blob, and the failure surfaces years later at inheritance release.
+The specs marked **FROZEN** (`crypto/ECDSA.md`, `crypto/pqxdh.md`, `auth/two-factor-PIN.md`) are Milestone 0 output. Every path, label, iteration count and version byte in them is part of account identity. **Do not change one, and do not "fix" one inline** — a divergent constant does not throw, it produces a different account or an unopenable blob, and the failure surfaces years later at inheritance release.
 
 ## The frozen key tree — implement exactly this
 
@@ -72,7 +71,7 @@ Required dependencies not yet installed: `@noble/curves` (SLIP-0010 P-256 signin
 
 ## PQXDH — the only way to wrap anything for someone else
 
-Used for two things, and nothing else in MVP scope: succession DEK wrapping for heirs, and guardian share wrapping for recovery.
+Used for one thing: guardian share wrapping for recovery.
 
 ```
 ephemeral   = fresh X25519 key pair, per wrapped payload
@@ -88,10 +87,9 @@ blob = 0x01 ‖ kemCiphertext(1088) ‖ ephemeralX25519Pub(32) ‖ iv(12) ‖ AE
 ```
 
 - **AES-256-GCM, not ChaCha20-Poly1305.** Earlier drafts named both; GCM won because ChaCha is absent from WebCrypto. No AAD — context binding lives in `info`.
-- `usage` is one of `succession-dek`, `recovery-share`, `recovery-session`. Never reuse a label for a new purpose.
+- `usage` is one of `recovery-share`, `recovery-session`. Never reuse a label for a new purpose.
 - Sender and recipient addresses in `info` are the 64-char lowercase hex strings, joined literally with `|`. For `recovery-session` the "recipient" is the recovering account's own `user_address`.
 - **Reject unknown version bytes** rather than guessing, and check the blob length against the layout before attempting decryption.
-- A fresh ephemeral key per payload is required — the blob must be self-contained, because an heir may need to open it after the owner's account is gone.
 
 ## The second factor and the seed at rest
 
@@ -137,15 +135,14 @@ Nothing below exists in `src/` yet. All of it is specified — build against the
 1. **Seed → the full key tree**, reproducing `test-vectors.json`. Everything else depends on this being right, so it lands first with its fixture test.
 2. **Signed-request helper.** Build the challenge/action envelope **once**, as one function, not per call site — it is the single hardest part and the most repeated.
 3. **Session key custody.** Unlock the seed once per session, hold the derived signing key and `Server_Auth_Token` in memory, and sign from there. Design for "unlock once", never "prompt per action".
-4. **PQXDH wrap/unwrap** for succession shares and guardian shares.
+4. **PQXDH wrap/unwrap** for guardian shares.
 5. **Shamir secret sharing** over the REK for `PUT /recovery/setup`, split client-side, plus the `recovery-setup` digest below.
 6. **JWT lifecycle**: store, attach, treat `401 UNAUTHORIZED` as session-over.
 7. **Local seed vault**: PIN-wrapped `encrypted_seed`, 3-attempt wipe, PIN format rules.
-8. Five product domains: `auth`, `users`, `secrets`, `recovery` (guardians, seed recovery, PIN reset), `succession` (beneficiaries, shares, release votes).
 
 ## Signed actions — the authorization rule
 
-> **The JWT authorizes reads and additions. Anything that destroys or replaces existing data, and anything touching the guardian / inheritance / sharing graph, needs the seed key — plus the second factor when the signer is in Paranoid Mode.**
+> **The JWT authorizes reads and additions. Anything that destroys or replaces existing data, and anything touching the guardian graph, needs the seed key — plus the second factor when the signer is in Paranoid Mode.**
 
 ```
 payload = <challenge> ":" <timestamp> ":" <action> [":" <arg> …]     colon-joined, SHA-256, P-256, IEEE P1363
@@ -184,7 +181,7 @@ Derived from the guide and the specs; these are the ones a client gets wrong by 
 - **Errors carry no message.** All user-facing copy is built client-side from `code` + the endpoint called. A `404` from `/sign-up`, `/sign-in` or `/auth/verify` is deliberately ambiguous — render one generic "could not sign in", never "user not found".
 - **`401 UNAUTHORIZED` (token expired) and `401 INVALID_CREDENTIALS` (account/second factor) are different.** Only the first means "sign in again from scratch"; the second can appear on a plain `GET`.
 - **Re-running `POST /sign-up` is the documented restore-on-new-device path**, and it re-sends all three keys. The server compares the two encryption keys against the stored ones and returns the generic `404` if either differs. A `404` on restore with a correct signature therefore means **your derivation is wrong**, not that the account is missing — check against the test vectors first. Nothing is overwritten by the rejected call.
-- **Keys are immutable; there is no rotation.** A mismatch is refused rather than accepted precisely because accepting would silently orphan every DEK guardians and heirs already wrapped to the old keys.
+- **Keys are immutable; there is no rotation.** A mismatch is refused rather than accepted precisely because accepting would silently orphan every share guardians already hold against the old keys.
 - **Optional fields are absent, never `null`.** Type them `?` / `| undefined` and test with `in` or `!== undefined`. `| null` takes the wrong branch on every response.
 - **UUIDs are canonical lowercase hyphenated only**, in paths and bodies. Echo back exactly what the API gave you — the same string goes into the signed payload, so "what you send" and "what you sign" must be the same bytes.
 - **Status codes**: `201` created, `204` nothing to say, `200` everything else. Do not key a helper on the verb — `DELETE /recovery/guardians/{id}` and `DELETE /secrets` (batch) both return `200` with a body you must read.
@@ -196,7 +193,7 @@ Derived from the guide and the specs; these are the ones a client gets wrong by 
 - **Eight lists paginate; `GET /secrets` does not.** Follow `next_cursor` until `has_more` is `false` — a short page is not the last page. Cursors are opaque: never build, parse or persist one. Render the vault index from `GET /secrets?fields=meta`, and hash the ciphertext *you* received rather than trusting `ciphertext_sha256`.
 - **Auth needs Redis server-side and it fails closed.** A total auth outage with valid credentials is an infrastructure symptom, not a client bug — do not add retry logic that hammers it.
 
-## Recovery and succession shape
+## Recovery shape
 
 - **Seed recovery splits a REK, not the seed.** The seed is AES-GCM-encrypted under a Recovery Encryption Key; the REK is Shamir-split. Share 0 is the user's own Recovery Kit copy and always counts as one share, so **n = guardians + 1**. Default and recommended: **2-of-3** (user + either of two guardians).
 - **k=1 with one guardian means that guardian alone can reconstruct the seed.** The setup UI must say so explicitly: *"This person can recover your vault on their own. Only choose someone you fully trust."*
@@ -206,10 +203,8 @@ Derived from the guide and the specs; these are the ones a client gets wrong by 
 
 ## Product boundaries — do not build these
 
-- **No heir-facing screens *in this client yet*.** Nothing here lets a named beneficiary discover, accept, decline or claim an inheritance. Before release that stays permanent by design — the API omits an unreleased inheritance from `GET /succession/inheritances` entirely, so there is nothing to render. **After release the routes now exist** (`api-general` Task 54, `/succession/inheritances/…`), and building the claim flow against them is web-app Task 41. Until it ships, an heir has no way in through this client.
 - **No "sign out all devices" / session list.** The API has no revocation. Logout means deleting your own copy of the token.
-- **No key rotation flow, and no "disable PIN".** Rotation is a protocol change (backend Task 63), not an endpoint. `keys_rotated: true` means the heir *deleted their account* — surface "remove them and choose another", never a re-wrap prompt.
-- **No UI waiting on `cancelled` (release trigger) or `completed` (recovery session).** No code path writes them. Release is different: the chain indexer shipped 2026-08-16, so `GET /succession/status` now carries a `chain` object whose `chain.status` reaches `released`. The top-level `status` is still only `monitoring` or `counting_down` — the two are separate facts and merging them is a bug. See [`src/lib/app/README.md`](./src/lib/app/README.md).
+- **No key rotation flow, and no "disable PIN".** Rotation is a protocol change (backend Task 63), not an endpoint.
 - **Check-in / dead-man's-switch configuration is on-chain**, not in this API.
 - **Nothing from `.docs/storage-plan.md`.** The file vault is postponed post-MVP; it is the one `.docs` file that is not a build target.
 

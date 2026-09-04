@@ -2,9 +2,8 @@
 
 [cryple.io](https://cryple.io)
 
-Cryple is a vault for the things that matter after you are gone: passwords, account details,
-private notes, instructions. You keep them encrypted. If you lose access, people you chose can
-help you back in. If you die, the people you named inherit exactly what you left them.
+Cryple is an encrypted personal drive: passwords, account details, private notes, long-form
+documents. You keep them encrypted. If you lose access, people you chose can help you back in.
 
 Nobody at Cryple can read any of it. Not because of a policy, but because the servers never
 receive anything readable. This repository is the web client — the part that runs in your browser
@@ -18,13 +17,9 @@ things.
 **Losing access.** Forget the master password on a properly encrypted vault and it is gone. The
 provider cannot help without holding a key, and if they hold a key they can read your data.
 
-**Dying.** Your family needs the accounts. The vault is doing its job by refusing them. The usual
-answers are a printed sheet in a drawer, or trusting a company to hand things over correctly years
-from now.
-
-Cryple treats both as encryption problems rather than customer support problems. Recovery works
-through people you nominate, and inheritance is arranged in advance while you can still make the
-decisions.
+Cryple treats that as an encryption problem rather than a customer support problem: recovery works
+through people you nominate, and nobody at Cryple holds a key that could help — or that could be
+compelled.
 
 ## How it works
 
@@ -47,10 +42,10 @@ Everything is encrypted in your browser before it is sent. The server receives s
 stores it.
 
 It can see: that your account exists, how many items you have, roughly how large they are, when
-they changed, that you have guardians, and that heirs are named.
+they changed, and that you have guardians.
 
 It cannot see: your recovery phrase, your PIN, any item's contents, the private note you attached
-to an heir, or which item goes to which person. Even the label you give an heir is encrypted, so
+for a guardian. Even the labels you write are encrypted, so
 the server knows a relationship exists but not who anyone is to you.
 
 This is why "we cannot read your data" is checkable rather than a promise. The code that would do
@@ -109,27 +104,13 @@ Two things to be clear about, because they are choices you make and not defaults
 - If enough guardians collude, they rebuild your recovery phrase. In Paranoid mode they still hit
   the PIN and cannot get in. In Standard mode they are in. Choose accordingly.
 
-### Passing it on: heirs
-
-You name heirs by username and assign specific items to each. The key for each item is re-encrypted
-so that only that person can ever open it. This happens on your device, while you are alive.
-
-Heirs are not told. There is no invitation, no acceptance, no notification — naming someone would
-otherwise publish a relationship you may have chosen to keep private. There is no heir-facing
-screen in this app, deliberately.
-
-When guardians agree that you have died or are incapacitated, they vote. Enough votes start a
-countdown, which is visible to you so a mistake or a bad actor can be caught before anything is
-released. The countdown and the release itself are handled on-chain, outside this API, so no
-single company decides when your estate opens.
-
 ### Why post-quantum
 
-Inheritance runs on a timescale of decades. Encrypted data captured today can be stored and
+A vault runs on a timescale of decades. Encrypted data captured today can be stored and
 attacked later, and a sufficiently capable quantum computer would break the classical algorithms
 in common use now.
 
-So whenever Cryple encrypts something for another person — a guardian's piece, an heir's item key
+So whenever Cryple encrypts something for another person — a guardian's piece of your recovery key
 — it uses two independent algorithms at once and combines them. One is the well-understood
 classical choice; the other is a post-quantum standard. An attacker has to break **both**. If
 either survives, your data stays sealed.
@@ -183,7 +164,6 @@ constants, [front-end-guide.md](./front-end-guide.md) and
 | [`lib/sealed`](./src/lib/sealed/README.md)         | The versioned encrypted-blob format                 |
 | [`lib/secrets`](./src/lib/secrets/README.md)       | Vault items                                         |
 | [`lib/recovery`](./src/lib/recovery/README.md)     | Guardians, key splitting, recovery, PIN reset       |
-| [`lib/succession`](./src/lib/succession/README.md) | Heirs, inherited keys, release votes                |
 | [`lib/app`](./src/lib/app/README.md)               | Product logic behind the interface                  |
 | [`components`](./src/components/README.md)         | The React screens                                   |
 

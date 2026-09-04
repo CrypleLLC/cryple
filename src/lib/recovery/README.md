@@ -180,7 +180,6 @@ the client has a bug — and errors carry no message to render, so the check has
 
 **Both directions of a guardian-set change need the seed key.** Adding is not the safe half: a
 guardian the owner did not choose counts toward the PIN-reset quorum and can fetch a Shamir share.
-They cannot touch an inheritance — guardians take no part in a release.
 
 **Invite signs the `guardian_username`**, so a signature made for one username is refused for
 another. The server checks that signature **before** looking the username up, so this endpoint
@@ -261,8 +260,6 @@ scoped, so it provides the cross-session binding the addresses were there for. A
 blob wrapped for one session will not open under another.
 
 What is here:
-
-
 
 | Function | Endpoint | Notes |
 | --- | --- | --- |

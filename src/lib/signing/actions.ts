@@ -58,22 +58,6 @@ export const ACTIONS = {
     signer: 'owner',
     variadic: true,
   },
-  'beneficiary-register': {
-    args: ['beneficiary_username'],
-    secondFactor: true,
-    signer: 'owner',
-  },
-  'beneficiary-delete': {
-    args: ['beneficiary_id'],
-    secondFactor: true,
-    signer: 'owner',
-  },
-  'share-assign': {
-    args: ['beneficiary_id', 'item_id'],
-    secondFactor: true,
-    signer: 'owner',
-  },
-  'share-delete': { args: ['share_id'], secondFactor: true, signer: 'owner' },
 } as const satisfies Record<string, ActionSpec>;
 
 export type ActionLabel = keyof typeof ACTIONS;

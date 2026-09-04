@@ -62,18 +62,18 @@ describe('payload construction', () => {
 
   it('appends multiple arguments in the documented order', () => {
     expect(
-      buildActionPayload(CHALLENGE, TIMESTAMP, 'share-assign', ['ben-1', 'item-2']),
-    ).toBe(`${CHALLENGE}:${TIMESTAMP}:share-assign:ben-1:item-2`);
+      buildActionPayload(CHALLENGE, TIMESTAMP, 'pin-reset-confirm', ['req-1', 'tok-2']),
+    ).toBe(`${CHALLENGE}:${TIMESTAMP}:pin-reset-confirm:req-1:tok-2`);
   });
 
   it('rejects arguments containing the field separator', () => {
-    expect(() => buildActionPayload(CHALLENGE, TIMESTAMP, 'share-delete', ['a:b'])).toThrow(
+    expect(() => buildActionPayload(CHALLENGE, TIMESTAMP, 'note-delete', ['a:b'])).toThrow(
       /must not contain/,
     );
   });
 
   it('rejects the wrong argument count', () => {
-    expect(() => buildActionPayload(CHALLENGE, TIMESTAMP, 'share-assign', ['only-one'])).toThrow(
+    expect(() => buildActionPayload(CHALLENGE, TIMESTAMP, 'pin-reset-confirm', ['only-one'])).toThrow(
       /expected 2 argument/,
     );
   });
@@ -185,8 +185,8 @@ describe('secret-delete is the one batchable action', () => {
 });
 
 describe('the action table matches the authoritative spec', () => {
-  it('covers all 19 actions', () => {
-    expect(Object.keys(ACTIONS)).toHaveLength(19);
+  it('covers all 15 actions', () => {
+    expect(Object.keys(ACTIONS)).toHaveLength(15);
   });
 
   it('makes document-delete batchable, like secret-delete and note-delete', () => {
@@ -281,8 +281,8 @@ describe('second factor attachment', () => {
 
 describe('envelopes are fresh per call', () => {
   it('never reuses a challenge across two signings of the same action', () => {
-    const first = signActionEnvelope('share-delete', ['id-1'], identity, { paranoid: false });
-    const second = signActionEnvelope('share-delete', ['id-1'], identity, { paranoid: false });
+    const first = signActionEnvelope('note-delete', ['id-1'], identity, { paranoid: false });
+    const second = signActionEnvelope('note-delete', ['id-1'], identity, { paranoid: false });
     expect(first.challenge).not.toBe(second.challenge);
     expect(first.signature).not.toBe(second.signature);
   });

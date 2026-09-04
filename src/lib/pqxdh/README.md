@@ -1,13 +1,13 @@
 # `lib/pqxdh` — hybrid wrapping for a specific recipient
 
 The **only** way this client encrypts data for someone else. Two uses in MVP scope and nothing
-else: succession DEK wrapping for heirs, and guardian share wrapping for recovery.
+else: guardian share wrapping for recovery.
 
 Task 14 of [tasks.md](../../../tasks.md). Implements
 [crypto/pqxdh.md](../../../../api-general/.docs/crypto/pqxdh.md) — a **FROZEN** spec.
 
 > Changing any constant here is a breaking change requiring a new `version` byte and
-> re-wrapping every stored blob. An inheritance blob is designed to stay decryptable for
+> re-wrapping every stored blob. A recovery blob is designed to stay decryptable for
 > **decades** — that is the window this construction is sized for.
 
 ## The construction
@@ -41,7 +41,6 @@ const opened = await pqxdhUnwrap(blob, { x25519PrivateKey, mlkemSecretKey }, con
 
 | Label | Context | Recipient key source |
 | --- | --- | --- |
-| `succession-dek` | Wrapping an item DEK for an heir | Beneficiary's `public_key_*_snapshot` |
 | `recovery-share` | Wrapping an SSS share of the REK for a guardian | Guardian's registered keys |
 | `recovery-session` | Guardian re-wrapping a share to a recovering device | Session `ephemeral_public_key` |
 
@@ -62,7 +61,7 @@ ephemeral key belongs to that account's session, not to a third party.
   different, silently wrong session key; the test suite pins this.
 - **Addresses in `info` are the 64-char lowercase hex strings**, joined literally with `|`.
 - **A fresh ephemeral key per payload.** Required, not an optimization: it makes the blob
-  **self-contained**, so an heir needs only their own private keys and the blob — no lookup of
+  **self-contained**, so a recipient needs only their own private keys and the blob — no lookup of
   the owner's public key, which matters when the owner's account may be gone.
 
 ## Rejecting rather than guessing
@@ -87,8 +86,8 @@ It does **not** control *when* the recipient obtains the blob. The blob sits on 
 servers from setup time; release timing is enforced elsewhere and is a documented trust
 limitation.
 
-It deliberately provides **no forward secrecy** against compromise of the heir's long-term
-keys — and must not, since the heir has to decrypt years later.
+It deliberately provides **no forward secrecy** against compromise of the recipient's long-term
+keys — and must not, since a recovery blob has to stay openable years later.
 
 **Recipient key authenticity is out of scope.** The wrap is only as trustworthy as the public
 keys used, and those come from Cryple's database. A malicious backend could substitute its own
