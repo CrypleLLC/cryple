@@ -6,8 +6,7 @@
     "onchain_signer_use": ".docs/onchain-architecture.md",
     "pqxdh": ".docs/crypto/pqxdh.md",
     "server_auth_token": ".docs/auth/two-factor-PIN.md",
-    "user_address": ".docs/auth/user-address.md",
-    "vault_merkle": ".docs/crypto/vault-leaf.md"
+    "user_address": ".docs/auth/user-address.md"
   },
   "seed_and_user_address": {
     "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
@@ -49,13 +48,6 @@
     "vault_kek_hex": "e56ba781d128ab234df442a752d9bb05763b21a7fe66bd94aa34c28fb2f66c53",
     "vault_kek_base64": "5WungdEoqyNN9EKnUtm7BXY7Iaf+Zr2UqjTCj7L2bFM="
   },
-  "heir_label_key": {
-    "derivation": "HKDF-SHA512(ikm=seed, salt=empty, info=label, length=32) used directly as an AES-256 key",
-    "hkdf_info_label": "Cryple-Key-v1|heir-label",
-    "usage": "Seals beneficiaries.encrypted_label, the owner's private note naming an heir. Application data, which is why it is not the vault KEK.",
-    "heir_label_key_hex": "362b04a280bdae4c130570c0cd4219ecbf646bbad2eb12cf17852e95d06dcffb",
-    "heir_label_key_base64": "NisEooC9rkwTBXDAzUIZ7L9ka7rS6xLPF4UuldBtz/s="
-  },
   "sealed_blob": {
     "format": "base64(version(1) || iv(12) || AES-256-GCM(key, iv, plaintext) || tag(16))",
     "layout": "version(1) || iv(12) || aead_ciphertext_with_tag(len(plaintext)+16)",
@@ -69,20 +61,6 @@
     "blob_hex": "01c0c1c2c3c4c5c6c7c8c9cacb6e716123e8ecfe334aef6964e57b0786cf3cab5685028cadc221a844b17fe9d6fac631b4e0e0c069ba9ec8e9bd8df0fd",
     "blob_base64": "AcDBwsPExcbHyMnKy25xYSPo7P4zSu9pZOV7B4bPPKtWhQKMrcIhqESxf+nW+sYxtODgwGm6nsjpvY3w/Q=="
   },
-  "sealed_label_blob": {
-    "format": "base64(version(1) || iv(12) || AES-256-GCM(key, iv, plaintext) || tag(16))",
-    "layout": "version(1) || iv(12) || aead_ciphertext_with_tag(len(plaintext)+16)",
-    "version_byte": "0x01 — a reader MUST reject any other value instead of parsing best-effort",
-    "note": "Same envelope as sealed_blob, different key and a variable-length plaintext. The plaintext is UTF-8 with no normalization applied; seal the bytes the user typed.",
-    "example_field": "beneficiaries.encrypted_label — an heir label sealed under the heir label key above",
-    "key_hex": "362b04a280bdae4c130570c0cd4219ecbf646bbad2eb12cf17852e95d06dcffb",
-    "iv_hex": "d0d1d2d3d4d5d6d7d8d9dadb",
-    "plaintext_utf8": "Ana — minha irmã",
-    "plaintext_hex": "416e6120e28094206d696e68612069726dc3a3",
-    "ciphertext_with_tag_hex": "ed048a2827bd7da2314ca13a1d01f666c18a4d2a4f925070a38d0111046a7d9c82e223",
-    "blob_hex": "01d0d1d2d3d4d5d6d7d8d9dadbed048a2827bd7da2314ca13a1d01f666c18a4d2a4f925070a38d0111046a7d9c82e223",
-    "blob_base64": "AdDR0tPU1dbX2Nna2+0EiignvX2iMUyhOh0B9mbBik0qT5JQcKONAREEan2cguIj"
-  },
   "server_auth_token": {
     "pin": "428193",
     "kdf": "PBKDF2-HMAC-SHA256",
@@ -93,13 +71,13 @@
   "pqxdh": {
     "construction": "HKDF-SHA256(ikm=0xFF*32 || ecdh_secret || kem_secret, salt=0x00*32, info=\"Cryple-PQXDH-v1|\u003cusage\u003e|\u003csender_user_address\u003e|\u003crecipient_user_address\u003e\", length=32)",
     "inputs": {
-      "info": "Cryple-PQXDH-v1|succession-dek|62a772f85e4be6226108b56c0b1cf935c2490e434adec864fe47b189f1ed517d|62a772f85e4be6226108b56c0b1cf935c2490e434adec864fe47b189f1ed517d",
+      "info": "Cryple-PQXDH-v1|recovery-share|62a772f85e4be6226108b56c0b1cf935c2490e434adec864fe47b189f1ed517d|62a772f85e4be6226108b56c0b1cf935c2490e434adec864fe47b189f1ed517d",
       "kem_ciphertext_hex": "67463b2b43137c05e5360826f4408be1c5d3e8b790567565fefdc011d475b3a86bb7e228cf36a6c5737e4c98283a03c8a4260e61d55173e9454702589cbbad955744d051f257f3e63e90fe8472c6ea860e7e67b0f49605143ba2da759c98b0ee69ed8c082d87518177221d4c81d3897f6e71504aeb53c5f074f7c73897389ebecb074f9bb1ceb150b9b1d131261afd18c530e5f97123146fb3c0f7953136be0bc8ce9ef6d70160b823188cf86ab71ccb2c7212515ba43d4cd7771d065a2cb1803267f2c29f8c1d03e58090696f8aa37fb54c8eba8392a9681187288b567028000be6c2fc249692c129cf461e8b4fdd7dfe443640baf49ae497af88f346c150045e67028325bbe42f9820b668513b1415dca7794a39e690f37244fb02fd18aad5953a711d3b4e5b668fd6bd40c8e9efca2690975c8bffdd2b96c975e960e496678d86db4a1516e3149d7e2bb46e9cebe6f3071249122a4645d96e00396655c1662417cf6c51d3c43321f9ac8949af3fc22669a91fd3f5063bfd1a8fd72ce7e60bc07b0857ce3d5cc5a923de0babce491977ea5b48f6ddca2dddc7fe000d5f7c162c2c48f03e41e94016bd5ca27e5fac1cb7f7d22e874589280cb77e0143a450c1dedac9e84f76bbbe8049d5b564d697dce7f60941eef0662683bd448c41a8de50a4fff5ec9a616cd1e08a81640160f868af316f0846f52ca1fc886c5a78d2855663c15115eb96fb6d2b53a8da80ce278be8fa1ad6984c316797b8ef2245f6f380efecc1d80dabf2856987a74a3d862e5d5073e670e0ef5b4e3a6188adcb8686ccace4b5e7bf66e6ae64518bc75f3dc5037df3a95e7e7dbb16ec4db655f4241a8f8149475c5ade0c94c3466520a23ff1f6cd8ec729ee9a207d29941b950817be0a99fdae78108ea0764d78140e29c5a8fd0f94d4d3b992f27a749fbeb0c569a1b981303cd67d0c9c7dc9f8d64f3644a2b1239cda3e00c46e809252050e0ae86af6d665b88a596001857033269c0a3ca9556676cda8dda9fde1f56fbe297a59391af24572cb9e65f2db166848f34157ce0ab6dcb5a3c2b63d33cfec6c9349aca01c1753d8d78551b4f1eda512d0df2ef7cd1de9cc3f0c79b7e8489fb5b099a2b07fd664cd1d8a29ca76955dc0067f40006926331f896ac54660251337dc86f22ee75468d85605b8d77076a5e435764a83cdce3237193a2674572317f893015def3f91a7ac8893fdd53a6d298a899708da8aeff9105d3c146bf55a870b1696a39b08c80c8c7291fc942ef9d988668979772e1c99efdbe944e3cd582215bd53c966607a9d7983be46135649848279aea3e126692dee7c0ab2cf6d69e936ef12146d8fdf6182a16e454c75815e2c96b87e1653ceaf74ed1ca187f652fa1ca475530b9e71b1bed4f242981f067e8ab2d0b9ca5fb560909e9f183103e34b1708a14ac60b8c6ece194a4bf680f5040951f9cec9f4bdb54ebae1fccf9c57cb63d6cde9843cdd3b5930a2226287918cbd21aca6c8114f4a3a330a7afa417ae91f5d5c93091c",
       "recipient_mlkem_public_sha256": "1d699c498436e5d689bcbfaeb262464ac2fbce3e29effb4e7d98b763e623155c",
       "recipient_x25519_public_hex": "e6ce32e87443a71a63ce6416fa41b77cd3c88d427649c2c908193e94a6f73f49",
       "sender_ephemeral_x25519_private_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
       "sender_ephemeral_x25519_public_hex": "07a37cbc142093c8b755dc1b10e86cb426374ad16aa853ed0bdfc0b2b86d1c7c",
-      "usage": "succession-dek"
+      "usage": "recovery-share"
     },
     "intermediate": {
       "ecdh_secret_hex": "6eec27d0851918f170dd674cd04f9c02ffb0cdadb302d919be68ae2d38075b32",
@@ -108,59 +86,15 @@
       "salt_hex": "0000000000000000000000000000000000000000000000000000000000000000"
     },
     "output": {
-      "session_key_hex": "fc34ea95d39163aee3bdbd11bdf9506f540ab7304a0d0535df44fade0ae1cb9c"
+      "session_key_hex": "814954ca9ba7ded42bf48fafa09c084dd91f8db728a6b827a08e3ab2f7a27dd4"
     },
     "aead_wrap_example": {
       "algorithm": "AES-256-GCM",
-      "ciphertext_hex": "bf73e22b243bebc3165f3ec1e4c16f1caaa24fcb2226a7ad175a14d67d6d7a27d675072fb0a276d7da0b5878f40f9598",
+      "ciphertext_hex": "8d1d22e2e75c64f87cef449eef34ae00b24cda430f108b5ffcf145f93d7481e1f50740b18d63611bb9e7784a3ef031d0",
       "iv_hex": "b0b1b2b3b4b5b6b7b8b9babb",
       "plaintext_dek_hex": "a0a1a2a3a4a5a6a7a8a9aaabacadaeafa0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
-      "wire_blob_base64": "AWdGOytDE3wF5TYIJvRAi+HF0+i3kFZ1Zf79wBHUdbOoa7fiKM82psVzfkyYKDoDyKQmDmHVUXPpRUcCWJy7rZVXRNBR8lfz5j6Q/oRyxuqGDn5nsPSWBRQ7otp1nJiw7mntjAgth1GBdyIdTIHTiX9ucVBK61PF8HT3xziXOJ6+ywdPm7HOsVC5sdExJhr9GMUw5flxIxRvs8D3lTE2vgvIzp721wFguCMYjPhqtxzLLHISUVukPUzXdx0GWiyxgDJn8sKfjB0D5YCQaW+Ko3+1TI66g5KpaBGHKItWcCgAC+bC/CSWksEpz0Yei0/dff5ENkC69Jrkl6+I80bBUAReZwKDJbvkL5ggtmhROxQV3Kd5SjnmkPNyRPsC/Riq1ZU6cR07Tltmj9a9QMjp78omkJdci//dK5bJdelg5JZnjYbbShUW4xSdfiu0bpzr5vMHEkkSKkZF2W4AOWZVwWYkF89sUdPEMyH5rIlJrz/CJmmpH9P1Bjv9Go/XLOfmC8B7CFfOPVzFqSPeC6vOSRl36ltI9t3KLd3H/gANX3wWLCxI8D5B6UAWvVyifl+sHLf30i6HRYkoDLd+AUOkUMHe2snoT3a7voBJ1bVk1pfc5/YJQe7wZiaDvUSMQajeUKT/9eyaYWzR4IqBZAFg+GivMW8IRvUsofyIbFp40oVWY8FRFeuW+20rU6jagM4ni+j6GtaYTDFnl7jvIkX284Dv7MHYDavyhWmHp0o9hi5dUHPmcODvW046YYity4aGzKzktee/ZuauZFGLx189xQN986lefn27FuxNtlX0JBqPgUlHXFreDJTDRmUgoj/x9s2OxynumiB9KZQblQgXvgqZ/a54EI6gdk14FA4pxaj9D5TU07mS8np0n76wxWmhuYEwPNZ9DJx9yfjWTzZEorEjnNo+AMRugJJSBQ4K6Gr21mW4illgAYVwMyacCjypVWZ2zajdqf3h9W++KXpZORryRXLLnmXy2xZoSPNBV84Ktty1o8K2PTPP7GyTSaygHBdT2NeFUbTx7aUS0N8u980d6cw/DHm36EiftbCZorB/1mTNHYopynaVXcAGf0AAaSYzH4lqxUZgJRM33IbyLudUaNhWBbjXcHal5DV2SoPNzjI3GTomdFcjF/iTAV3vP5GnrIiT/dU6bSmKiZcI2orv+RBdPBRr9VqHCxaWo5sIyAyMcpH8lC752YhmiXl3LhyZ79vpROPNWCIVvVPJZmB6nXmDvkYTVkmEgnmuo+EmaS3ufAqyz21p6TbvEhRtj99hgqFuRUx1gV4slrh+FlPOr3TtHKGH9lL6HKR1UwuecbG+1PJCmB8Gfoqy0LnKX7VgkJ6fGDED40sXCKFKxguMbs4ZSkv2gPUECVH5zsn0vbVOuuH8z5xXy2PWzemEPN07WTCiImKHkYy9IaymyBFPSjozCnr6QXrpH11ckwkcB6N8vBQgk8i3VdwbEOhstCY3StFqqFPtC9/AsrhtHHywsbKztLW2t7i5uru/c+IrJDvrwxZfPsHkwW8cqqJPyyImp60XWhTWfW16J9Z1By+wonbX2gtYePQPlZg=",
+      "wire_blob_base64": "AWdGOytDE3wF5TYIJvRAi+HF0+i3kFZ1Zf79wBHUdbOoa7fiKM82psVzfkyYKDoDyKQmDmHVUXPpRUcCWJy7rZVXRNBR8lfz5j6Q/oRyxuqGDn5nsPSWBRQ7otp1nJiw7mntjAgth1GBdyIdTIHTiX9ucVBK61PF8HT3xziXOJ6+ywdPm7HOsVC5sdExJhr9GMUw5flxIxRvs8D3lTE2vgvIzp721wFguCMYjPhqtxzLLHISUVukPUzXdx0GWiyxgDJn8sKfjB0D5YCQaW+Ko3+1TI66g5KpaBGHKItWcCgAC+bC/CSWksEpz0Yei0/dff5ENkC69Jrkl6+I80bBUAReZwKDJbvkL5ggtmhROxQV3Kd5SjnmkPNyRPsC/Riq1ZU6cR07Tltmj9a9QMjp78omkJdci//dK5bJdelg5JZnjYbbShUW4xSdfiu0bpzr5vMHEkkSKkZF2W4AOWZVwWYkF89sUdPEMyH5rIlJrz/CJmmpH9P1Bjv9Go/XLOfmC8B7CFfOPVzFqSPeC6vOSRl36ltI9t3KLd3H/gANX3wWLCxI8D5B6UAWvVyifl+sHLf30i6HRYkoDLd+AUOkUMHe2snoT3a7voBJ1bVk1pfc5/YJQe7wZiaDvUSMQajeUKT/9eyaYWzR4IqBZAFg+GivMW8IRvUsofyIbFp40oVWY8FRFeuW+20rU6jagM4ni+j6GtaYTDFnl7jvIkX284Dv7MHYDavyhWmHp0o9hi5dUHPmcODvW046YYity4aGzKzktee/ZuauZFGLx189xQN986lefn27FuxNtlX0JBqPgUlHXFreDJTDRmUgoj/x9s2OxynumiB9KZQblQgXvgqZ/a54EI6gdk14FA4pxaj9D5TU07mS8np0n76wxWmhuYEwPNZ9DJx9yfjWTzZEorEjnNo+AMRugJJSBQ4K6Gr21mW4illgAYVwMyacCjypVWZ2zajdqf3h9W++KXpZORryRXLLnmXy2xZoSPNBV84Ktty1o8K2PTPP7GyTSaygHBdT2NeFUbTx7aUS0N8u980d6cw/DHm36EiftbCZorB/1mTNHYopynaVXcAGf0AAaSYzH4lqxUZgJRM33IbyLudUaNhWBbjXcHal5DV2SoPNzjI3GTomdFcjF/iTAV3vP5GnrIiT/dU6bSmKiZcI2orv+RBdPBRr9VqHCxaWo5sIyAyMcpH8lC752YhmiXl3LhyZ79vpROPNWCIVvVPJZmB6nXmDvkYTVkmEgnmuo+EmaS3ufAqyz21p6TbvEhRtj99hgqFuRUx1gV4slrh+FlPOr3TtHKGH9lL6HKR1UwuecbG+1PJCmB8Gfoqy0LnKX7VgkJ6fGDED40sXCKFKxguMbs4ZSkv2gPUECVH5zsn0vbVOuuH8z5xXy2PWzemEPN07WTCiImKHkYy9IaymyBFPSjozCnr6QXrpH11ckwkcB6N8vBQgk8i3VdwbEOhstCY3StFqqFPtC9/AsrhtHHywsbKztLW2t7i5uruNHSLi51xk+HzvRJ7vNK4AskzaQw8Qi1/88UX5PXSB4fUHQLGNY2Ebued4Sj7wMdA=",
       "wire_blob_layout": "version(1) || kem_ciphertext(1088) || ephemeral_x25519_public(32) || iv(12) || aead_ciphertext_with_tag(48)"
     }
-  },
-  "vault_merkle": {
-    "spec": "../crypto/vault-leaf.md",
-    "leaf_rule": "SHA-256(UTF-8 of \"cryple.vault.leaf.v1|\u003citem_type\u003e|\u003citem_id\u003e|\u003chex(SHA-256(blob))\u003e\")",
-    "node_rule": "SHA-256(0x01 || left(32) || right(32)); RFC 6962 split at the largest power of two below len",
-    "ordering": "leaves sorted ascending by (item_type, item_id) as byte strings; a repeated pair is an error",
-    "blob_note": "blob is the base64 ciphertext text exactly as the API served it, hashed as UTF-8 bytes and never base64-decoded first",
-    "items_in_canonical_order": [
-      {
-        "item_type": "document",
-        "item_id": "4e5f6a7b-8c9d-4e0f-9a1b-3c4d5e6f7a8b",
-        "blob_as_served": "ZG9jLWEtc25hcHNob3QtY2lwaGVydGV4dA==",
-        "content_sha256_hex": "03256f67898b1feef948aafb245da0eb7d71cbddf507af242891faee4062a1fc",
-        "leaf_preimage": "cryple.vault.leaf.v1|document|4e5f6a7b-8c9d-4e0f-9a1b-3c4d5e6f7a8b|03256f67898b1feef948aafb245da0eb7d71cbddf507af242891faee4062a1fc",
-        "leaf_hex": "15c089f85ef6e9963f49c1a8ff3bb6f81f717b0422323557093d825d77a71acc"
-      },
-      {
-        "item_type": "note",
-        "item_id": "2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f",
-        "blob_as_served": "bm90ZS1hLWNpcGhlcnRleHQ=",
-        "content_sha256_hex": "98d4d624aa214b8f7fc67e4794cddc1bc8a70a342fcafedd749ae64ae400da16",
-        "leaf_preimage": "cryple.vault.leaf.v1|note|2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f|98d4d624aa214b8f7fc67e4794cddc1bc8a70a342fcafedd749ae64ae400da16",
-        "leaf_hex": "ce0bfa70e5732ad730b83c5c53dda05cc2f6e0b69be1a0ad0b4f9c874a11ee1a"
-      },
-      {
-        "item_type": "secret",
-        "item_id": "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
-        "blob_as_served": "c2VjcmV0LWEtY2lwaGVydGV4dA==",
-        "content_sha256_hex": "f9e40bb082adcee258416585c7d0ea87ee2defc75c424e12665636ad9e9214c6",
-        "leaf_preimage": "cryple.vault.leaf.v1|secret|0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d|f9e40bb082adcee258416585c7d0ea87ee2defc75c424e12665636ad9e9214c6",
-        "leaf_hex": "1ae5ebf5c952a42fa9eb94d88c120f2bbedbe3c0cf52f6af0d83cba14eb00b85"
-      }
-    ],
-    "root_hex": "38824a82f4d55e8056f862ed1e2aaa7fb60d1c2793fedab1fec873b14c94ca87",
-    "inclusion_proof_for": "note 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f",
-    "inclusion_proof_path": [
-      "15c089f85ef6e9963f49c1a8ff3bb6f81f717b0422323557093d825d77a71acc",
-      "1ae5ebf5c952a42fa9eb94d88c120f2bbedbe3c0cf52f6af0d83cba14eb00b85"
-    ],
-    "inclusion_proof_sibling_side": [
-      "left",
-      "right"
-    ],
-    "inclusion_proof_verification": "fold the leaf with each path element on the stated side using the node rule; the result must equal root_hex"
   }
 }

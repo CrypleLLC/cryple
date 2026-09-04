@@ -24,7 +24,7 @@ const HKDF_SALT_LENGTH = 32;
 const HEADER_LENGTH = 1 + KEM_CIPHERTEXT_LENGTH + EPHEMERAL_PUBLIC_LENGTH + IV_LENGTH;
 const MIN_BLOB_LENGTH = HEADER_LENGTH + GCM_TAG_LENGTH;
 
-export const PQXDH_USAGES = ['succession-dek', 'recovery-share', 'recovery-session'] as const;
+export const PQXDH_USAGES = ['recovery-share', 'recovery-session'] as const;
 export type PqxdhUsage = (typeof PQXDH_USAGES)[number];
 
 export class UnsupportedPqxdhVersionError extends Error {

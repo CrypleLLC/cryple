@@ -3,9 +3,6 @@
 The **only** way this client encrypts data for someone else. Two uses in MVP scope and nothing
 else: guardian share wrapping for recovery.
 
-> The other usage, `succession-dek`, wrapped an item DEK for an heir. Inheritance left the product
-> on 2026-09-03 and the label went with it; the construction below is unchanged.
-
 Task 14 of [tasks.md](../../../tasks.md). Implements
 [crypto/pqxdh.md](../../../../api-general/.docs/crypto/pqxdh.md) — a **FROZEN** spec.
 

@@ -87,7 +87,7 @@ blob = 0x01 ‖ kemCiphertext(1088) ‖ ephemeralX25519Pub(32) ‖ iv(12) ‖ AE
 ```
 
 - **AES-256-GCM, not ChaCha20-Poly1305.** Earlier drafts named both; GCM won because ChaCha is absent from WebCrypto. No AAD — context binding lives in `info`.
-- `usage` is one of `recovery-share`, `recovery-session`. Never reuse a label for a new purpose. (`succession-dek` existed for heir DEK wrapping and left with inheritance on 2026-09-03.)
+- `usage` is one of `recovery-share`, `recovery-session`. Never reuse a label for a new purpose.
 - Sender and recipient addresses in `info` are the 64-char lowercase hex strings, joined literally with `|`. For `recovery-session` the "recipient" is the recovering account's own `user_address`.
 - **Reject unknown version bytes** rather than guessing, and check the blob length against the layout before attempting decryption.
 
