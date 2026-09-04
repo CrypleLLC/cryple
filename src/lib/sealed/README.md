@@ -22,8 +22,8 @@ backend docs name the algorithm without fixing the byte layout:
 - `front-end-endpoints.md` — `ciphertext` is *"base64 AES-256-GCM blob produced client-side"*
 - `recovery-flow.md:477` — `encrypted_seed` is *"AES-GCM encrypted seed phrase"*
 
-Neither says where the 12-byte IV sits. Both blobs are **cross-client**: an heir parses the
-item ciphertext after a PQXDH `succession-dek` unwrap, and `encrypted_seed` is written by one
+Neither says where the 12-byte IV sits. Both blobs are **cross-client**: a guardian parses a
+share after a PQXDH unwrap, and `encrypted_seed` is written by one
 device and read by a different one during recovery.
 
 A drafted proposal to ratify this is in

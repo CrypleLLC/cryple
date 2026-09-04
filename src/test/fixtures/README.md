@@ -29,7 +29,6 @@ For the well-known all-`abandon` BIP39 mnemonic (test values only — never a re
 | `identity_key_p256` | [`lib/keys`](../../lib/keys/README.md), [`lib/encoding`](../../lib/encoding/README.md) |
 | `x25519_key`, `mlkem768_key` | [`lib/keys`](../../lib/keys/README.md) |
 | `vault_kek`, `sealed_blob` | [`lib/keys`](../../lib/keys/README.md), [`lib/secrets`](../../lib/secrets/README.md) |
-| `heir_label_key`, `sealed_label_blob` | [`lib/keys`](../../lib/keys/README.md), [`lib/app` § The heir label](../../lib/app/README.md#the-heir-label) |
 | `server_auth_token` | [`lib/pin`](../../lib/pin/README.md) |
 | `pqxdh` | [`lib/pqxdh`](../../lib/pqxdh/README.md) |
 | `vault_merkle` | [`lib/vaultmerkle`](../../lib/vaultmerkle/README.md) |

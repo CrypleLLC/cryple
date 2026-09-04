@@ -2,7 +2,7 @@
 
 Derives every key a Cryple account has from its BIP39 seed phrase. This is the trust root:
 a wrong constant here does not throw, it produces a **different account**, and the failure
-surfaces years later at inheritance release.
+surfaces long after the mistake was made.
 
 Implements [crypto/ECDSA.md](../../../../api-general/.docs/crypto/ECDSA.md) — a **FROZEN**
 spec. Task 3 of [tasks.md](../../../tasks.md).

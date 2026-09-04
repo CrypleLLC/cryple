@@ -22,7 +22,7 @@ const LOG_OUT_ERASING_DEVICE: SessionExit = {
   destructive: true,
   confirm:
     'Log out and erase this device? You will need your recovery phrase to get back in. Your ' +
-    'vault, your guardians and your heirs are untouched.',
+    'vault and your guardians are untouched.',
 };
 
 const LOG_OUT_NOTHING_STORED: SessionExit = {

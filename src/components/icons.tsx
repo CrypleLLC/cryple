@@ -42,27 +42,6 @@ export function GuardiansIcon(props: IconProps) {
   );
 }
 
-export function SuccessionIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <circle cx="9" cy="8" r="3.2" />
-      <path d="M3.8 19.5c.6-3 2.7-4.7 5.2-4.7s4.6 1.7 5.2 4.7" />
-      <circle cx="17" cy="10.2" r="2.4" />
-      <path d="M15.6 14.9c2.4.2 4.1 1.6 4.6 4" />
-    </Icon>
-  );
-}
-
-export function InheritanceIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M4 10.5 12 4l8 6.5" />
-      <path d="M6 10v9.5h12V10" />
-      <path d="M9.5 19.5v-5h5v5" />
-    </Icon>
-  );
-}
-
 export function SecurityIcon(props: IconProps) {
   return (
     <Icon {...props}>

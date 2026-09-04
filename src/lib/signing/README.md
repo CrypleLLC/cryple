@@ -11,11 +11,11 @@ Task 8 of [tasks.md](../../../tasks.md). Implements
 ## The authorization rule
 
 > **The JWT authorizes reads and additions. Anything that destroys or replaces existing data,
-> and anything touching the guardian / inheritance / sharing graph, needs the seed key — plus
+> and anything touching the guardian graph, needs the seed key — plus
 > the second factor when the signer is in Paranoid Mode.**
 
 So `GET` anything and `POST /secrets` need only the token. Every `DELETE`,
-`PUT /recovery/setup`, `PUT /users/password`, and every guardian, succession or
+`PUT /recovery/setup`, `PUT /users/password`, and every guardian or
 recovery-session mutation needs a signature from this module.
 
 ## The two payload shapes

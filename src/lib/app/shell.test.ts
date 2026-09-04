@@ -6,13 +6,10 @@ import type {
   PendingSession,
 } from "@/lib/recovery";
 import type { SecretMetaRecord, SecretRecord } from "@/lib/secrets";
-import type { Beneficiary, ReleaseStatusRecord } from "@/lib/succession";
 
 import {
   actionableCount,
-  buildBeneficiaryViews,
   buildInbox,
-  buildReleaseView,
   buildVaultIndex,
   buildVaultRows,
   checkIntegrity,
@@ -450,117 +447,6 @@ describe("the vault index", () => {
     expect(() =>
       decodeSecretPayload(JSON.stringify({ name: "only a name" })),
     ).toThrow(MalformedSecretPayloadError);
-  });
-});
-
-describe("the succession dashboard stays inside the reachable states", () => {
-  function status(
-    overrides: Partial<ReleaseStatusRecord> = {},
-  ): ReleaseStatusRecord {
-    return {
-      chain: {
-        indexed: true,
-        smart_account_address: "0x4dcb2c4a8d8b42f58522ed7e116bb33fc75843b1",
-        status: "active",
-        last_check_in: 1785110400,
-        inactivity_period_seconds: 600,
-        triggerable_at: 1785111000,
-      },
-      ...overrides,
-    };
-  }
-
-  it("renders the monitoring state without implying a release", () => {
-    const view = buildReleaseView(status());
-
-    expect(view.chainStatus).toBe("active");
-    expect(view.released).toBe(false);
-    expect(view.headline).toMatch(/monitoring normally/);
-  });
-
-  it("reports the periods the chain holds, not the unused off-chain day count", () => {
-    const view = buildReleaseView(
-      status({
-        chain: {
-          indexed: true,
-          smart_account_address: "0x4dcb2c4a8d8b42f58522ed7e116bb33fc75843b1",
-          status: "active",
-          last_check_in: 1785110400,
-          inactivity_period_seconds: 300,
-          contest_period_seconds: 120,
-        },
-      }),
-    );
-
-    expect(view.inactivityPeriodSeconds).toBe(300);
-    expect(view.contestPeriodSeconds).toBe(120);
-  });
-
-  it("leaves both periods absent when the switch is not configured on-chain", () => {
-    const view = buildReleaseView(
-      status({
-        chain: {
-          indexed: false,
-          smart_account_address: "0x4dcb2c4a8d8b42f58522ed7e116bb33fc75843b1",
-          status: "unconfigured",
-        },
-      }),
-    );
-
-    expect(view.inactivityPeriodSeconds).toBeUndefined();
-    expect(view.contestPeriodSeconds).toBeUndefined();
-  });
-
-  it("reads the release state from the chain, the only place that holds it", () => {
-    const contest = buildReleaseView(
-      status({
-        chain: {
-          indexed: true,
-          smart_account_address: "0x4dcb2c4a8d8b42f58522ed7e116bb33fc75843b1",
-          status: "contest",
-        },
-      }),
-    );
-
-    expect(contest.headline).toMatch(/release has been triggered/);
-    expect(contest.released).toBe(false);
-
-    const released = buildReleaseView(
-      status({
-        chain: {
-          indexed: true,
-          smart_account_address: "0x4dcb2c4a8d8b42f58522ed7e116bb33fc75843b1",
-          status: "released",
-        },
-      }),
-    );
-
-    expect(released.headline).toMatch(/has been released/);
-    expect(released.released).toBe(true);
-  });
-
-  it("labels a closed heir account instead of rendering an empty username", () => {
-    const beneficiaries: Beneficiary[] = [
-      {
-        id: "1a2b3c4d-4f89-11d3-9a0c-0305e82c3301",
-        user_uuid: "",
-        username: "",
-        user_address: "a".repeat(64),
-        encrypted_label: "x",
-        public_key_x25519_snapshot: "x",
-        public_key_mlkem_snapshot: "x",
-        status: "active",
-        keys_rotated: true,
-        share_count: 3,
-        created_at: "2026-07-26T12:00:00Z",
-      },
-    ];
-
-    const [view] = buildBeneficiaryViews(beneficiaries);
-
-    expect(view.accountClosed).toBe(true);
-    expect(view.username).toBe("(account closed)");
-    expect(view.shareCount).toBe(3);
   });
 });
 

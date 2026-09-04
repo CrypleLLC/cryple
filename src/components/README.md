@@ -25,10 +25,6 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `documents/extensions.ts` | The TipTap extension set, bound to the document's `Y.Doc` |
 | `GuardiansScreen.tsx` | Guardians, recovery setup, Recovery Kit |
 | `GuardianInbox.tsx` | The merged guardian queue, 1-minute poll |
-| `SuccessionScreen.tsx` | Release status, vote audit, heirs, protection |
-| `InheritanceScreen.tsx` | The heir's side — verify against the chain, then open |
-| `HeirTabs.tsx` | One tab per heir — what they inherit, and the actions on it |
-| `SetInheritanceModal.tsx` | Choosing which vault items an heir inherits |
 | `RecoveryKitCard.tsx` | The printable share-0 surface |
 | `ui.tsx` | Card / Button / Field / TextArea / Select / Badge / Notice / Modal primitives |
 | `icons.tsx` | The stroke-icon set shared by navigation and primitives |
@@ -60,7 +56,6 @@ column. Panels that do not need the full width sit inside a `PanelGrid` — a tw
 `md` up, a single stacked column on mobile. Grid items stretch, so neighbours in the same row
 share a height and their borders line up regardless of how much content each holds. A lone panel
 occupies half the content width and two sit side by side. Guardians puts all four of its panels
-in one grid; Succession keeps "Release status"
 outside it at full width and grids the rest; Vault keeps its table full width and grids the form.
 Wide tables and dashboards stay outside a grid.
 
@@ -71,112 +66,6 @@ neutral slate surface, in the manner of Drive/Proton. Destructive buttons are ou
 than solid so rows of actions stay calm. Every interactive primitive carries a
 `focus-visible` brand ring. All colors have dark-mode variants keyed off
 `prefers-color-scheme`.
-
-## The heir's screen
-
-`InheritanceScreen.tsx` is a section of the app, not a parallel client — an heir is an ordinary
-signed-in user with their own seed, their own account and probably their own vault.
-
-**Its empty state is the normal one, and it is deliberately uninformative.** An account that named
-you but whose owner is alive is omitted from `GET /succession/inheritances` entirely, so a named
-heir and a stranger see the same empty screen. That is the point: an heir who knows they are named
-can watch the owner's public on-chain check-in cadence. Never add a count, a "pending" row, or a
-"you may be an heir" hint — the API cannot answer it, and the reason it cannot is a decision, not a
-gap.
-
-**The root comes from `fetchRootAt`, not from a response.** Everything else on the page is served
-by Cryple; the value it is checked against is read from `ProofRegistry` using the
-`smart_account_address` the listing carries. A root handed over by the API would prove nothing,
-because the API is what the verification exists to be independent of.
-
-Verification and decryption are one button, in that order, and
-[`openInherited`](../lib/app/README.md#claiming-an-inheritance) refuses to decrypt an item that
-failed — so a wrong result shows the failure and no content, rather than content with a warning
-over it.
-
-## Protection lives on Succession, not Vault
-
-`VaultProtectionCard.tsx` moved off the Vault screen. Protection covers **what heirs inherit** and
-the proof exists **for them**, so beside the heir tabs it reads as part of succession; on the Vault
-screen it read as a property of storage, which is what made "protect my vault" sound like it should
-cover the whole vault.
-
-Anchoring is two writes and the order is not negotiable: `saveAnchorLeaves` first, the userOp
-second. Leaves with no root on-chain are harmless and correctable; a root with no leaves is
-permanent, because the epoch freezes. The `storing` busy label exists so that step is visible
-rather than looking like a stalled signature.
-
-**A secret has no update path.** The API is create-or-return by id, so editing one is
-delete-then-recreate under a **new id** — which silently drops its assignment, and the heir tab's
-count is what surfaces it. Notes and documents keep their id and their DEK across edits, so their
-shares survive. This is a real gap in the product, not in this screen; it is listed under open
-follow-ups.
-
-## One tab per heir
-
-`HeirTabs.tsx` replaced the flat "Who inherits" list. Each heir is a tab labelled with their
-username and a count; the panel below holds what they inherit, **Set inheritance**, per-item
-removal, and heir removal.
-
-**Release status, the vote audit and the heartbeat card stay outside the tabs.** They describe the
-account's switch, not one heir, and nesting them under a name would suggest a countdown could run
-per heir. It cannot — there is one switch.
-
-`HeartbeatCard.tsx` also owns the two period selects — how long silence lasts before heirs can act,
-and how long the owner then has to stop it. The options and the floor logic live in
-[`lib/app/switch-periods.ts`](../lib/app/README.md#choosing-the-switch-periods); the card holds the
-two selected values in state and the on-chain floors from `fetchSwitchLimits`.
-
-**The card has two actions once the switch is running, and they are not the same call.** *I'm alive*
-sends `checkIn()`. *Save these periods* sends `configure()` again, which also resets the clock, so
-it is a separate button rather than a side effect of checking in — and it stays disabled until
-`periodsChanged` says the selects differ from what the chain holds.
-
-**The vault is opened once for the whole screen, not per tab.** Every title in the panel comes from
-decrypted content — a share carries `item_id` and `item_type` and nothing else, because the server
-never learns a title — so two heirs looking at the same vault must not decrypt it twice.
-
-**A share whose item is missing is shown, not filtered.** Deleting an item deletes its shares in the
-same transaction, so the row should be unreachable; that is exactly why hiding it would be the wrong
-response. An owner seeing a row they cannot explain beats an owner told an heir inherits less than
-the server says.
-
-**Removing an heir is one call.** `DELETE /succession/beneficiaries/{id}` cascades to their wrapped
-keys; deleting the shares first would be a series of signed calls that can half-fail, for a result
-the single call already guarantees. The confirmation names what goes, because the cascade is
-invisible and those keys are the one thing only the owner's client can regenerate.
-
-The open tab follows the list rather than owning it (`nextActiveTab`): it survives a re-read so a
-refresh cannot move the owner mid-task, and falls back to the first tab rather than to none when the
-heir being viewed is removed — a blank panel reads as though everything is gone.
-
-## Setting what an heir inherits
-
-`SetInheritanceModal.tsx` opens from an heir's row on the Succession screen. It is the only place
-an item is assigned, and its two rules are both about not destroying anything by accident.
-
-**Every box opens unchecked, every time.** This is where an owner *chooses what to share*, not
-where they edit a saved selection. So an unticked box means "not chosen in this pass", never
-"revoke" — the footer says so in `UNCHECKED_IS_NOT_REMOVAL`, because a list of empty checkboxes
-otherwise reads as "this heir inherits nothing".
-
-**Items the heir already holds are listed, marked "already shared", and disabled.** Listing them
-is what stops the blank checkboxes from being alarming. Disabling them is a step past what
-[`itemsToAssign`](../lib/app/README.md#nothing-here-unassigns) requires — it filters them anyway —
-but a tick that provably does nothing is a worse affordance than no tick at all, and "Select all"
-skips them for the same reason.
-
-An item this device cannot open is listed, disabled, and says so. Assigning it would re-wrap a DEK
-that was never shown to open.
-
-**A partial save leaves the failures ticked.** After re-reading, the items that landed come back
-marked already shared and the ones that did not are still chosen, so retrying is one click rather
-than hunting through the list again.
-
-The heir's `user_address` comes from their beneficiary record (`recipientFor`), which is the only
-place it exists — `GET /users/lookup` maps address to username and never the reverse. A closed
-account has none, so the modal refuses to open for one even though the screen already hides the
-button.
 
 ## The modal primitive
 
@@ -280,20 +169,7 @@ rule is enforced and explained.
 Taken from [AGENTS.md § Product boundaries](../../AGENTS.md); each of these is an absence, so it is
 recorded here rather than being visible in the code:
 
-- **No heir-facing screens.** Nothing lets a named heir discover, accept, decline or claim an
-  inheritance. Before release that is permanent by design; after release the routes do not exist.
 - **No session list or "sign out all devices".**
-- **No key-rotation flow.** `keys_rotated: true` renders "this heir closed their account — remove
-  them and choose another", never a re-wrap prompt.
-- **No off-chain release status to render.** `GET /succession/status` carries `chain` alone since
-  [Task 91](../../../api-general/.docs/tasks/tasks.md#task-91), so the dashboard's headline comes
-  from `chain.status` — the only place a release state exists. There is no vote-audit card either:
-  guardians no longer vote on a release.
-- **Last check-in has three renderings, not one.** A date when the chain has one, "Not configured
-  on-chain" when the smart account has never been configured, and "Unavailable" when the API could
-  not read its mirror. The third is an outage on our side and must never read as the second.
-- **No check-in or dead-man's-switch configuration.** Both are on-chain owner actions; the screen
-  says so instead of offering controls that would silently do nothing.
 
 ## Nothing here is blocked any more
 
@@ -301,8 +177,6 @@ Two screens used to surface an unresolved backend spec gap rather than hide or f
 are now closed:
 
 - **Vault items** (`KekNotSpecifiedError`) — Decision A landed 2026-08-08, wired in 2026-08-10.
-- **Naming an heir** (`LabelKeyNotSpecifiedError`) — `Cryple-Key-v1|heir-label` landed 2026-08-20,
-  wired the same day. See [`src/lib/app`](../lib/app/README.md#the-heir-label).
 
 **Both were built as though they already worked**, against the real calls rather than as disabled
 placeholders, so in each case the seam ceasing to throw was the entire change — no UI edit. That
@@ -497,8 +371,8 @@ Four things this depends on, none of them optional:
    leaving the screen mid-debounce.
 
 The screen holds the returned `NoteRecord`, so every save after the first is a `PUT` that reuses
-that record's DEK — the component never constructs a `wrapped_dek` itself, which is what keeps
-heirs' wrapped keys valid (see
+that record's DEK — the component never constructs a `wrapped_dek` itself, which is what keeps the
+note openable across edits (see
 [`lib/notes`](../lib/notes/README.md#the-dek-must-survive-the-edit)).
 
 Delete is the only notes action needing the seed key, and it is **two-step**: the button reveals

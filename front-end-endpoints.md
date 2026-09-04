@@ -22,7 +22,7 @@ Section numbers are **not contiguous** — they are the original numbering from 
 - [9. Secrets Endpoints](#9-secrets-endpoints)
 - [10. Recovery Endpoints](#10-recovery-endpoints)
 - [11. PIN Reset Endpoints](#11-pin-reset-endpoints)
-- [12. Succession Endpoints](#12-succession-endpoints)
+- [12. Notes Endpoints](#12-notes-endpoints)
 - [13. Enumerations](#13-enumerations)
 - [15. Notes Endpoints](#15-notes-endpoints)
 - [16. Documents Endpoints](#16-documents-endpoints)
@@ -54,10 +54,10 @@ Eight list endpoints are paginated. They accept two optional query parameters
 and add a `page` object to the envelope:
 
 ```
-GET /succession/beneficiaries?limit=25&cursor=bzoyNQ
+GET /recovery/guardians?limit=25&cursor=bzoyNQ
 
 {
-  "message": "Beneficiaries retrieved successfully",
+  "message": "Guardians retrieved successfully",
   "data": [ /* up to `limit` rows */ ],
   "page": { "next_cursor": "bzo1MA", "has_more": true }
 }
@@ -68,10 +68,7 @@ GET /succession/beneficiaries?limit=25&cursor=bzoyNQ
 | `limit`   | `50`    | Integer `1`–`200`. Zero, negative, non-numeric or over `200` is `400 INVALID_PARAM`.                     |
 | `cursor`  | none    | **Opaque.** Send back a `next_cursor` this API gave you, verbatim. Anything else is `400 INVALID_PARAM`. |
 
-Paginated: `GET /succession/beneficiaries` ·
-`GET /succession/beneficiaries/{id}/shares` · `GET /succession/shares` ·
-`GET /succession/anchors` · `GET /succession/inheritances/{owner}/anchors` ·
-`GET /succession/inheritances/{owner}/items/{id}/updates` ·
+Paginated:
 `GET /recovery/guardians` · `GET /recovery/guardianships` ·
 `GET /recovery/sessions/pending` · `GET /recovery/pin-reset/pending` ·
 `GET /auth/pin-reset/{id}/votes`.
@@ -86,9 +83,8 @@ Rules worth building to:
   happen without notice, and it is only safe because the token is opaque.
 - **On the two vote reports, `page` describes `data.votes`**, not `data` — those
   responses are an object wrapping a `votes` array, and the array is what pages.
-- **`GET /secrets` is not paginated in either form** and never will be without a
-  companion change — a client recomputes the vault Merkle root over every blob,
-  so a truncated vault listing would break verification. Use
+- **`GET /secrets` is not paginated in either form.** The client is expected to
+  need every item at once. Use
   [`?fields=meta`](#get-secretsfieldsmeta) to render the index cheaply.
 - A rejected `limit` or `cursor` is refused before anything is read, so a `400`
   here never means a partial result.
@@ -106,7 +102,7 @@ with a `Z` suffix**:
 These are **instants, not local times**. The server does not know your user's
 timezone and never asks for it. Render in the device's zone at display time and
 the value is correct everywhere — including for a user who travels between zones
-and for an heir in a different country than the owner:
+and for a user reading their vault from a different country:
 
 ```js
 new Date(secret.created_at).toLocaleString(); // renders in the device's zone
@@ -118,14 +114,6 @@ turn a correct instant into one that is wrong by the device's offset.
 Timestamps your client **sends** are the opposite format: **unix seconds** as a
 JSON integer (`"timestamp": 1785000000`), never a formatted string
 ([§5.2](./front-end-guide.md#52-challenge-signature-sign-up--sign-in)).
-
-**One group of returned timestamps is also unix seconds: everything inside the
-`chain` object** on [`GET /succession/status`](#get-successionstatus) —
-`last_check_in`, `triggerable_at`, `triggered_at`, `releasable_at`,
-`released_at`. Those are block timestamps copied from the contract, and
-reformatting them would make this API disagree with the chain in a way nobody
-could see. They are numbers, not strings, so a client that types them as
-`string` fails at compile time rather than rendering `Invalid Date`.
 
 ### Error
 
@@ -163,7 +151,7 @@ path** is not in that category — see `405` below — and does return the envel
 | 401  | `INVALID_CREDENTIALS` | Second factor (`password`) wrong, an action signature failed to verify, **or the JWT is valid but its account no longer exists**.                                                                                                                                                  |
 | 404  | `NOT_FOUND`           | Resource does not exist, is not yours, **or** authentication failed on an auth endpoint.                                                                                                                                                                                           |
 | 405  | `METHOD_NOT_ALLOWED`  | The path exists but does not accept this verb.                                                                                                                                                                                                                                     |
-| 409  | `CONFLICT`            | The resource is not in a state that accepts the request (expired session, closed PIN reset, already-released succession).                                                                                                                                                          |
+| 409  | `CONFLICT`            | The resource is not in a state that accepts the request (expired session, closed PIN reset, already-consumed recovery session).                                                                                                                                                          |
 | 500  | `INTERNAL_ERROR`      | Unexpected server/database failure. Safe to retry once.                                                                                                                                                                                                                            |
 | 503  | `NOT_READY`           | `GET /ready` only ([§6](#6-service-endpoints)): a dependency did not answer. Never returned by any other endpoint.                                                                                                                                                                 |
 
@@ -251,7 +239,7 @@ Creates an account. **If the `user_address` already exists, this behaves exactly
 | ------------------------------ | -------- | ------------------------------------------------------------------ |
 | `user_address`                 | ✅       | 64 lowercase hex.                                                  |
 | `public_key`                   | ✅       | base64 DER SPKI, P-256. Must be the key that produced `signature`. |
-| `encryption_public_key_x25519` | ✅       | Stored as-is for heirs/guardians to fetch.                         |
+| `encryption_public_key_x25519` | ✅       | Stored as-is for guardians to fetch.                               |
 | `encryption_public_key_mlkem`  | ✅       | Stored as-is.                                                      |
 | `challenge`                    | ✅       | 64 lowercase hex, single use.                                      |
 | `timestamp`                    | ✅       | Unix seconds, within ±300s.                                        |
@@ -336,7 +324,7 @@ Your own account, as the API sees it. Takes no parameters: the account is the on
 | Field          | Notes                                                                                                            |
 | -------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `user_address` | The `SHA-256` of the seed you authenticated with. Useful to confirm the client derived the account you expected. |
-| `username`     | The auto-assigned username ([§8](#8-users-endpoints)); this is what guardian and beneficiary invitations take.   |
+| `username`     | The auto-assigned username ([§8](#8-users-endpoints)); this is what guardian invitations take.   |
 | `uuid`         | Your public identifier — feed it to `GET /users/{uuid}/public-keys`.                                             |
 | `has_password` | **`true` = Paranoid Mode**, `false` = Standard Mode. Always present, never omitted.                              |
 | `created_at`   | Account creation.                                                                                                |
@@ -345,13 +333,13 @@ Your own account, as the API sees it. Takes no parameters: the account is the on
 
 It is also how you confirm a `POST /users/second-factor` that timed out actually landed: that call's retry is ambiguous by design, and this is the read-back it was missing.
 
-**Deliberately not here:** whether you have guardians or beneficiaries. Those have their own endpoints, their own scoping and their own empty states — `GET /recovery/guardians` and `GET /succession/beneficiaries`. This endpoint answers "who am I", not "what have I configured".
+**Deliberately not here:** whether you have guardians. That has its own endpoint, its own scoping and its own empty state — `GET /recovery/guardians`. This endpoint answers "who am I", not "what have I configured".
 
 **Errors:** `401 UNAUTHORIZED` (missing or invalid token) · `404 NOT_FOUND` (the token is valid but the account no longer exists — it was deleted; treat it as signed out) · `500 INTERNAL_ERROR`.
 
 ### `GET /users/lookup?address={user_address}` — public
 
-Resolves an address to its auto-assigned username. Needed before inviting someone as a guardian or beneficiary, since those endpoints take usernames.
+Resolves an address to its auto-assigned username. Needed before inviting someone as a guardian, since that endpoint takes a username.
 
 | Param     | In    | Required | Notes                        |
 | --------- | ----- | -------- | ---------------------------- |
@@ -370,7 +358,7 @@ Resolves an address to its auto-assigned username. Needed before inviting someon
 
 ### `GET /users/{uuid}/public-keys` — 🔒 protected
 
-Fetches a user's hybrid encryption keys so the client can wrap a DEK or a Shamir share for them. `{uuid}` is the `user_uuid` returned by the succession endpoints.
+Fetches a user's hybrid encryption keys so the client can wrap a DEK or a Shamir share for them. `{uuid}` is the `user_uuid` returned by `GET /recovery/guardians`.
 
 **`200 OK`**
 
@@ -452,7 +440,7 @@ Signing `new_password` is the point, not ceremony: without it, anything between 
 
 ### `DELETE /users` — 🔒 protected
 
-Deletes the account and, by cascade, its secrets, guardians, beneficiaries and shares. **Irreversible.**
+Deletes the account and, by cascade, its secrets, notes, documents, guardians and recovery shares. **Irreversible.**
 
 **Request** — the body is **required**; it carries the `account-delete` signature over your own `user_address`. Standard Mode omits `password` but still sends the three signature fields.
 
@@ -527,7 +515,7 @@ that was already stored. Same body either way:
 > scoped to your account**, so a UUID another user already holds is never a
 > conflict for you. And **without `id` there is no idempotency to fall back on**:
 > every call creates an item, and a retried timeout leaves you two, each separately
-> assignable to heirs — a duplicate quietly widens what an heir inherits.
+> indistinguishable from the original, because only you can read either.
 
 **Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (`id` is not a canonical UUID) · `400 BAD_REQUEST` (`ciphertext is required` / `wrapped_dek is required` / unsupported `version`) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
 
@@ -555,7 +543,7 @@ Returns every secret owned by the caller. **Always an array** — an empty vault
 
 **Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
 
-There is no pagination here and no `limit`/`cursor` — see [§3.1](#31-pagination). Every item arrives with its full `ciphertext`, so on a large vault this is the heaviest response the API produces. Render your index from `?fields=meta` below and call this one only when you actually need the payloads (recomputing the vault Merkle root, or bulk export).
+There is no pagination here and no `limit`/`cursor` — see [§3.1](#31-pagination). Every item arrives with its full `ciphertext`, so on a large vault this is the heaviest response the API produces. Render your index from `?fields=meta` below and call this one only when you actually need the payloads (bulk export).
 
 ### `GET /secrets?fields=meta`
 
@@ -583,7 +571,7 @@ The same listing with the payloads stripped: no `ciphertext`, no `wrapped_dek`. 
 
 `ciphertext_sha256` is `SHA-256` over the ciphertext exactly as `GET /secrets` serves it, and `ciphertext_bytes` is that string's length — enough to show a size, detect that an item changed, or diff your local cache against the server without transferring anything.
 
-> ⚠️ **Do not treat `ciphertext_sha256` as verification.** It is the server's description of bytes the server holds. Anchoring a vault root, or checking a blob against one, must hash the ciphertext **you** received. This field is for indexing and change detection only.
+> ⚠️ **Do not treat `ciphertext_sha256` as verification.** It is the server's description of bytes the server holds. Anything that needs a trustworthy hash must hash the ciphertext **you** received. This field is for indexing and change detection only.
 
 Like the full listing, this one is **not paginated** — it deliberately returns every item so the complete set of leaf hashes is available in one call.
 
@@ -642,8 +630,6 @@ One `secret-delete` signature covering a whole set, so a multi-select delete cos
 `requested` is the de-duplicated count. `deleted` can be lower without being an error: an id that is not yours simply does not match, exactly as a cross-user read is invisible. Compare the two if you need to tell the user something was already gone.
 
 **Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (any id is not a canonical UUID — nothing is deleted) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (empty id set) · `500 INTERNAL_ERROR`.
-
-> **Both delete routes also delete what heirs inherited of the item.** Every wrapped key assigned to that item is removed in the same transaction, so deleting one legacy item silently shrinks the inheritance of every heir it was assigned to. Nothing else is affected — each heir keeps every other item assigned to them. Two consequences for the UI: warn before deleting an item that is assigned to someone (`GET /succession/beneficiaries/{id}/shares` tells you which), and treat any cached `share_count` from [§12](#12-succession-endpoints) as stale after a delete. The response does not report how many assignments went with it — re-read the beneficiary list if you display the count.
 
 ---
 
@@ -1298,384 +1284,9 @@ The guardian's inbox of **open** PIN resets on the accounts they guard.
 
 ---
 
-## 12. Succession Endpoints
+## 12. Notes Endpoints
 
-🔒 All protected. Beneficiaries (heirs) are registered by username; each inherited item's key is wrapped to the beneficiary's hybrid public keys client-side. The server stores only ciphertext and an **encrypted label** — it never learns who inherits what, only that a relationship exists.
-
-> **Most routes below are owner-scoped; the two vote routes are guardian-scoped; and the `/succession/inheritances/…` group is the heir's.** Read this before designing any part of the heir experience — the timing is the whole design.
->
-> **Before a release, an heir gets nothing, and that will not change.** An heir is named **unilaterally**: there is no invite, no acceptance, no notification, and **no decline or opt-out endpoint**. An heir holds nothing and does nothing at setup time, so there is nothing for them to accept — and telling them would publish a relationship the owner chose to keep private. Do not render an "accept" or "decline" affordance for heirs, and do not build an "inheritances I am named in" inbox for the unreleased case: `GET /succession/inheritances` **omits an unreleased inheritance entirely**, so an empty array is what a named heir and a stranger both receive. This is the deliberate asymmetry with guardians, who _do_ accept ([§10](#10-recovery-endpoints)), because a guardian must actually hold a Shamir share before the owner can rely on them.
->
-> **After a release, the heir claim path is built** — six routes under [`/succession/inheritances/…`](#the-heirs-read-path--successioninheritances). It is gated on the on-chain `Released` state, mirrored by the chain indexer (shipped 2026-08-16) and surfaced as `chain.status` on [`GET /succession/status`](#get-successionstatus). Verify the blob's SHA-256 against the on-chain `ProofRegistry` root **in your own client** before decrypting — never against a "verified" flag from this API, which does not have one.
->
-> Note that `GET /succession/status` is owner-scoped: it reports *your* switch, never the switch of someone who named you. An heir learns that an owner released from `GET /succession/inheritances` and from nowhere else.
-
-### `POST /succession/beneficiaries`
-
-Registering the same beneficiary twice **updates** the existing record (upsert). Signed with `beneficiary-register` over `beneficiary_username`, so the four signature fields join the body below.
-
-**Request**
-
-```json
-{
-  "beneficiary_username": "carol9876ijkl",
-  "encrypted_label": "opaque, e.g. encrypted \"my daughter\"",
-  "public_key_x25519_snapshot": "base64…",
-  "public_key_mlkem_snapshot": "base64…",
-  "challenge": "64 lowercase hex characters",
-  "timestamp": 1737676800,
-  "signature": "base64 P1363 signature",
-  "password": "64-hex token, Paranoid Mode only"
-}
-```
-
-| Field                                 | Required      | Notes                                                                                                                                                                                          |
-| ------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `beneficiary_username`                | ✅            | Must exist and have encryption keys enrolled. Cannot be yourself.                                                                                                                              |
-| `encrypted_label`                     | ✅            | Opaque, non-empty.                                                                                                                                                                             |
-| `public_key_x25519_snapshot`          | ❌            | If sent, must **exactly match** the beneficiary's currently enrolled key. Send them to prove you wrapped keys against the current keys — a mismatch is rejected rather than silently accepted. |
-| `public_key_mlkem_snapshot`           | ❌            | Same.                                                                                                                                                                                          |
-| `challenge`, `timestamp`, `signature` | ✅            | The `beneficiary-register` action signature ([§5.3](./front-end-guide.md#53-action-signature-everything-destructive)).                                                                                             |
-| `password`                            | Paranoid only | Your second factor.                                                                                                                                                                            |
-
-The server always stores the **currently enrolled** keys, regardless of what you send. If a re-registration ever supersedes the stored snapshot, **all previously assigned inheritance shares are dropped** and `dropped_shares` reports how many — re-assign them. That cannot happen today: enrolment keys are immutable (see the box under `GET /succession/beneficiaries`), so the stored snapshot and the enrolled keys are always equal and **`dropped_shares` never appears in a response**. Handle it if you like, but do not build a flow that depends on receiving it.
-
-**`201 Created`**
-
-```json
-{
-  "message": "Beneficiary registered successfully",
-  "data": {
-    "id": "1a2b…-uuid",
-    "user_uuid": "0f5c8b1e-…",
-    "username": "carol9876ijkl",
-    "user_address": "9f2c…64 lowercase hex",
-    "encrypted_label": "opaque…",
-    "public_key_x25519_snapshot": "base64…",
-    "public_key_mlkem_snapshot": "base64…",
-    "status": "active",
-    "keys_rotated": false,
-    "share_count": 0,
-    "dropped_shares": 2,
-    "created_at": "2026-07-26T12:00:00Z"
-  }
-}
-```
-
-`dropped_shares` is omitted when zero, which today means always — see above.
-
-**`user_address` is the heir's, and you need it to assign anything.** `POST /succession/shares` carries a DEK wrapped with PQXDH, whose `info` string is `Cryple-PQXDH-v1|succession-dek|<your user_address>|<heir user_address>` — so without this field you can register an heir and never give them a single item. Do not try to derive it or reverse `GET /users/lookup`; that endpoint maps address → username only. Take it from here or from `GET /succession/beneficiaries`, and treat it as opaque: echo the exact string, never re-case or re-encode it, because it goes into a string that must match byte-for-byte on the heir's side years later.
-
-> ⚠️ **`share_count` is always `0` on this response — it is a GET-only field.** The upsert returns the row it just wrote and never counts the beneficiary's shares, so `0` here means "not computed", not "no shares". Re-registering a beneficiary whose keys are _unchanged_ keeps every existing share and still reports `share_count: 0`. Do not cache this response as your share tally; read the real count from `GET /succession/beneficiaries`. (`keys_rotated` is always `false` here, and on this response that is not informative — a row you just registered by username always points at a live account.)
-
-**Errors:** `400 INVALID_BODY` · `400 BAD_REQUEST` (`encrypted_label` empty, unknown username, self-registration, beneficiary has no encryption keys, or key snapshot mismatch) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
-
-### `GET /succession/beneficiaries`
-
-_Paginated — `?limit=` / `?cursor=`, `page` in the envelope ([§3.1](#31-pagination))._
-
-**`200 OK`** — `data` is an array of the object above (without `dropped_shares`). This is the only place `share_count` and `keys_rotated` carry real values.
-
-> ⚠️ **`keys_rotated: true` does not mean the heir rotated keys.** There is no key-rotation endpoint: `encryption_public_key_x25519` and `encryption_public_key_mlkem` are written once at enrolment and no route can change them (rotation is post-MVP — see [§14](./front-end-guide.md#14-client-implementation-notes-and-caveats) note 16). The "snapshot no longer matches the enrolled keys" half of this flag therefore cannot fire.
->
-> The one way you will see `true` today is that **the heir deleted their account**. The beneficiary row survives with its link to the account severed, so `username`, `user_uuid` and `user_address` come back as **empty strings** and the key comparison has nothing to compare against.
->
-> The remedy is the opposite of re-registration. Re-registering needs a username that no longer resolves, so `POST /succession/beneficiaries` answers `400 BAD_REQUEST`, and every `POST /succession/shares` against the row stays blocked with `400`. **`DELETE /succession/beneficiaries/{id}` is the only way to clear it.** Render it as "this heir closed their account — remove them and choose another", never as "re-register and re-assign".
-
-**Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
-
-### `DELETE /succession/beneficiaries/{id}`
-
-Signed with `beneficiary-delete` over the path `{id}`. This is the most destructive call in the domain: it **cascades to every inheritance share** for that heir, and those wrapped DEKs can only be regenerated by re-wrapping each item from your client.
-
-**Request** — the body is **required**; it carries the signature that authorizes the call. See [§5.3](./front-end-guide.md#53-action-signature-everything-destructive).
-
-```json
-{
-  "challenge": "64 lowercase hex characters",
-  "timestamp": 1737676800,
-  "signature": "base64 P1363 signature",
-  "password": "64-hex token, Paranoid Mode only"
-}
-```
-
-**`204 No Content`** — no body.
-
-**Errors:** `400 INVALID_PARAM` · `400 INVALID_BODY` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
-
-### `POST /succession/shares`
-
-Assigns one legacy item to one beneficiary by storing the item's key wrapped to that heir. Re-assigning the same `(beneficiary, item)` pair **updates** the stored key (upsert). Signed with `share-assign` over `beneficiary_id` and `item_id`, so the four signature fields join the body below.
-
-**Request**
-
-```json
-{
-  "beneficiary_id": "1a2b…-uuid",
-  "item_id": "6b2f…-uuid",
-  "item_type": "secret",
-  "pq_hybrid_encrypted_item_key": "opaque, DEK wrapped to the heir's hybrid keys",
-  "challenge": "64 lowercase hex characters",
-  "timestamp": 1737676800,
-  "signature": "base64 P1363 signature",
-  "password": "64-hex token, Paranoid Mode only",
-  "version": "v1"
-}
-```
-
-| Field                          | Required | Notes                                                           |
-| ------------------------------ | -------- | --------------------------------------------------------------- |
-| `beneficiary_id`               | ✅       | UUID from `POST/GET /succession/beneficiaries`.                 |
-| `item_id`                      | ✅       | UUID of one of **your** secrets or notes.                       |
-| `item_type`                    | ❌       | Omit ⇒ `"secret"`. Accepted: `"secret"`, `"note"` ([§15](#15-notes-endpoints)), `"document"` ([§16](#16-documents-endpoints)). Send it explicitly for anything that is not a secret, or the default sends the server looking for a secrets row with your item's id and you get `404`. |
-| `pq_hybrid_encrypted_item_key` | ✅       | Opaque, non-empty.                                              |
-| `version`                      | ❌       | Omit/`""` ⇒ `"v1"`.                                             |
-
-**`201 Created`**
-
-```json
-{
-  "message": "Inheritance share stored successfully",
-  "data": {
-    "id": "7e3d…-uuid",
-    "beneficiary_id": "1a2b…",
-    "item_id": "6b2f…",
-    "item_type": "secret",
-    "pq_hybrid_encrypted_item_key": "opaque…",
-    "version": "v1",
-    "created_at": "2026-07-26T12:00:00Z"
-  }
-}
-```
-
-**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (`beneficiary_id`/`item_id` not canonical UUIDs) · `400 BAD_REQUEST` (unsupported `version` or `item_type`, empty key, or **stale key snapshot** — re-register the beneficiary first) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (unknown beneficiary, or the item is not yours) · `500 INTERNAL_ERROR`.
-
-### `GET /succession/beneficiaries/{id}/shares`
-
-_Paginated — `?limit=` / `?cursor=`, `page` in the envelope ([§3.1](#31-pagination))._
-
-**`200 OK`** — `data` is an array of the share object above.
-
-**Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
-
-### `GET /succession/shares`
-
-_Paginated — `?limit=` / `?cursor=`, `page` in the envelope ([§3.1](#31-pagination))._
-
-Every share you have assigned, across **all** your heirs, in one listing. Same objects as the per-heir route; `beneficiary_id` on each row tells them apart.
-
-Use this whenever you need the *union* of assigned items rather than one heir's list — building the anchored vault tree, or rendering how much of the vault is spoken for. Walking `GET /succession/beneficiaries/{id}/shares` once per heir returns the same rows and costs a paginated walk per heir.
-
-**`200 OK`** — `data` is an array of the share object above.
-
-**Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
-
-### `DELETE /succession/shares/{id}`
-
-Signed with `share-delete` over the path `{id}`.
-
-**Request** — the body is **required**; it carries the signature that authorizes the call. See [§5.3](./front-end-guide.md#53-action-signature-everything-destructive).
-
-```json
-{
-  "challenge": "64 lowercase hex characters",
-  "timestamp": 1737676800,
-  "signature": "base64 P1363 signature",
-  "password": "64-hex token, Paranoid Mode only"
-}
-```
-
-**`204 No Content`** — no body.
-
-**Errors:** `400 INVALID_PARAM` · `400 INVALID_BODY` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
-
-### `PUT /succession/anchors/{epoch}` · `GET /succession/anchors` · `GET /succession/anchors/{epoch}`
-
-The proof material behind an anchored vault root. **Without it your heirs cannot verify anything**, so this is not an optional companion to anchoring — it is half of it.
-
-An inclusion proof needs the sibling hashes along the path, and an heir holds only the items assigned to them. Every other leaf belongs to an item they will never see, so the on-chain root alone gets them nowhere. These routes are where the sibling hashes live.
-
-> ⚠️ **Upload the leaf set _before_ you submit the userOp, in the same pass.** A crash between the two must leave a leaf set with no root — harmless, it is overwritten by the real one at that epoch — and never a root with no leaf set, which is an anchor nobody can prove against and which you cannot repair, because the epoch is frozen on-chain.
-
-**`PUT /succession/anchors/{epoch}`** — `{epoch}` is the anchor's epoch as a positive integer.
-
-```json
-{
-  "root": "0x… 32 bytes of hex",
-  "leaves": ["0x…", "0x…", "0x…"]
-}
-```
-
-`leaves` are the leaf hashes **in tree order** — canonical order is `(item_type, item_id)`, the same order you built the root from. Order is part of the value: re-sorting produces a different root and the write is refused. Both fields accept upper or lower case, with or without the `0x` prefix, and come back normalized to lowercase with the prefix. Maximum 10,000 leaves.
-
-**`201 Created`** on the first write for that epoch, **`200 OK`** when the identical set is already stored — retry freely, a repeat is a success.
-
-```json
-{
-  "message": "Anchored leaf set stored successfully",
-  "data": {
-    "epoch": 20685,
-    "root": "0x…",
-    "leaf_count": 3,
-    "leaves": ["0x…", "0x…", "0x…"],
-    "created_at": "2026-08-20T12:00:00Z",
-    "chain": { "root": "0x…", "matches": true }
-  }
-}
-```
-
-`chain` is **absent** until the indexer has seen the anchor on-chain, which is the normal state for the first few seconds after anchoring — absent means "not indexed yet", never "mismatch". Once present, `matches: false` means the stored set does not describe what is on-chain; an heir will fail verification against it, so re-anchor rather than leaving it.
-
-**Errors:** `400 INVALID_PARAM` (epoch not a positive integer) · `400 INVALID_BODY` · `400 BAD_REQUEST` (root or a leaf is not a 32-byte hash, the set is empty or over 10,000, or **the leaves do not produce the declared root** — you re-sorted them, or they are not the set you anchored) · `401 UNAUTHORIZED` · `409 CONFLICT` (the chain already anchored a **different** root for this epoch) · `500 INTERNAL_ERROR`.
-
-> **A retry after a failed anchor is fine, even with a different root.** Uploading before the userOp means a failed anchor leaves a set behind; if your vault changed before you retried, just upload the new set for the same epoch and it replaces the old one. What you cannot do is contradict the chain: once that epoch is anchored on-chain, only the root it actually holds is accepted, and `409` there is not retryable — recompute at the current epoch.
-
-**`GET /succession/anchors/{epoch}`** returns the same object. `404` when nothing is stored for that epoch.
-
-**`GET /succession/anchors`** — _paginated_ — lists epochs **newest first** with `epoch`, `root`, `leaf_count` and `created_at`, and **no `leaves`** (a listing of full sets would be megabytes). This is the lookup an heir's client makes: the newest epoch at or before the release moment, not the latest root.
-
-> **This is a `PUT`, not a signed action**, unlike everything else in §12. Nothing is destroyed or replaced, so the JWT covers it, and the content proves itself — a set that does not rebuild the on-chain root fails in the heir's browser regardless of who uploaded it.
-
-### The heir's read path — `/succession/inheritances/…`
-
-Everything else in §12 is you acting on **your own** account. These six routes are the other side: reading an account that named **you** as an heir, after its dead man's switch has released on-chain. They are what makes an inheritance actually arrive.
-
-`{owner}` in every path is the owner's `user_address` (64 lowercase hex; anything else is `400 INVALID_PARAM`). You get it from the listing below, and you need it anyway — your item keys were wrapped under `Cryple-PQXDH-v1|succession-dek|<owner user_address>|<your user_address>`.
-
-> **Every failure is the same `404`.** Not named, named but the owner is alive, owner does not exist, item not assigned to you — one response for all of them. Do not try to distinguish them, and do not render "you may be an heir": you cannot know that, by design.
-
-#### `GET /succession/inheritances`
-
-Accounts that named you **and have released**. Unpaginated.
-
-```json
-{
-  "message": "Inheritances retrieved successfully",
-  "data": [
-    {
-      "owner_user_address": "9f2c…",
-      "owner_username": "alice1234abcd",
-      "smart_account_address": "0x…",
-      "beneficiary_id": "1a2b…-uuid",
-      "item_count": 3,
-      "released_at": 1771200000
-    }
-  ]
-}
-```
-
-> **An empty array is the normal answer, and it is not informative.** An account that named you but whose owner is alive is **omitted entirely** — not listed as pending, not counted. That is deliberate: an heir who knows they are named can watch the owner's public on-chain check-in cadence and infer their health. Never build a "you are an heir to N people" surface; this endpoint cannot answer it.
-
-`smart_account_address` is there because **you** read `ProofRegistry` on-chain — see the verification note below.
-
-#### `GET /succession/inheritances/{owner}/items`
-
-One row per item left to you, in canonical `(item_type, item_id)` order — the same order the anchored leaves were built in.
-
-```json
-{
-  "id": "share uuid",
-  "beneficiary_id": "1a2b…-uuid",
-  "item_id": "3f6b…-uuid",
-  "item_type": "secret | note | document",
-  "pq_hybrid_encrypted_item_key": "opaque…",
-  "version": "v1",
-  "created_at": "2026-07-26T12:00:00Z"
-}
-```
-
-`pq_hybrid_encrypted_item_key` is the item's DEK, PQXDH-wrapped to the encryption keys you had enrolled when the owner assigned it. Unwrap it with your own seed-derived keys and `usage=succession-dek`.
-
-#### `GET /succession/inheritances/{owner}/items/{id}`
-
-The ciphertext.
-
-```json
-{
-  "item_id": "3f6b…-uuid",
-  "item_type": "secret",
-  "version": "v1",
-  "ciphertext": "opaque…",
-  "snapshot_ciphertext": "opaque… (documents only)",
-  "snapshot_seq": 7
-}
-```
-
-A secret or a note carries `ciphertext`; a document carries `snapshot_ciphertext` and `snapshot_seq` instead. **The bytes are byte-identical to what the owner stored** — the leaf commits to `hex(SHA-256(blob))` of exactly these, so re-encoding them anywhere in your pipeline breaks a proof that is otherwise correct.
-
-The owner's own `wrapped_dek` is **not** returned. It is sealed to their vault KEK and useless to you; your copy of the key is in the share.
-
-#### `GET /succession/inheritances/{owner}/items/{id}/updates?since=`
-
-_Paginated._ A document's delta log past `since` (default `0`). `400 INVALID_PARAM` for a negative or non-integer `since`. `404` for any item that is not a document.
-
-> ⚠️ **Everything this returns is unverifiable, by construction.** The anchored leaf covers the **snapshot only**; these deltas were appended after the compaction that produced it. You need them — a document without its deltas is stale — but you must render the difference. "Verified as of the owner's last save, plus later edits that carry no proof" is the honest presentation; a single "verified ✓" over the merged document is not.
-
-#### `GET /succession/inheritances/{owner}/anchors` and `…/anchors/{epoch}`
-
-The owner's retained leaf sets, same shapes as [the owner's own routes](#put-successionanchorsepoch--get-successionanchors--get-successionanchorsepoch). The listing is newest-epoch-first and carries counts without leaves; fetch the one epoch you need.
-
-**Pick the newest epoch at or before `released_at`**, not the latest one. Past epochs are frozen on-chain, so that root describes the vault as it stood while the owner was alive.
-
-#### Verifying — this part is yours, not ours
-
-```
-1. GET the leaf set for your chosen epoch
-2. Read latestRoot/rootAt(epoch) from ProofRegistry ON-CHAIN, using smart_account_address
-3. Rebuild the root from the leaf set — it must equal the chain's
-4. Compute your item's leaf: SHA-256("cryple.vault.leaf.v1|<item_type>|<item_id>|<hex(SHA-256(blob))>")
-5. Verify its inclusion proof against that root
-6. Only then: PQXDH-unwrap the DEK, AES-GCM-open the ciphertext
-```
-
-> **This API never tells you an item verified, and you must never ask it to.** There is no `verified` field on any response and there will not be one. Step 2 reads the chain directly — a root this server hands you proves nothing, because this server is exactly what the verification is meant to be independent of. If step 3 or 5 fails, show the failure; do not decrypt and hope.
-
-### `GET /succession/status`
-
-The **owner's own** dead-man's-switch state, as the chain reports it. Never 404s for a valid account.
-
-> **Changed 2026-09-03 — breaking.** This response used to carry an off-chain `status`, `votes`, `required_votes`, `release_cycle`, `inactivity_threshold_days` and `trigger_started_at` beside `chain`. All of them are gone, together with the guardian release vote that produced them ([Task 91](../api-general/.docs/tasks/tasks.md#task-91)). `chain` is now the whole answer.
-
-**`200 OK`**
-
-```json
-{
-  "message": "Release status retrieved successfully",
-  "data": {
-    "chain": {
-      "indexed": true,
-      "smart_account_address": "0x4dcb2c4a8d8b42f58522ed7e116bb33fc75843b1",
-      "status": "active",
-      "last_check_in": 1771200000,
-      "inactivity_period_seconds": 600,
-      "contest_period_seconds": 300,
-      "triggerable_at": 1771200600
-    }
-  }
-}
-```
-
-> ⚠️ **`chain.status` is the only status here, and it is the contract's own.** There is no second, off-chain status to confuse it with any more. **Anything that gates on "can this inheritance be opened" reads `chain.status`.** See [§13](#13-enumerations).
-
-> ⚠️ **`chain` timestamps are unix seconds (numbers), not RFC 3339 strings.** That is deliberate — they are block timestamps, and reformatting them would make this API disagree with the chain in a way nobody could see. Do not feed `chain.last_check_in` to a date parser expecting ISO 8601.
-
-> ⚠️ **The optional `chain.*` timestamps are absent, not `null`.** The server **omits the key entirely** when unset — there is no `"trigger_started_at": null` in any response. Type them `| undefined` and test with `in` or `!== undefined`; a client typing them `| null`, or branching on `=== null`, takes the wrong path on every response.
-
-**`chain.indexed: false` means "not configured on-chain", never "safe."** Every other `chain` field is then absent. It is the state of a smart account whose owner has not yet run `configure()` — or, rarely, one whose events the indexer has not read. `smart_account_address` is populated either way, because it is derived at sign-up and known long before the smart account exists on-chain.
-
-> ⚠️ **`chain.status: "unknown"` is not the same as `unconfigured`, and it is not a contract state.** It means the API could not read the chain mirror at all — an infrastructure fault on our side, not a fact about the owner's switch. `indexed` is `false` in both cases, so **branch on `chain.status`, not on `indexed`, when the difference matters.** Render `unknown` as "chain status unavailable, retry", never as "not set up": an owner whose switch is genuinely in Contest can see `unknown` during an outage. Nothing that gates opening an inheritance may treat it as permission, and the API does not either.
-
-> ⚠️ **"Account" and "smart account" are two different things in this API.** A bare **account** is the user's Cryple account, identified by `user_address` (64-char hex, the SHA-256 of their seed) — that is what `GET /users/me`, `DELETE /users` and the `account-delete` signed action all operate on. A **smart account** is their ERC-4337 contract on Arbitrum, identified by an Ethereum address, and every field naming it carries the `smart_` prefix. They are never interchangeable and never equal.
-
-`chain.triggerable_at` is `last_check_in + inactivity_period_seconds`, present only while `chain.status` is `active`. It is what a countdown UI counts down to. It is derived per request rather than stored, because the contract recomputes it on every read and a stored copy would go stale on each check-in.
-
-**There is no vote tally here, and no guardian can affect a release.** `POST /succession/votes` and `GET /succession/votes` were removed on 2026-09-03 ([Task 91](../api-general/.docs/tasks/tasks.md#task-91)): a quorum could only start its countdown once the chain already said the owner had gone silent, at which point `trigger()` is permissionless and the keeper sends it anyway. Guardians are a recovery role — seed recovery and the guardian-gated PIN reset.
-
-**Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
-
-> **Not in this API:** the heartbeat/check-in itself, and the switch's on-chain configuration. Both are **owner actions signed on the owner's device** — nothing server-side can check in on a user's behalf, and that is the invariant the whole product rests on. The chain indexer mirrors the results here; it cannot produce them.
->
-> **The "I'm alive — cancel" button is a chain transaction, not a call to this API.** There is deliberately no `PATCH /succession/cancel`: a second exit the chain never witnessed could clear a countdown while the chain was genuinely in Contest. The button calls `DeadManSwitch.checkIn()`, the indexer sees `Revoked`, and `chain.status` returns to `active`.
+🔒 All protected. Editable encrypted plain text.
 
 ### `POST /notes`
 
@@ -1737,11 +1348,11 @@ Replaces a note's payload. **JWT only** — no challenge, no signature, no PIN.
 
 > **⚠️ Re-seal under the same DEK. Do not generate a new one.**
 >
-> When you assign a note to an heir, the server stores that note's DEK wrapped to the heir's public keys. If you re-key the note on an edit, that stored value still unwraps to the **old** DEK, which no longer opens the new ciphertext. The heir's inheritance is broken, and **nothing reports it** — both fields are opaque, so the server cannot tell a re-seal from a re-key, and the failure only surfaces at release, when the owner is not around to fix it.
+> Both `ciphertext` and `wrapped_dek` are opaque, so the server cannot tell a re-seal from a re-key and **nothing reports** a mistake here. Anything holding a copy of the old DEK stops being able to open the note.
 >
-> Keep the item DEK, encrypt the new plaintext under it, and send back the **same** `wrapped_dek` you were given. If you must rotate a note's DEK, re-assign every affected share via `POST /succession/shares` in the same operation — `GET /succession/beneficiaries/{id}/shares` tells you which heirs hold it.
+> Keep the item DEK, encrypt the new plaintext under it, and send back the **same** `wrapped_dek` you were given.
 
-**This is a strict update, never an upsert.** A `PUT` to an id that does not exist returns `404` and creates nothing. If it created rows, a `PUT` arriving after a `DELETE` would resurrect a note whose heir assignments were already gone — the note back, the inheritance silently not.
+**This is a strict update, never an upsert.** A `PUT` to an id that does not exist returns `404` and creates nothing. A `PUT` arriving after a `DELETE` would otherwise resurrect a row the client believes is gone.
 
 **Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (path id is not a canonical UUID) · `400 BAD_REQUEST` (same field rules as `POST`) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (no such note, or not yours — the same response either way) · `500 INTERNAL_ERROR`.
 
@@ -1801,8 +1412,6 @@ The note id is signed as an argument, so a signature captured for one note canno
 
 **Errors:** `400 INVALID_PARAM` · `400 INVALID_BODY` (absent or not valid JSON) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` (bad signature, or a second factor that does not match the account's mode) · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
 
-> **Deleting a note also deletes what heirs inherited of it.** Every wrapped key assigned to that note is removed in the same transaction, so deleting one note silently shrinks the inheritance of every heir it was assigned to. Nothing else is affected. Warn before deleting a note that is assigned to someone (`GET /succession/beneficiaries/{id}/shares` tells you which), and treat any cached `share_count` from [§12](#12-succession-endpoints) as stale afterwards.
-
 ### `DELETE /notes` — batch
 
 One `note-delete` signature covering a whole set, so a multi-select delete costs one seed prompt instead of N. **Sort the ids ascending and de-duplicate them**, then sign them as consecutive arguments — the server rebuilds the payload the same way, so the order you send them in does not matter, but the set must match.
@@ -1831,12 +1440,6 @@ One `note-delete` signature covering a whole set, so a multi-select delete costs
 `requested` is the de-duplicated count. `deleted` can be lower without being an error: an id that is not yours simply does not match, exactly as a cross-user read is invisible. Compare the two if you need to tell the user something was already gone.
 
 **Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (any id is not a canonical UUID — nothing is deleted) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (empty id set) · `500 INTERNAL_ERROR`.
-
-> **This route deletes heir assignments too**, on exactly the same terms as the single-note delete above — every wrapped key for every note in the set, in one transaction.
-
-### Notes and succession
-
-A note is inheritable exactly like a secret. Assign one with `POST /succession/shares` and `"item_type": "note"` ([§12](#12-succession-endpoints)) — the server checks the note belongs to you before storing the wrapped key. Omitting `item_type` still defaults to `"secret"`, so **send it explicitly for notes**; the default would make the server look for a secrets row with your note's id and answer `404`.
 
 ---
 
@@ -1969,11 +1572,11 @@ Merges the log into a new snapshot and prunes what it replaces, in one transacti
 
 Rotates the document's wrapped DEK. **JWT only.** Guarded by `expected_revision` → `409 CONFLICT` on a stale write.
 
-> **Rotating the DEK invalidates the whole log, not one blob.** Every delta and the snapshot are sealed under the same document DEK. Compact first, then rotate, then re-assign every heir who holds this document via `POST /succession/shares` — otherwise their inheritance breaks silently and only surfaces at release.
+> **Rotating the DEK invalidates the whole log, not one blob.** Every delta and the snapshot are sealed under the same document DEK, so compact first and then rotate.
 
 ### `DELETE /documents/{id}`
 
-Deletes a document, its entire update log, and every heir assignment for it. **Requires a `document-delete` signed action**, unlike create, edit and compact.
+Deletes a document and its entire update log. **Requires a `document-delete` signed action**, unlike create, edit and compact.
 
 **Request:** `{ "challenge": "…", "timestamp": 1737676800, "signature": "…", "password": "Paranoid Mode only" }`
 
@@ -1986,7 +1589,3 @@ One `document-delete` signature covering a whole set. **Sort the ids ascending a
 **`200 OK`:** `{ "requested": 2, "deleted": 2 }`
 
 `deleted` can be lower without being an error. An empty id set is `404 NOT_FOUND`, returned before the signature is checked so it cannot burn a challenge.
-
-### Documents and succession
-
-A document is inheritable. Assign one with `POST /succession/shares` and `"item_type": "document"` ([§12](#12-succession-endpoints)), using the document's `id` exactly as this section returns it.
