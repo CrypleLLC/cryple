@@ -17,7 +17,6 @@ import {
   UNREADABLE_SECRET_NAME,
 } from "./index";
 
-const OWNER_ADDRESS = "a".repeat(64);
 
 describe("turning on the second factor", () => {
   const mnemonic = vectors.seed_and_user_address.mnemonic;

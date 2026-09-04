@@ -1,7 +1,7 @@
 # `lib/secrets` — the vault domain
 
 Per-item encryption and the `/secrets` endpoints. Tasks 12 and 13 of
-[tasks.md](../../../tasks.md).
+[tasks.md](../../../tasks/tasks.md).
 
 ## The vault KEK (Decision A)
 

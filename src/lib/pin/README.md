@@ -5,7 +5,7 @@ the single easiest way to lock a user out of their account, so they live in sepa
 modules and never share a salt-building code path.
 
 Implements [auth/two-factor-PIN.md](../../../../api-general/.docs/auth/two-factor-PIN.md) — a
-**FROZEN** spec. Task 5 of [tasks.md](../../../tasks.md).
+**FROZEN** spec. Task 5 of [tasks.md](../../../tasks/tasks.md).
 
 ## The two derivations
 

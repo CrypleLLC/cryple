@@ -4,7 +4,7 @@ The one place that knows how to talk to the Cryple API: base URL, envelopes, sta
 error codes, pagination and the JWT. Nothing above this layer builds a URL or reads a raw
 `Response`.
 
-Tasks 7 and 9 of [tasks.md](../../../tasks.md). Governed by
+Tasks 7 and 9 of [tasks.md](../../../tasks/tasks.md). Governed by
 [front-end-guide.md](../../../front-end-guide.md) §2 and §5.5 and
 [front-end-endpoints.md](../../../front-end-endpoints.md) §3–4.
 

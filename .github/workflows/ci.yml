@@ -38,3 +38,6 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Separation gate
+        run: python3 scripts/separation-gate.py

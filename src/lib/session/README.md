@@ -3,7 +3,7 @@
 Holds the derived key material for one session in memory, so the user unlocks **once** and
 never sees a PIN prompt again for the rest of that session.
 
-Task 6 of [tasks.md](../../../tasks.md).
+Task 6 of [tasks.md](../../../tasks/tasks.md).
 
 > Design target: **"unlock once per session", never "prompt per action".** Unlocking costs
 > two 600,000-iteration PBKDF2 runs (~1s on a laptop, several seconds on a low-end phone).

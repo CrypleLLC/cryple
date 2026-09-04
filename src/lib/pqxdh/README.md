@@ -2,7 +2,7 @@
 
 The **only** way this client encrypts data for someone else.
 
-Task 14 of [tasks.md](../../../tasks.md). Implements
+Task 14 of [tasks.md](../../../tasks/tasks.md). Implements
 [crypto/pqxdh.md](../../../../api-general/.docs/crypto/pqxdh.md) — a **FROZEN** spec.
 
 > ## Nothing calls this module today, and it is not dead code

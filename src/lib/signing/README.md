@@ -4,7 +4,7 @@ Builds the `{challenge, timestamp, signature}` envelope every authenticated and 
 destructive request carries. **Built once, here — never per call site.** This is the single
 hardest piece of the client and the most repeated.
 
-Task 8 of [tasks.md](../../../tasks.md). Implements
+Task 8 of [tasks.md](../../../tasks/tasks.md). Implements
 [auth/challenge.md](../../../../api-general/.docs/auth/challenge.md) and
 [auth/signed-actions.md](../../../../api-general/.docs/auth/signed-actions.md).
 

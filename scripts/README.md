@@ -15,7 +15,7 @@ implementation pair this project has deployed, and marks the one matching
 `expected_address` if you pass it.
 
 Answers "which cohort is this account on" — the question
-[api-general Task 71](../../api-general/.docs/tasks/tasks.md#task-71) made answerable by
+api-general Task 71 made answerable by
 recording the pair on the user row. `GET /succession/status` now serves
 `chain.smart_account_factory` and `chain.smart_account_implementation` from that row, so
 once the web-app half of Task 74 lands and `src/lib/chain/config.ts` stops carrying its own

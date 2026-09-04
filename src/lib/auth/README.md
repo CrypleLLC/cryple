@@ -2,7 +2,7 @@
 
 The three entry points that turn an unlocked key tree into a JWT.
 
-Task 10 of [tasks.md](../../../tasks.md). Endpoints per
+Task 10 of [tasks.md](../../../tasks/tasks.md). Endpoints per
 [front-end-endpoints.md § 7](../../../front-end-endpoints.md).
 
 ## API

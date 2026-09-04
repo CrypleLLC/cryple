@@ -10,7 +10,7 @@ Two sets of documents govern this client. They answer different questions and ne
 | --- | --- |
 | [front-end-guide.md](./front-end-guide.md) | Base URL, auth model, signatures, JWT, retry safety, 28 client caveats. **§5 is mandatory.** |
 | [front-end-endpoints.md](./front-end-endpoints.md) | Every route, payload, response and error code. |
-| [tasks.md](./tasks.md) | The integration task list — numbered, milestone-ordered, with acceptance criteria. Work from it. |
+| [tasks.md](./tasks/tasks.md) | The integration task list — numbered, milestone-ordered, with acceptance criteria. Work from it. |
 
 These two describe the API **as implemented** — the wire contract. They win over the current source and over anything you remember about this project. Cite the `§` you relied on when a change hinges on API behaviour.
 
@@ -26,8 +26,8 @@ The wire contract does not specify what goes *into* those fields. Every derivati
 | [auth/signed-actions.md](../api-general/.docs/auth/signed-actions.md) | The action-signature envelope and the **authoritative action table**. |
 | [auth/two-factor-PIN.md](../api-general/.docs/auth/two-factor-PIN.md) | `Server_Auth_Token` derivation, PIN rules, **local seed encryption at rest**. |
 | [auth/user-address.md](../api-general/.docs/auth/user-address.md) | `user_address` derivation and format. |
-| [onchain-architecture.md](../api-general/.docs/onchain-architecture.md) | ERC-4337 signer, heartbeat, and an explicit "what the chain does NOT do". |
-| [pivot-scope.md](../api-general/.docs/pivot-scope.md) | What is in scope, cut, or postponed. |
+| `onchain-architecture.md` (in `dms-shamir`) | ERC-4337 signer, heartbeat, and an explicit "what the chain does NOT do". |
+| `pivot-scope.md` (in `dms-shamir`) | What is in scope, cut, or postponed. |
 
 **Precedence**: for a byte layout or a KDF constant, the frozen spec wins over the guide. For a status code, a field name, or a retry rule, the guide wins. Where they disagree on something else, the frozen spec is older — check `git log` on both before assuming. One known stale line: `auth/challenge.md` says the JWT expires in 8h; it is **24h** (`JWT_EXPIRY_HOURS` default in `../api-general/internal/utils/config/config.go`, and `front-end-guide.md` §5.5).
 

@@ -6,7 +6,14 @@ This describes the API **as implemented**, not as specified. Where the implement
 
 **Read [front-end-guide.md](./front-end-guide.md) first.** It carries what you need before any call here will work: the base URL, CORS and transport limits, how to build the challenge and action signatures that most of these endpoints require in their request body, JWT usage, and the client caveats. This file assumes all of it. Paths below are served exactly as written — the API has no version prefix.
 
-Section numbers are **not contiguous** — they are the original numbering from before this file was split out of the guide, kept so that every `§N` reference in `.docs/` and the module READMEs still resolves. §1, §2, §5 and §14 live in the guide. §15 (Notes) and §16 (Documents) were added after the split and take the next free numbers rather than topical ones, for the same reason: renumbering would break every existing reference.
+Section numbers are **not contiguous** — they are the original numbering from before this file was split out of the guide, kept so that every `§N` reference in `.docs/` and the module READMEs still resolves. §1, §2, §5 and §14 live in the guide. §12 (Notes) and §16 (Documents) were added after the split and took free numbers rather than topical ones, for the same reason: renumbering would break every existing reference. §10 and §11 held recovery and PIN reset, and are kept as a single removal notice rather than reused.
+
+> **This file is a synced copy.** The authoritative original is
+> `front-end-endpoints.md` in the `api-general` repository, which is where the API is
+> implemented. The only differences between the two copies are relative link prefixes —
+> a path that reads `.docs/…` there reads `../api-general/.docs/…` here. Re-sync by
+> copying the file across and re-running `python3 scripts/separation-gate.py`, which is
+> what catches a prefix that did not get rewritten.
 
 ---
 
@@ -20,11 +27,8 @@ Section numbers are **not contiguous** — they are the original numbering from 
 - [7. Auth Endpoints](#7-auth-endpoints)
 - [8. Users Endpoints](#8-users-endpoints)
 - [9. Secrets Endpoints](#9-secrets-endpoints)
-- [10. Recovery Endpoints](#10-recovery-endpoints)
-- [11. PIN Reset Endpoints](#11-pin-reset-endpoints)
+- [10–11. Recovery and PIN Reset Endpoints — removed](#1011-recovery-and-pin-reset-endpoints-removed-2026-09-04)
 - [12. Notes Endpoints](#12-notes-endpoints)
-- [13. Enumerations](#13-enumerations)
-- [15. Notes Endpoints](#15-notes-endpoints)
 - [16. Documents Endpoints](#16-documents-endpoints)
 
 ---
@@ -54,10 +58,10 @@ Eight list endpoints are paginated. They accept two optional query parameters
 and add a `page` object to the envelope:
 
 ```
-GET /recovery/guardians?limit=25&cursor=bzoyNQ
+GET /notes?limit=25&cursor=bzoyNQ
 
 {
-  "message": "Guardians retrieved successfully",
+  "message": "Notes retrieved successfully",
   "data": [ /* up to `limit` rows */ ],
   "page": { "next_cursor": "bzo1MA", "has_more": true }
 }
@@ -68,10 +72,7 @@ GET /recovery/guardians?limit=25&cursor=bzoyNQ
 | `limit`   | `50`    | Integer `1`–`200`. Zero, negative, non-numeric or over `200` is `400 INVALID_PARAM`.                     |
 | `cursor`  | none    | **Opaque.** Send back a `next_cursor` this API gave you, verbatim. Anything else is `400 INVALID_PARAM`. |
 
-Paginated:
-`GET /recovery/guardians` · `GET /recovery/guardianships` ·
-`GET /recovery/sessions/pending` · `GET /recovery/pin-reset/pending` ·
-`GET /auth/pin-reset/{id}/votes`.
+Paginated: `GET /notes`.
 
 Rules worth building to:
 
@@ -129,7 +130,7 @@ client bug you will hit on the first request and never again, so it is left as
 the router's default rather than dressed up as JSON. A **wrong verb on a real
 path** is not in that category — see `405` below — and does return the envelope.
 
-> ⚠️ **There is no `message` or `error` field on error responses, and this is deliberate.** The server builds a machine-readable `code` and drops the human-readable message. Service-level validation text (e.g. `"guardian \"alice\" has not accepted an invitation"`) exists in the backend but **never reaches the client** — it is logged server-side only, because account creation is free and unrestricted, so any detail sent to "an authenticated user" is detail sent to an attacker.
+> ⚠️ **There is no `message` or `error` field on error responses, and this is deliberate.** The server builds a machine-readable `code` and drops the human-readable message. Service-level validation text (e.g. `"expected 3 shares, got 2"`) exists in the backend but **never reaches the client** — it is logged server-side only, because account creation is free and unrestricted, so any detail sent to "an authenticated user" is detail sent to an attacker.
 >
 > Two consequences for the client:
 >
@@ -151,7 +152,7 @@ path** is not in that category — see `405` below — and does return the envel
 | 401  | `INVALID_CREDENTIALS` | Second factor (`password`) wrong, an action signature failed to verify, **or the JWT is valid but its account no longer exists**.                                                                                                                                                  |
 | 404  | `NOT_FOUND`           | Resource does not exist, is not yours, **or** authentication failed on an auth endpoint.                                                                                                                                                                                           |
 | 405  | `METHOD_NOT_ALLOWED`  | The path exists but does not accept this verb.                                                                                                                                                                                                                                     |
-| 409  | `CONFLICT`            | The resource is not in a state that accepts the request (expired session, closed PIN reset, already-consumed recovery session).                                                                                                                                                          |
+| 409  | `CONFLICT`            | The resource is not in a state that accepts the request.                                                                                                                                                                                                                                                                                                                               |
 | 500  | `INTERNAL_ERROR`      | Unexpected server/database failure. Safe to retry once.                                                                                                                                                                                                                            |
 | 503  | `NOT_READY`           | `GET /ready` only ([§6](#6-service-endpoints)): a dependency did not answer. Never returned by any other endpoint.                                                                                                                                                                 |
 
@@ -176,7 +177,7 @@ Content-Type: application/json; charset=utf-8
 {"code":"METHOD_NOT_ALLOWED"}
 ```
 
-Two things to know about it. It is decided **before** the token is checked, so a wrong verb returns `405` even with no `Authorization` header — do not read that as "this route is public". And `Allow` describes the routing table, not intent: `POST /auth/pin-reset/confirm` reports `Allow: GET, PATCH` because `GET /auth/pin-reset/{id}` genuinely matches `confirm` as an `{id}`. Treat it as a debugging aid, not as a route description.
+Two things to know about it. It is decided **before** the token is checked, so a wrong verb returns `405` even with no `Authorization` header — do not read that as "this route is public". And `Allow` describes the routing table, not intent: a literal path segment that also matches a sibling `{id}` pattern is reported under both, so the header can name a verb you did not expect. Treat it as a debugging aid, not as a route description.
 
 ---
 
@@ -239,7 +240,7 @@ Creates an account. **If the `user_address` already exists, this behaves exactly
 | ------------------------------ | -------- | ------------------------------------------------------------------ |
 | `user_address`                 | ✅       | 64 lowercase hex.                                                  |
 | `public_key`                   | ✅       | base64 DER SPKI, P-256. Must be the key that produced `signature`. |
-| `encryption_public_key_x25519` | ✅       | Stored as-is for guardians to fetch.                               |
+| `encryption_public_key_x25519` | ✅       | Stored as-is, for other accounts to fetch and encrypt to.          |
 | `encryption_public_key_mlkem`  | ✅       | Stored as-is.                                                      |
 | `challenge`                    | ✅       | 64 lowercase hex, single use.                                      |
 | `timestamp`                    | ✅       | Unix seconds, within ±300s.                                        |
@@ -324,7 +325,7 @@ Your own account, as the API sees it. Takes no parameters: the account is the on
 | Field          | Notes                                                                                                            |
 | -------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `user_address` | The `SHA-256` of the seed you authenticated with. Useful to confirm the client derived the account you expected. |
-| `username`     | The auto-assigned username ([§8](#8-users-endpoints)); this is what guardian invitations take.   |
+| `username`     | The auto-assigned username ([§8](#8-users-endpoints)); this is how one account addresses another. |
 | `uuid`         | Your public identifier — feed it to `GET /users/{uuid}/public-keys`.                                             |
 | `has_password` | **`true` = Paranoid Mode**, `false` = Standard Mode. Always present, never omitted.                              |
 | `created_at`   | Account creation.                                                                                                |
@@ -333,13 +334,13 @@ Your own account, as the API sees it. Takes no parameters: the account is the on
 
 It is also how you confirm a `POST /users/second-factor` that timed out actually landed: that call's retry is ambiguous by design, and this is the read-back it was missing.
 
-**Deliberately not here:** whether you have guardians. That has its own endpoint, its own scoping and its own empty state — `GET /recovery/guardians`. This endpoint answers "who am I", not "what have I configured".
+**Deliberately not here:** anything the account has configured. This endpoint answers "who am I", not "what have I set up".
 
 **Errors:** `401 UNAUTHORIZED` (missing or invalid token) · `404 NOT_FOUND` (the token is valid but the account no longer exists — it was deleted; treat it as signed out) · `500 INTERNAL_ERROR`.
 
 ### `GET /users/lookup?address={user_address}` — public
 
-Resolves an address to its auto-assigned username. Needed before inviting someone as a guardian, since that endpoint takes a username.
+Resolves an address to its auto-assigned username.
 
 | Param     | In    | Required | Notes                        |
 | --------- | ----- | -------- | ---------------------------- |
@@ -358,7 +359,11 @@ Resolves an address to its auto-assigned username. Needed before inviting someon
 
 ### `GET /users/{uuid}/public-keys` — 🔒 protected
 
-Fetches a user's hybrid encryption keys so the client can wrap a DEK or a Shamir share for them. `{uuid}` is the `user_uuid` returned by `GET /recovery/guardians`.
+Fetches a user's hybrid encryption keys so the client can PQXDH-wrap a DEK for them.
+
+**No client calls this today.** Its two callers — heir DEK wrapping and guardian share wrapping — left with inheritance and with recovery. It is the endpoint private sharing (Task 102) is built on, and the reason `user_keys` is still written at sign-up.
+
+**Before sharing ships, note the gap:** these keys come from the server, and a client has no way today to distinguish an account's real keys from keys the server substituted. Task 104 owes at least a comparable fingerprint.
 
 **`200 OK`**
 
@@ -404,7 +409,7 @@ The signature must cover the exact token you are installing. That is what stops 
 | 401    | `INVALID_CREDENTIALS` | Signature failed/stale/replayed, `new_password` is not valid 64-hex, **or the account already has a second factor**. |
 | 500    | `INTERNAL_ERROR`      | Database failure.                                                                                                    |
 
-> The "already has a second factor" case returns the same `401` as a bad signature, so this endpoint is never an oracle for which mode an account is in. If you need to change an existing PIN, use `PUT /users/password` (you know the current token) or the PIN-reset flow (you don't).
+> The "already has a second factor" case returns the same `401` as a bad signature, so this endpoint is never an oracle for which mode an account is in. Changing an existing PIN needs `PUT /users/password` and the current token. **If you do not have the current token there is no path at all** — see §10–11.
 
 ### `PUT /users/password` — 🔒 protected
 
@@ -440,7 +445,7 @@ Signing `new_password` is the point, not ceremony: without it, anything between 
 
 ### `DELETE /users` — 🔒 protected
 
-Deletes the account and, by cascade, its secrets, notes, documents, guardians and recovery shares. **Irreversible.**
+Deletes the account and, by cascade, its secrets, notes and documents. **Irreversible.**
 
 **Request** — the body is **required**; it carries the `account-delete` signature over your own `user_address`. Standard Mode omits `password` but still sends the three signature fields.
 
@@ -465,7 +470,7 @@ Deletes the account and, by cascade, its secrets, notes, documents, guardians an
 
 🔒 All protected. A "secret" is one encrypted legacy item. The server stores three opaque strings and never decrypts anything.
 
-> **Storing a note rather than a secret?** Notes are a separate resource with the same shape plus an edit route — see [§15](#15-notes-endpoints). Use `/notes` for anything the user types and later revises; use `/secrets` for material written once, like a seed phrase.
+> **Storing a note rather than a secret?** Notes are a separate resource with the same shape plus an edit route — see [§12](#12-notes-endpoints). Use `/notes` for anything the user types and later revises; use `/secrets` for material written once, like a seed phrase.
 
 ### `POST /secrets`
 
@@ -635,654 +640,31 @@ One `secret-delete` signature covering a whole set, so a multi-select delete cos
 
 ---
 
-## 10. Recovery Endpoints
-
-Guardian-assisted seed recovery. The seed is split client-side with Shamir's Secret Sharing into `n` shares with threshold `k`; **share 0 is the owner's own Recovery Kit share** and each remaining share is encrypted to one guardian's hybrid public keys. The server stores ciphertext and orchestrates collection — it can never reassemble the seed.
-
-### `PUT /recovery/setup` — 🔒 protected
-
-Signed with `recovery-setup` over a digest of the whole payload — see [§5.3](./front-end-guide.md#53-action-signature-everything-destructive) for the exact canonicalization. Signing the payload rather than the intent is what stops anything between you and the server substituting its own shares on a validly-authorized call.
-
-> ⚠️ **This changed on 2026-07-29 and is breaking.** Setup deletes every existing guardian share and overwrites the vault in one transaction, so it now needs the seed key, not just the token.
-
-Stores (or replaces) the recovery vault and the guardian share set.
-
-**Request**
-
-```json
-{
-  "encrypted_seed": "opaque blob, seed encrypted under the owner's own key",
-  "n_shares": 3,
-  "k_threshold": 2,
-  "version": "v1",
-  "shares": [
-    { "share_index": 0, "pq_hybrid_encrypted_share": "opaque…" },
-    {
-      "share_index": 1,
-      "guardian_username": "alice1234abcd",
-      "pq_hybrid_encrypted_share": "opaque…"
-    },
-    {
-      "share_index": 2,
-      "guardian_username": "bob5678efgh",
-      "pq_hybrid_encrypted_share": "opaque…"
-    }
-  ],
-  "challenge": "64 lowercase hex characters",
-  "timestamp": 1737676800,
-  "signature": "base64 P1363 signature over the setup digest",
-  "password": "64-hex token, Paranoid Mode only"
-}
-```
-
-Rules enforced server-side (all violations ⇒ `400 BAD_REQUEST`):
-
-- `1 ≤ k_threshold ≤ n_shares`, both ≥ 1.
-- `shares.length` must equal `n_shares` exactly.
-- `share_index` values must be unique and inside `0..n_shares-1`.
-- **Index 0 is required** and must carry **no** `guardian_username` (it is the owner's Recovery Kit share).
-- Every index ≥ 1 requires a `guardian_username` that exists **and has already accepted** its invitation (`status = active`).
-- No guardian may hold more than one share.
-- `pq_hybrid_encrypted_share` must be non-empty on every entry.
-- `version` omitted/`""` ⇒ `"v1"`; anything else rejected.
-
-**`200 OK`**
-
-```json
-{
-  "message": "Recovery setup stored successfully",
-  "data": {
-    "n_shares": 3,
-    "k_threshold": 2,
-    "version": "v1",
-    "share_count": 3,
-    "updated_at": "2026-07-26T12:00:00Z"
-  }
-}
-```
-
-**Errors:** `400 INVALID_BODY` · `400 BAD_REQUEST` (any rule above) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` (JWT address no longer resolves to a user) · `500 INTERNAL_ERROR`.
-
-### `POST /recovery/guardians/invite` — 🔒 protected
-
-Requires a JWT **and** a `guardian-invite` [action signature](./front-end-guide.md#53-action-signature-everything-destructive) over the username being invited — the payload is `${challenge}:${timestamp}:guardian-invite:${guardian_username}`, signed with the owner's P-256 key.
-
-**Request**
-
-```json
-{
-  "guardian_username": "alice1234abcd",
-  "challenge": "64-char lowercase hex",
-  "timestamp": 1710000000,
-  "signature": "base64 IEEE P1363 signature",
-  "password": "64-hex token, Paranoid Mode only"
-}
-```
-
-The username is a **signed argument**, so it cannot be swapped after the fact: a signature produced for one username is refused for any other. Like every action signature it is single-use — invite two guardians and you sign twice, and a retry after a timeout needs a fresh challenge.
-
-**`201 Created`**
-
-```json
-{
-  "message": "Guardian invited successfully",
-  "data": {
-    "id": "9c1e…-uuid",
-    "username": "alice1234abcd",
-    "status": "pending_invite",
-    "has_share": false,
-    "created_at": "2026-07-26T12:00:00Z"
-  }
-}
-```
-
-Re-inviting an existing guardian is idempotent; a previously `revoked` guardian returns to `pending_invite`.
-
-**Errors:** `400 INVALID_BODY` · `400 BAD_REQUEST` (unknown username, or inviting yourself) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` (missing, malformed, replayed, stale or wrong-username signature) · `500 INTERNAL_ERROR`.
-
-> The signature is checked **before** the username is looked up, so a caller who cannot sign gets `401` whether or not the username exists. Do not use this endpoint to test whether a username is registered — that is what [`GET /users/lookup`](#get-userslookupaddressuser_address--public) is for.
-
-### `PATCH /recovery/guardians/{id}/accept` — 🔒 protected
-
-Called by the **invited guardian** (their own JWT), with the invitation `id` from `GET /recovery/guardianships`. Signed with `guardian-accept` over that `{id}`.
-
-> ⚠️ **This changed on 2026-07-29 and is breaking — it used to take no body and no signature.** Accepting is not a formality: it is the moment the owner's `user_address` becomes visible to you, and the moment you start counting toward their recovery quorum. A token alone could previously make someone a guardian who never saw the invitation, which silently raises the owner's quorum bar without adding anyone who will actually respond.
-
-**Request** — the body is **required**. All four signature fields below are required; `password` only on Paranoid Mode accounts. See [§5.3](./front-end-guide.md#53-action-signature-everything-destructive).
-
-```json
-{
-  "challenge": "64 lowercase hex characters",
-  "timestamp": 1737676800,
-  "signature": "base64 P1363 signature",
-  "password": "64-hex token, Paranoid Mode only"
-}
-```
-
-**`204 No Content`** — no body.
-
-**Errors:** `400 INVALID_PARAM` (not a canonical UUID) · `400 INVALID_BODY` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` (bad signature or second-factor mismatch) · `404 NOT_FOUND` (no such invitation, not addressed to you, or not in `pending_invite`) · `500 INTERNAL_ERROR`.
-
-### `GET /recovery/guardians` — 🔒 protected
-
-_Paginated — `?limit=` / `?cursor=`, `page` in the envelope ([§3.1](#31-pagination))._
-
-Guardians **the caller has appointed**.
-
-**`200 OK`**
-
-```json
-{
-  "message": "Guardians retrieved successfully",
-  "data": [
-    {
-      "id": "9c1e…",
-      "username": "alice1234abcd",
-      "user_address": "2b7f…",
-      "status": "active",
-      "encryption_public_key_x25519": "base64…",
-      "encryption_public_key_mlkem": "base64…",
-      "has_share": true,
-      "created_at": "2026-07-26T12:00:00Z"
-    }
-  ]
-}
-```
-
-Use the returned keys to encrypt that guardian's Shamir share before `PUT /recovery/setup`.
-
-`user_address` is **present only on `active` rows** — omitted entirely while `pending_invite` or `revoked`, never sent as `""`, exactly like `encryption_public_key_*` and like `owner_user_address` on the mirrored [`GET /recovery/guardianships`](#get-recoveryguardianships--protected). It is the **recipient half of the PQXDH `info` string** for `usage = recovery-share`, and this endpoint is the only place it is supplied: [`GET /users/lookup`](#get-userslookupaddressuser_address--public) resolves address → username and never the reverse. Do not ask the owner to type it. A share wrapped under the wrong address is accepted by every party and fails only at reconstruction, years later.
-
-**Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
-
-### `DELETE /recovery/guardians/{id}` — 🔒 protected
-
-Removes a guardian you appointed. `{id}` is the `id` from `GET /recovery/guardians`.
-
-**Request** — the body is **required** and carries an [action signature](./front-end-guide.md#53-action-signature-everything-destructive) over `challenge:timestamp:guardian-revoke:{id}`, signed with the **account owner's** key. A JWT on its own is not accepted here.
-
-```json
-{
-  "challenge": "7f3b…",
-  "timestamp": 1785000000,
-  "signature": "base64…",
-  "password": "64-hex token, Paranoid Mode only"
-}
-```
-
-**`200 OK`**
-
-```json
-{
-  "message": "Guardian revoked successfully",
-  "data": {
-    "id": "9c1e…",
-    "username": "alice1234abcd",
-    "status": "revoked",
-    "share_removed": true,
-    "votes_withdrawn": 1,
-    "active_guardians": 2,
-    "recovery_setup_stale": true
-  }
-}
-```
-
-The call is idempotent — repeating it succeeds with `share_removed: false` and `votes_withdrawn: 0`, so a retry after a timeout is safe (use a fresh challenge; action signatures are single-use).
-
-> ⚠️ **`recovery_setup_stale: true` means you must re-run `PUT /recovery/setup`.** Two separate reasons, and the client should not treat either as optional:
->
-> - The vault still claims `n_shares` holders but one is gone, so the k-of-n configuration no longer describes reality.
-> - **More importantly, revocation is not cryptographic revocation.** The revoked guardian downloaded their share when you assigned it. Deleting the row stops the server serving it; it does not take it back. Until you re-split with a **fresh REK** and re-encrypt the seed, `k` holders including the ex-guardian can still reconstruct it. Surface this as a required next step, not a notice.
->
-> `recovery_setup_stale` is `false` when the guardian never held a share (revoked before setup, or invited and never included) — nothing to redo in that case.
-
-Effects, all in one transaction: status becomes `revoked`; their Shamir share row is deleted; their pending release and PIN-reset votes are withdrawn. They immediately fail every active-guardian check, so `GET /recovery/sessions/pending` and `GET /recovery/pin-reset/pending` go empty for them and their votes stop counting toward any quorum. They can be re-invited later, which returns them to `pending_invite`.
-
-The ex-guardian still sees the relationship in their own `GET /recovery/guardianships`, now with `status: "revoked"` and `owner_user_address` omitted again.
-
-**Errors:** `400 INVALID_PARAM` (not a canonical UUID) · `400 INVALID_BODY` (absent or unparseable body) · `401 UNAUTHORIZED` (bad/missing JWT) · `401 INVALID_CREDENTIALS` (signature failed, stale, or replayed) · `404 NOT_FOUND` (no such guardian, or not yours — indistinguishable by design) · `500 INTERNAL_ERROR`.
-
-### `GET /recovery/guardianships` — 🔒 protected
-
-_Paginated — `?limit=` / `?cursor=`, `page` in the envelope ([§3.1](#31-pagination))._
-
-Accounts **the caller guards for others** — the inbox for accepting invitations.
-
-**`200 OK`**
-
-```json
-{
-  "message": "Guardianships retrieved successfully",
-  "data": [
-    {
-      "id": "9c1e…",
-      "owner_username": "3f1c8a2b9d4e",
-      "status": "pending_invite",
-      "created_at": "2026-07-26T12:00:00Z"
-    },
-    {
-      "id": "7b3d…",
-      "owner_username": "a92f4c1d8e0b",
-      "owner_user_address": "a92f4c1d8e0b…64 hex chars…",
-      "status": "active",
-      "created_at": "2026-07-26T12:00:00Z"
-    }
-  ]
-}
-```
-
-`owner_user_address` is **present only on `active` rows** — the key is omitted entirely while `pending_invite`, not sent as `""`. It is what a guardian needs to build the PQXDH `info` string when re-wrapping their share into a recovery session, and this endpoint is the **only** place it is supplied. **`owner_release_cycle` is gone** (2026-09-03): it existed solely so a guardian could sign a release vote, and guardians take no part in a release any more ([Task 91](../api-general/.docs/tasks/tasks.md#task-91)).
-
-**Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
-
-### `POST /recovery/request` — public
-
-Started on a **new device with no keys**: the user has lost their seed, so there is no JWT to present. The client mints a **hybrid** ephemeral key pair for this session and guardians re-encrypt their shares to it. PQXDH needs both halves, so both are sent, as two fields:
-
-**Request**
-
-```json
-{
-  "username": "3f1c8a2b9d4e",
-  "ephemeral_x25519_public": "base64 of 32 raw bytes → 44 chars",
-  "ephemeral_mlkem_public": "base64 of 1184 raw bytes → 1580 chars"
-}
-```
-
-> **This changed on 2026-08-08 and is breaking.** It replaces the single `ephemeral_public_key`, which could not express the two keys the construction actually requires (Decision C).
-
-**Both lengths are validated server-side** — that is the point of two fields. Swap them, hex-encode one, or pack both into one string and the call fails here with `400`, rather than succeeding and yielding shares your device silently cannot open an hour later. Keep both private halves in memory only; they die with the session.
-
-The `info` string for `usage = recovery-session` carries the **`session_id` in both address slots**, not `user_address` values — see [`GET /recovery/share/{session_id}`](#get-recoverysharesession_id--protected), where the guardian side of the same contract is spelled out.
-
-**`201 Created`**
-
-```json
-{
-  "message": "Recovery session created successfully",
-  "data": {
-    "id": "4d7a…-uuid",
-    "n_shares": 3,
-    "k_threshold": 2,
-    "status": "pending",
-    "expires_at": "2026-07-26T12:30:00Z",
-    "created_at": "2026-07-26T12:00:00Z"
-  }
-}
-```
-
-Sessions live for `RECOVERY_SESSION_TTL_MINUTES` (**default 30 minutes**). Persist the `id` locally — polling it is the only way back to the session.
-
-**Errors:** `400 INVALID_BODY` · `400 BAD_REQUEST` (either ephemeral key missing, not standard base64, or not decoding to exactly 32 / 1184 bytes — the message names the field and the length it got) · `404 NOT_FOUND` (unknown username, or that account never ran `/recovery/setup`) · `500 INTERNAL_ERROR`.
-
-### `GET /recovery/session/{id}` — public
-
-Polled by the recovering client. **Every share submitted so far is returned**, even below `k` — the server cannot count share 0 (the owner's Recovery Kit copy, never uploaded), so it cannot know whether the threshold is met and does not try. Counting `k` is the client's job. `status` flips to `shares_collected` only once **every** guardian has answered (`n_shares - 1` submissions), which means "nobody else is coming", not "you can start".
-
-**`200 OK`** (below threshold)
-
-```json
-{
-  "message": "Recovery session retrieved successfully",
-  "data": {
-    "id": "4d7a…",
-    "n_shares": 3,
-    "k_threshold": 2,
-    "status": "pending",
-    "expires_at": "…",
-    "created_at": "…"
-  }
-}
-```
-
-**`200 OK`** (threshold reached)
-
-```json
-{
-  "message": "Recovery session retrieved successfully",
-  "data": {
-    "id": "4d7a…",
-    "n_shares": 3,
-    "k_threshold": 2,
-    "status": "shares_collected",
-    "shares": [
-      {
-        "re_encrypted_share": "opaque, decrypt with the ephemeral private key",
-        "submitted_at": "2026-07-26T12:05:00Z"
-      },
-      {
-        "re_encrypted_share": "opaque…",
-        "submitted_at": "2026-07-26T12:07:00Z"
-      }
-    ],
-    "expires_at": "…",
-    "created_at": "…"
-  }
-}
-```
-
-Combine the shares client-side, reconstruct the seed, then fetch `GET /recovery/vault` if you also need the owner's own `encrypted_seed` blob.
-
-**Errors:** `400 INVALID_PARAM` · `404 NOT_FOUND` · `409 CONFLICT` (session expired — a fresh `POST /recovery/request` is required) · `500 INTERNAL_ERROR`.
-
-### `GET /recovery/vault?username={username}` — public
-
-Returns the owner's self-encrypted seed blob and the vault's split parameters.
-
-**`200 OK`**
-
-```json
-{
-  "message": "Encrypted vault retrieved successfully",
-  "data": {
-    "encrypted_seed": "opaque…",
-    "n_shares": 3,
-    "k_threshold": 2,
-    "version": "v1"
-  }
-}
-```
-
-**Errors:** `400 INVALID_PARAM` (missing `username`) · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
-
-### `GET /recovery/sessions/pending` — 🔒 protected
-
-_Paginated — `?limit=` / `?cursor=`, `page` in the envelope ([§3.1](#31-pagination))._
-
-Polled by **guardians**: recovery sessions awaiting their share.
-
-**`200 OK`**
-
-```json
-{
-  "message": "Pending sessions retrieved successfully",
-  "data": [
-    {
-      "session_id": "4d7a…",
-      "owner_username": "3f1c8a2b9d4e",
-      "ephemeral_x25519_public": "base64…",
-      "ephemeral_mlkem_public": "base64…",
-      "submitted": false,
-      "expires_at": "2026-07-26T12:30:00Z",
-      "created_at": "2026-07-26T12:00:00Z"
-    }
-  ]
-}
-```
-
-**Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
-
-### `GET /recovery/share/{session_id}` — 🔒 protected
-
-Called by a guardian to retrieve **their own** stored share ciphertext for that session, so they can decrypt it with their private key and re-encrypt it to the session's ephemeral key pair. This response is where the guardian's device learns both ephemeral keys.
-
-**`200 OK`**
-
-```json
-{
-  "message": "Share retrieved successfully",
-  "data": {
-    "session_id": "4d7a…",
-    "ephemeral_x25519_public": "base64…",
-    "ephemeral_mlkem_public": "base64…",
-    "pq_hybrid_encrypted_share": "opaque…"
-  }
-}
-```
-
-**Re-wrap with `usage = recovery-session`, whose `info` binds the session id in both address slots:**
-
-```
-info = "Cryple-PQXDH-v1|recovery-session|" ‖ session_id ‖ "|" ‖ session_id
-```
-
-Use the canonical lowercase hyphenated UUID exactly as returned above. This is the one usage label that does *not* carry `user_address` values — a device recovering a lost seed has no address it can prove. The server relays the blob and cannot check any of this, so a guardian client that formats `info` differently produces a share that fails only at reconstruction, with nothing to point at. Full rationale: [`.docs/crypto/pqxdh.md` § Exception](.docs/crypto/pqxdh.md#exception-recovery-session-binds-the-session-not-the-parties).
-
-**Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (unknown session, caller is not an active guardian of that owner, or holds no share) · `409 CONFLICT` (session expired) · `500 INTERNAL_ERROR`.
-
-### `POST /recovery/submit` — 🔒 protected
-
-Signed with `recovery-share-submit` over `session_id` and `re_encrypted_share`. Binding the share itself stops a proxy swapping in a corrupt one; binding the session stops a signature being replayed into a different recovery.
-
-> ⚠️ **This changed on 2026-07-29 and is breaking.** This is the call that actually hands over your piece of someone's seed — collect `k` of them and the REK is reconstructable — so it now needs the seed key, not just the token.
-
-Guardian submits the re-encrypted share. When the `k`-th share lands, the session flips to `shares_collected` automatically.
-
-**Request**
-
-```json
-{
-  "session_id": "4d7a…-uuid",
-  "re_encrypted_share": "opaque, PQXDH-wrapped to the session's two ephemeral keys",
-  "challenge": "64 lowercase hex characters",
-  "timestamp": 1737676800,
-  "signature": "base64 P1363 signature",
-  "password": "the GUARDIAN's own 64-hex token, Paranoid Mode only"
-}
-```
-
-**`204 No Content`** — no body.
-
-**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (`session_id` not a canonical UUID) · `400 BAD_REQUEST` (`re_encrypted_share` empty) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` (bad signature or second-factor mismatch) · `404 NOT_FOUND` (not a guardian for that session) · `409 CONFLICT` (session expired) · `500 INTERNAL_ERROR`.
-
----
-
----
-
-## 11. PIN Reset Endpoints
-
-Recovers a **forgotten PIN** while the seed is still available. Flow: owner requests → guardians vote to quorum → a **contest period** (default 48h) during which the owner can revoke → status becomes `authorized` → owner confirms with a new token.
-
-All five endpoints are **public** — the account is locked out and cannot mint a JWT — and are instead authenticated by [action signatures](./front-end-guide.md#53-action-signature-everything-destructive). Every one carries `challenge`, `timestamp` and `signature` inline in the body.
-
-**The owner's three actions are the one place `password` is not required**, and cannot be: the whole flow exists because the owner lost their PIN. `POST /auth/pin-reset/vote` is the exception among the five — it is cast by a **guardian**, who has lost nothing, so that guardian's own second factor applies if _they_ are in Paranoid Mode.
-
-### `POST /auth/pin-reset/request` — public
-
-Signed by the **owner**, action `pin-reset-request`, argument `user_address`.
-
-**Request**
-
-```json
-{
-  "user_address": "3f1c…",
-  "challenge": "7f3b…",
-  "timestamp": 1785000000,
-  "signature": "base64…"
-}
-```
-
-If a reset is already open for the account, the existing one is returned instead
-of creating a second — **and the status code tells you which happened**:
-`201 Created` for a new request, `200 OK` for the pre-existing one. The body is
-the same shape either way, so a client that ignores the distinction still works;
-one that shows "reset requested" should read `votes` before claiming the tally
-starts at zero.
-
-**`201 Created`** (new) / **`200 OK`** (already open)
-
-```json
-{
-  "message": "PIN reset requested successfully",
-  "data": {
-    "id": "b8e2…-uuid",
-    "status": "pending_quorum",
-    "votes": 0,
-    "required_votes": 2,
-    "created_at": "2026-07-26T12:00:00Z"
-  }
-}
-```
-
-**Errors:** `400 INVALID_BODY` · `400 BAD_REQUEST` (account has no active guardians) · `401 INVALID_CREDENTIALS` (unknown address, bad/stale/replayed signature) · `500 INTERNAL_ERROR`.
-
-### `POST /auth/pin-reset/vote` — public
-
-Signed by a **guardian**, action `pin-reset-vote`, argument `request_id`. Reaching quorum starts the contest period.
-
-**Request**
-
-```json
-{
-  "request_id": "b8e2…",
-  "guardian_username": "alice1234abcd",
-  "challenge": "7f3b…",
-  "timestamp": 1785000000,
-  "signature": "base64…",
-  "password": "the GUARDIAN's own 64-hex token, Paranoid Mode only"
-}
-```
-
-**`200 OK`**
-
-```json
-{
-  "message": "Vote recorded successfully",
-  "data": {
-    "id": "b8e2…",
-    "status": "contest_period",
-    "votes": 2,
-    "required_votes": 2,
-    "contest_period_ends_at": "2026-07-28T12:00:00Z",
-    "created_at": "2026-07-26T12:00:00Z"
-  }
-}
-```
-
-**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (`request_id` is not a canonical UUID) · `401 INVALID_CREDENTIALS` (unknown guardian, not an active guardian of that owner, bad signature) · `404 NOT_FOUND` (unknown `request_id`) · `409 CONFLICT` (request no longer in `pending_quorum`) · `500 INTERNAL_ERROR`.
-
-### `PATCH /auth/pin-reset/revoke` — public
-
-Signed by the **owner**, action `pin-reset-revoke`, argument `request_id`. This is the owner's veto against a colluding-guardian takeover.
-
-**Request**
-
-```json
-{
-  "request_id": "b8e2…",
-  "challenge": "7f3b…",
-  "timestamp": 1785000000,
-  "signature": "base64…"
-}
-```
-
-**`204 No Content`** — no body.
-
-**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (`request_id` is not a canonical UUID) · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `409 CONFLICT` (already `revoked` or `completed`) · `500 INTERNAL_ERROR`.
-
-### `PATCH /auth/pin-reset/confirm` — public
-
-Signed by the **owner**, action `pin-reset-confirm`, arguments `request_id` **and** `new_password` (the new token is part of the signed payload). Only accepted once the request has reached `authorized` — i.e. the contest period elapsed.
-
-**Request**
-
-```json
-{
-  "request_id": "b8e2…",
-  "new_password": "new 64-hex Server_Auth_Token",
-  "challenge": "7f3b…",
-  "timestamp": 1785000000,
-  "signature": "base64…"
-}
-```
-
-**`204 No Content`** — no body.
-
-**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (`request_id` is not a canonical UUID) · `400 BAD_REQUEST` (`new_password` is not a valid 64-hex token) · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `409 CONFLICT` (not yet `authorized`, or already spent) · `500 INTERNAL_ERROR`.
-
-### `GET /auth/pin-reset/{id}` — public
-
-Polled by the owner. **Reading it also settles the contest period**: if the deadline has passed, the status transitions `contest_period → authorized` on this call.
-
-**`200 OK`**
-
-```json
-{
-  "message": "PIN reset status retrieved successfully",
-  "data": {
-    "id": "b8e2…",
-    "status": "authorized",
-    "votes": 2,
-    "required_votes": 2,
-    "contest_period_ends_at": "2026-07-28T12:00:00Z",
-    "created_at": "2026-07-26T12:00:00Z"
-  }
-}
-```
-
-**Errors:** `400 INVALID_PARAM` · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
-
-### `GET /auth/pin-reset/{id}/votes` — 🔒 protected
-
-_Paginated — `?limit=` / `?cursor=`; `page` describes the nested `data.votes` array ([§3.1](#31-pagination))._
-
-The evidence behind a request's vote count, readable only by the account the request belongs to — another account's request returns an empty list rather than an error.
-
-Note this one **is** protected while the rest of the PIN-reset flow is public. The public endpoints have to be: an owner who lost their PIN cannot sign in. This one carries guardian usernames and public keys, so leaving it open would turn a request id into a guardian-set disclosure. Read it after the reset completes, once you can authenticate again.
-
-**`200 OK`**
-
-```json
-{
-  "message": "PIN reset votes retrieved successfully",
-  "data": {
-    "action": "pin-reset-vote",
-    "request_id": "b8e2…",
-    "votes": [
-      {
-        "guardian_username": "5bdf04be3bc6",
-        "guardian_public_key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE…",
-        "signature": "base64…",
-        "challenge": "2318ddae…",
-        "timestamp": 1785345646,
-        "voted_at": "2026-07-29T17:20:46Z"
-      }
-    ]
-  }
-}
-```
-
-Rebuild `challenge : timestamp : "pin-reset-vote" : request_id` and verify against `guardian_public_key`. The response deliberately hands over no ready-made payload string: verifying against the server's own rendering of what was signed proves nothing.
-
-**Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
-
-### `GET /recovery/pin-reset/pending` — 🔒 protected
-
-_Paginated — `?limit=` / `?cursor=`, `page` in the envelope ([§3.1](#31-pagination))._
-
-The guardian's inbox of **open** PIN resets on the accounts they guard.
-
-**`200 OK`**
-
-```json
-{
-  "message": "Pending PIN resets retrieved successfully",
-  "data": [
-    {
-      "request_id": "b8e2…",
-      "owner_username": "3f1c8a2b9d4e",
-      "status": "pending_quorum",
-      "voted": false,
-      "created_at": "2026-07-26T12:00:00Z"
-    },
-    {
-      "request_id": "9c4f…",
-      "owner_username": "7a2d5e1b8c3f",
-      "status": "contest_period",
-      "voted": true,
-      "created_at": "2026-07-25T08:00:00Z"
-    }
-  ]
-}
-```
-
-> ⚠️ **This is not only "awaiting your vote".** `status` is `pending_quorum` **or** `contest_period` — the list keeps a request visible after quorum is reached, so the guardian can see the outcome of their own vote. **Only `pending_quorum` rows accept a vote**; calling `POST /auth/pin-reset/vote` on a `contest_period` row returns `409 CONFLICT`. Gate the "vote" affordance on `status === "pending_quorum" && !voted`, and render `contest_period` rows as informational. `voted` tells you whether _you_ already voted, which is independent of `status`.
-
-**Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
-
----
-
----
+## 10–11. Recovery and PIN Reset Endpoints — **removed 2026-09-04**
+
+Every route that was documented here is gone: `PUT /recovery/setup`, the four
+`/recovery/guardians/*` routes, `POST /recovery/request`,
+`GET /recovery/session/{id}`, `GET /recovery/vault`,
+`GET /recovery/sessions/pending`, `GET /recovery/share/{session_id}`,
+`POST /recovery/submit`, and all six `/auth/pin-reset/*` routes. The `guardians`,
+`recovery_*` and `pin_reset_*` tables went with them.
+
+**What a client must do differently:**
+
+- There is **no account recovery of any kind**. A lost seed phrase is terminal,
+  and so is a forgotten PIN on a Paranoid account — `PUT /users/password` changes
+  a PIN the user still knows and is the only way a PIN ever changes.
+- The client must say so **before** the PIN is set, not after. See
+  [.docs/tasks/tasks.md](../api-general/.docs/tasks/tasks.md), Tasks 95 and 105.
+- The nine signed actions these routes used (`recovery-setup`, `guardian-invite`,
+  `guardian-accept`, `guardian-revoke`, `recovery-share-submit` and the four
+  `pin-reset-*`) are retired from
+  [signed-actions.md](../api-general/.docs/auth/signed-actions.md).
+- **`GET /users/{uuid}/public-keys` stays** and now has no caller. It is what
+  private sharing (Task 102) will use to wrap an item key to a recipient.
+
+The implementation of everything above is preserved and running in the
+`dms-shamir` proof of concept.
 
 ## 12. Notes Endpoints
 

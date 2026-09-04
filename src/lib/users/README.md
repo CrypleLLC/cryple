@@ -2,7 +2,7 @@
 
 Account identity, the mode read, and the two one-way second-factor transitions.
 
-Task 11 of [tasks.md](../../../tasks.md). Endpoints per
+Task 11 of [tasks.md](../../../tasks/tasks.md). Endpoints per
 [front-end-endpoints.md § 8](../../../front-end-endpoints.md).
 
 ## API

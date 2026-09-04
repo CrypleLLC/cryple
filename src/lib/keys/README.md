@@ -5,7 +5,7 @@ a wrong constant here does not throw, it produces a **different account**, and t
 surfaces long after the mistake was made.
 
 Implements [crypto/ECDSA.md](../../../../api-general/.docs/crypto/ECDSA.md) — a **FROZEN**
-spec. Task 3 of [tasks.md](../../../tasks.md).
+spec. Task 3 of [tasks.md](../../../tasks/tasks.md).
 
 > Nothing in this module may be changed to "fix" a mismatch. Every path, label and length
 > below is part of account identity. If a value disagrees with the spec, the code is wrong;
