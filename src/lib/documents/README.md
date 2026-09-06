@@ -84,9 +84,17 @@ the next pull re-reads the range, harmlessly.
 
 ## Contiguity, and why it is a client obligation
 
-`.docs/storage-plan.md` calls for sequence numbers in AES-GCM AAD so a compromised backend cannot
-reorder chunks, but the frozen sealed-blob format in `.docs/crypto/ECDSA.md` specifies **no AAD**.
-For Yjs, reordering is harmless — merges commute. **Dropping is not.**
+`.docs/storage-plan.md` used to call for sequence numbers in AES-GCM AAD so a compromised backend
+could not reorder chunks, which the frozen sealed-blob format in `.docs/crypto/ECDSA.md` makes
+impossible — it specifies **no AAD**. **That contradiction was resolved on 2026-09-06**: the drive
+now binds a chunk's position inside the *authenticated plaintext* (`storage-plan.md` § 3.3), which
+GCM covers just as AAD would have.
+
+**It does not resolve anything here, and the obligation below stands.** That fix applies to the
+chunks of one file object, sealed under one DEK and written once. A document's delta log is a
+different shape — an append-only series of independently sealed rows, written by several devices
+over time — so there is no chunk count to bind and no single object whose hash could reveal a
+missing row. For Yjs, reordering is harmless anyway: merges commute. **Dropping is not.**
 
 So the client verifies it: `assertContiguous` rejects a hole inside any fetched range, and a
 detected gap latches `gapDetected` on the sync state. Once latched, `compact()` refuses — writing

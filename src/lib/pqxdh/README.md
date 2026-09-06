@@ -11,7 +11,7 @@ Task 14 of [tasks.md](../../../tasks/tasks.md). Implements
 > product (2026-09-03 and 2026-09-04). **This module stays because private sharing is the same
 > primitive aimed at a different recipient** — send a secret, note, document or file to another
 > account by wrapping the item's DEK to their published keys. That is Task 102 in
-> [api-general's task list](../../../../api-general/.docs/tasks/tasks.md), and it is also why
+> [the workspace task list](../../../../tasks.md), and it is also why
 > `lib/keys` still derives the X25519 and ML-KEM branches and why `user_keys` is still written
 > at sign-up.
 >

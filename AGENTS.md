@@ -69,7 +69,7 @@ Required dependencies not yet installed: `@noble/curves` (SLIP-0010 P-256 signin
 
 ## PQXDH — the only way to wrap anything for someone else
 
-**Nothing calls this today, and it must not be deleted.** Its usages belonged to digital inheritance and to guardian recovery, both of which left the product (2026-09-03 and 2026-09-04). It stays because **private sharing** — sending one item to another account — is the same primitive aimed at a different recipient, and is the next feature (Task 102 in `../api-general/.docs/tasks/tasks.md`). It is also the only place the post-quantum claim does any work: vault data at rest is symmetric and already quantum-resistant, so the hybrid construction only earns its keep when encrypting **to someone else**.
+**Nothing calls this today, and it must not be deleted.** Its usages belonged to digital inheritance and to guardian recovery, both of which left the product (2026-09-03 and 2026-09-04). It stays because **private sharing** — sending one item to another account — is the same primitive aimed at a different recipient, and is the next feature (Task 102 in `../tasks.md`). It is also the only place the post-quantum claim does any work: vault data at rest is symmetric and already quantum-resistant, so the hybrid construction only earns its keep when encrypting **to someone else**.
 
 ```
 ephemeral   = fresh X25519 key pair, per wrapped payload
@@ -185,7 +185,12 @@ Derived from the guide and the specs; these are the ones a client gets wrong by 
 - **No guardians, no seed recovery, no PIN reset.** Removed 2026-09-04 and not coming back. A forgotten Paranoid PIN is terminal, and the UI must say so before the PIN is set.
 - **No key rotation flow, and no "disable PIN".** Rotation is a protocol change (backend Task 63), not an endpoint.
 - **Check-in / dead-man's-switch configuration is on-chain**, not in this API.
-- **Nothing from `.docs/storage-plan.md`.** The file vault is postponed post-MVP; it is the one `.docs` file that is not a build target.
+
+**One item left this list on 2026-09-06: the drive.** File upload is v1 scope now, and
+`../api-general/.docs/storage-plan.md` is a build target rather than the one `.docs` file that
+isn't. **Do not start it yet** — § 5 of that document holds five unanswered decisions, including a
+per-account quota the whole storage economics depend on, and there is no client task for it. Read
+it before designing anything file-shaped; build nothing from it until those close.
 
 ## Conventions
 
@@ -211,7 +216,7 @@ CI runs typecheck, lint (`--max-warnings 0`) and tests on every push and PR.
 
 **Lint is ESLint 9 flat config** (`eslint.config.mjs`), extending `next/core-web-vitals` and `next/typescript`. Two rules exist because of this project's threat model rather than style, and both carry their reasoning in the failure message:
 
-- **`no-console` is an error.** The cross-cutting rule is "never log the seed phrase, private keys, DEKs, the PIN, or the `Server_Auth_Token`" — and the deleted `src/lib/crypto.ts` logged the environment and API URL. A blanket ban is the only version of that rule a linter can enforce. `scripts/**` is the one exemption: dev-only CLIs that never ship to a browser and never hold key material, where stdout *is* the output. Nothing under `src/` is ever exempt.
+- **`no-console` is an error, with no exemptions.** The cross-cutting rule is "never log the seed phrase, private keys, DEKs, the PIN, or the `Server_Auth_Token`" — and the deleted `src/lib/crypto.ts` logged the environment and API URL. A blanket ban is the only version of that rule a linter can enforce. A `scripts/**` exemption existed for dev-only CLIs; the directory was removed on 2026-09-06 and the exemption went with it.
 - **`no-restricted-globals` blocks `localStorage` and `sessionStorage`.** Only the seed vault may reach persistent storage, and only for one PIN-encrypted blob. `src/lib/pin/**` and `src/lib/app/mode-hint.ts` are the two exemptions; adding a third needs a reason that survives §Conventions.
 
 Tests are Vitest (`environment: 'node'`, matching `src/**/*.test.ts` only — so `.tsx` component tests would need jsdom and a testing library that are deliberately not installed). Keep testable product logic in framework-free modules, as `src/lib/app` does.
@@ -225,13 +230,15 @@ Earlier revisions of this file carried open questions. All but one are answered 
 - **Seed → `user_address`, seed → keys, fate of the local unlock password**: resolved by the frozen specs, inlined in the sections above.
 - **Free vs Premium gating: do not build any.** The API has no tier, plan, or entitlement concept anywhere — no config field, no enforcement, nothing on the wire. When a paid tier arrives it will be storage and file limits, not a feature flag on anything that exists today.
 
-**The one gap: the KEK that produces the owner's own `wrapped_dek` for `POST /secrets`.** This is confirmed unspecified, and deliberately so:
+**The last gap — the KEK behind `wrapped_dek` — closed on 2026-08-06 (Decision A).** It is recorded here because this file described it as open for months and the shape of the answer generalises.
 
-- The frozen key tree derives exactly four things — `user_address`, P-256, X25519, ML-KEM — and no symmetric wrapping key. PQXDH scopes itself to wrapping *for someone else*.
-- `storage-plan.md` §3.1.1 says it outright: *"do not invent a KEK path here — if the vault needs a dedicated wrapping key, its derivation belongs in that spec [`crypto/ECDSA.md`], with test vectors."* Backend Task 59 deferred the decision there; nothing has landed.
-- The server treats `wrapped_dek` as fully opaque (`front-end-endpoints.md`: "Opaque. Must be non-empty."), so nothing server-side will ever catch a divergent client derivation — it fails silently, per item, forever.
+- The vault KEK is `HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|vault-kek", L=32)`, specified in `../api-general/.docs/crypto/ECDSA.md` § Step 5 and backed by the shared test vectors. The frozen key tree therefore derives **five** things, not the four this section used to list — and a sixth, `Cryple-Key-v1|passwords-kek`, is designed but unbuilt (`../api-general/.docs/password-manager.md`).
+- **It arrived as a new HKDF leaf, exactly as predicted, and that is now the rule**: a feature wanting a key of its own gets a new leaf, never a widening of an existing one. The label and construction were the backend spec's to choose, and were.
+- `src/lib/secrets/` implements it — `vaultKekDekWrapper(context.session.vaultKek)` — so the `wrapDek` / `unwrapDek` seam this section once recommended exists and is filled.
 
-**Resolution path, not a user question**: the derivation is a one-paragraph addition to `crypto/ECDSA.md` plus regenerated test vectors, made in the backend repo — the obvious shape is another HKDF leaf under the existing `Cryple-Key-v1|…` labelling scheme, but **the label and construction are the backend spec's to choose, never this client's**. Until that lands, build the `secrets` domain behind a single `wrapDek` / `unwrapDek` seam so the derivation slots in without touching call sites. Everything else — key tree, auth, recovery, succession — is fully specified and unblocked.
+**The hazard that has not gone away:** the server treats `wrapped_dek` as fully opaque (`front-end-endpoints.md`: "Opaque. Must be non-empty."), so nothing server-side will ever catch a divergent client derivation — it fails silently, per item, forever. **The test vectors are the only check**, which is why a new client must reproduce them before it is trusted with real data.
+
+Key tree and auth are fully specified and unblocked. Recovery and succession are not "specified" — they left the product on 2026-09-03 and 2026-09-04 and live in `dms-shamir-fe`.
 
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know

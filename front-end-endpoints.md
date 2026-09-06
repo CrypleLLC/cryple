@@ -12,8 +12,8 @@ Section numbers are **not contiguous** — they are the original numbering from 
 > `front-end-endpoints.md` in the `api-general` repository, which is where the API is
 > implemented. The only differences between the two copies are relative link prefixes —
 > a path that reads `.docs/…` there reads `../api-general/.docs/…` here. Re-sync by
-> copying the file across and re-running `python3 scripts/separation-gate.py`, which is
-> what catches a prefix that did not get rewritten.
+> copying the file across and rewriting those prefixes. **Check them by hand** — the script
+> that used to catch a prefix that did not get rewritten was removed on 2026-09-06.
 
 ---
 
@@ -655,7 +655,7 @@ Every route that was documented here is gone: `PUT /recovery/setup`, the four
   and so is a forgotten PIN on a Paranoid account — `PUT /users/password` changes
   a PIN the user still knows and is the only way a PIN ever changes.
 - The client must say so **before** the PIN is set, not after. See
-  [.docs/tasks/tasks.md](../api-general/.docs/tasks/tasks.md), Tasks 95 and 105.
+  [../tasks.md](../tasks.md), Tasks 95 and 105.
 - The nine signed actions these routes used (`recovery-setup`, `guardian-invite`,
   `guardian-accept`, `guardian-revoke`, `recovery-share-submit` and the four
   `pin-reset-*`) are retired from
