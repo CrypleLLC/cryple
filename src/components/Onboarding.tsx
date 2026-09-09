@@ -68,7 +68,7 @@ export default function Onboarding() {
       ) : null}
       {state.step === 'enrolling' ? (
         <Card title="Creating your vault">
-          <p className="text-sm text-slate-600 dark:text-slate-400">
+          <p className="text-compact text-ink-soft">
             {state.paranoid
               ? 'Deriving your keys and enrolling them. This takes a moment — the PIN stretch is deliberately slow.'
               : 'Deriving your keys and enrolling them. This takes a moment.'}
@@ -120,7 +120,7 @@ function OriginStep({ dispatch }: { dispatch: Dispatch }) {
       subtitle="Your recovery phrase is the account. Nothing on our servers can replace it."
       flush
     >
-      <div className="flex border-b border-slate-200 px-5 dark:border-slate-800">
+      <div className="flex border-b border-line px-5">
         {(
           [
             ['generate', 'Sign up'],
@@ -132,10 +132,10 @@ function OriginStep({ dispatch }: { dispatch: Dispatch }) {
             type="button"
             aria-current={tab === id ? 'true' : undefined}
             onClick={() => setTab(id)}
-            className={`-mb-px border-b-2 px-4 py-3 text-sm transition ${
+            className={`-mb-px border-b-2 px-4 py-3 text-compact font-semibold transition-colors ${
               tab === id
-                ? 'border-brand-500 font-medium text-slate-900 dark:text-slate-100'
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                ? 'border-brand-500 text-brand-700'
+                : 'border-transparent text-ink-muted hover:text-ink'
             }`}
           >
             {label}
@@ -146,7 +146,7 @@ function OriginStep({ dispatch }: { dispatch: Dispatch }) {
       <div className="space-y-4 p-5">
         {signingUp ? (
           <>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
+            <p className="text-compact text-ink-soft">
               We will generate a recovery phrase for you. Write it down — it is the only way back
               into your vault.
             </p>
@@ -165,7 +165,7 @@ function OriginStep({ dispatch }: { dispatch: Dispatch }) {
           </>
         ) : (
           <>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
+            <p className="text-compact text-ink-soft">
               Enter the recovery phrase you already have. Signing in on a new device works the
               same way — there is no password to recover.
             </p>
@@ -212,7 +212,7 @@ function BackupStep({
 
         {revealed ? (
           <div className="space-y-3">
-            <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 font-mono text-sm leading-relaxed break-words text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+            <p className="rounded-xl border border-line bg-raised px-4 py-3 font-mono text-sm leading-relaxed break-words text-ink">
               {phrase}
             </p>
             <CopyButton value={phrase} label="Copy phrase" copiedLabel="Copied to clipboard" />
@@ -359,7 +359,7 @@ function PinStep({
           />
         ) : null}
 
-        <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+        <div className="rounded-xl border border-line bg-raised p-4">
           <label className="flex cursor-pointer items-start gap-3">
             <input
               type="checkbox"
@@ -368,17 +368,17 @@ function PinStep({
               className="mt-0.5 h-4 w-4 shrink-0 accent-brand-500"
             />
             <span>
-              <span className="block text-sm font-medium">
+              <span className="block text-compact font-semibold text-ink">
                 {MODE_COPY.paranoid.title} mode — also require this PIN to sign in
               </span>
-              <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+              <span className="mt-1 block text-compact text-ink-muted">
                 {paranoid ? MODE_COPY.paranoid.tradeoff : MODE_COPY.standard.tradeoff}
               </span>
             </span>
           </label>
 
           {signingUp && paranoid ? (
-            <p className="mt-3 text-xs text-amber-700 dark:text-amber-500">
+            <p className="mt-3 text-compact text-warning">
               {MODE_COPY.oneWayDoor}
             </p>
           ) : null}

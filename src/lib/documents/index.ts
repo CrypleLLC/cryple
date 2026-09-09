@@ -27,3 +27,5 @@ export * from './crypto';
 export * from './content';
 export * from './sync';
 export * from './summaries';
+export * from './outline';
+export * from './pagination';

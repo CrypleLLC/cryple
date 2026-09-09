@@ -12,6 +12,7 @@ import {
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
 import { useVaultReveal } from './VaultReveal';
+import { TrashIcon, VaultIcon } from './icons';
 import { Button, Card, CopyButton, Empty, Field, Notice, PanelGrid, Spinner } from './ui';
 
 export default function VaultScreen() {
@@ -78,8 +79,12 @@ export default function VaultScreen() {
   }
 
   return (
-    <div className="space-y-6">
-      <Card title="Stored items" flush>
+    <div className="space-y-5">
+      <Card
+        title="Stored items"
+        subtitle="Names and values are encrypted on this device before they are stored."
+        flush
+      >
         {message ? (
           <div className="px-5 pt-4">
             <Notice tone="danger">{message}</Notice>
@@ -89,31 +94,34 @@ export default function VaultScreen() {
         {rows === undefined ? (
           <Spinner />
         ) : rows.length === 0 ? (
-          <Empty>Nothing stored yet.</Empty>
+          <Empty icon={<VaultIcon className="h-6 w-6" />}>
+            Nothing stored yet. Add your first secret below — it is encrypted here before it
+            leaves this device.
+          </Empty>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500 dark:border-slate-800 dark:bg-slate-900">
-                  <th className="py-2.5 pl-5 pr-4 font-medium">Name</th>
-                  <th className="py-2.5 pr-4 font-medium">Value</th>
-                  <th className="py-2.5 pr-4 font-medium">Updated</th>
-                  <th className="py-2.5 pl-4 pr-5 text-right font-medium">Actions</th>
+                <tr className="border-b border-line bg-raised text-caption uppercase text-ink-muted">
+                  <th className="py-3 pl-5 pr-4 text-left">Name</th>
+                  <th className="py-3 pr-4 text-left">Value</th>
+                  <th className="py-3 pr-4 text-left">Updated</th>
+                  <th className="py-3 pl-4 pr-5 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+              <tbody className="divide-y divide-line">
                 {rows.map((row) => (
-                  <tr key={row.id}>
-                    <td className="max-w-[16rem] truncate py-3 pl-5 pr-4 text-sm font-medium text-slate-900 dark:text-slate-100">
+                  <tr key={row.id} className="transition-colors hover:bg-brand-50/40">
+                    <td className="max-w-[16rem] truncate py-3.5 pl-5 pr-4 text-compact font-semibold text-ink">
                       {row.name}
                     </td>
-                    <td className="max-w-[16rem] truncate py-3 pr-4 font-mono text-xs text-slate-900 dark:text-slate-100">
+                    <td className="max-w-[16rem] truncate py-3.5 pr-4 font-mono text-compact text-ink-soft">
                       {revealed && row.readable ? row.value : MASKED_VALUE}
                     </td>
-                    <td className="whitespace-nowrap py-3 pr-4 text-xs text-slate-500">
+                    <td className="whitespace-nowrap py-3.5 pr-4 text-caption normal-case tracking-normal text-ink-muted">
                       {new Date(row.updatedAt).toLocaleString()} · {formatBytes(row.bytes)}
                     </td>
-                    <td className="py-3 pl-4 pr-5">
+                    <td className="py-3.5 pl-4 pr-5">
                       <div className="flex justify-end gap-2">
                         {row.readable ? <CopyButton value={row.value} label="Copy" /> : null}
                         <Button
@@ -121,6 +129,7 @@ export default function VaultScreen() {
                           disabled={busy}
                           onClick={() => void removeSecret(row.id)}
                         >
+                          <TrashIcon />
                           Delete
                         </Button>
                       </div>

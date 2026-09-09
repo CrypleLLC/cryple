@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"surface":"#f8f9ff","on-secondary":"#ffffff","success-text":"#047857","primary-fixed-dim":"#c0c1ff","outline":"#767586","error-border":"#fecaca","on-surface":"#121c2a","primary-container":"#6063ee","gray-200":"#e5e7eb","secondary":"#6b38d4","surface-container-high":"#dee9fc","inverse-surface":"#27313f","outline-variant":"#c7c4d7","on-tertiary-fixed":"#301400","surface-white":"#ffffff","surface-variant":"#d9e3f6","surface-container-lowest":"#ffffff","success-bg":"#ecfdf5","gray-50":"#f9fafb","on-secondary-fixed-variant":"#5516be","surface-container":"#e6eeff","inverse-primary":"#c0c1ff","indigo-50":"#eef2ff","indigo-hover":"#4f46e5","tertiary-fixed":"#ffdcc5","on-tertiary-fixed-variant":"#703700","on-secondary-fixed":"#23005c","on-primary-fixed":"#07006c","surface-tint":"#494bd6","primary":"#4648d4","indigo-dark":"#4338ca","warning-border":"#fde68a","surface-container-highest":"#d9e3f6","gray-500":"#6b7280","inverse-on-surface":"#eaf1ff","indigo-100":"#e0e7ff","on-primary":"#ffffff","on-primary-container":"#fffbff","surface-bright":"#f8f9ff","gray-600":"#4b5563","on-primary-fixed-variant":"#2f2ebe","on-error":"#ffffff","surface-dim":"#d0dbed","on-error-container":"#93000a","on-secondary-container":"#fffbff","warning-text":"#b45309","error-bg":"#fef2f2","tertiary":"#904900","tertiary-container":"#b55d00","tertiary-fixed-dim":"#ffb783","secondary-fixed":"#e9ddff","on-surface-variant":"#464554","success-border":"#a7f3d0","error-text":"#b91c1c","on-tertiary":"#ffffff","on-background":"#121c2a","primary-fixed":"#e1e0ff","background":"#f8f9ff","warning-bg":"#fffbeb","on-tertiary-container":"#fffbff","secondary-container":"#8455ef","error":"#ba1a1a","error-container":"#ffdad6","secondary-fixed-dim":"#d0bcff","surface-container-low":"#eff4ff"},"borderRadius":{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},"spacing":{"gutter-mobile":"1rem","space-xl":"1.5rem","space-lg":"1.25rem","space-xxs":"0.25rem","space-md":"1rem","space-xs":"0.5rem","gutter-desktop":"1.5rem","space-sm":"0.75rem","space-2xl":"2rem","container-max":"80rem","space-3xl":"3rem"},"fontFamily":{"headline-1":["Inter"],"body-compact":["Inter"],"code-dense":["JetBrains Mono"],"card-title":["Inter"],"headline-2":["Inter"],"body-regular":["Inter"],"caption-badge":["Inter"],"headline-3":["Inter"],"body-secondary":["Inter"]},"fontSize":{"headline-1":["28px",{"lineHeight":"34px","letterSpacing":"-0.02em","fontWeight":"700"}],"body-compact":["13px",{"lineHeight":"18px","fontWeight":"400"}],"code-dense":["13px",{"lineHeight":"18px","fontWeight":"400"}],"card-title":["15px",{"lineHeight":"20px","fontWeight":"600"}],"headline-2":["22px",{"lineHeight":"28px","letterSpacing":"-0.015em","fontWeight":"600"}],"body-regular":["14px",{"lineHeight":"20px","fontWeight":"400"}],"caption-badge":["11px",{"lineHeight":"14px","letterSpacing":"0.05em","fontWeight":"600"}],"headline-3":["18px",{"lineHeight":"24px","letterSpacing":"-0.01em","fontWeight":"600"}],"body-secondary":["14px",{"lineHeight":"20px","fontWeight":"400"}]}}}};</script></head><body class="bg-gray-50 font-body-regular text-body-regular text-on-surface antialiased"><header class="fixed top-0 left-0 right-0 h-16 bg-surface-white/95 backdrop-blur-md z-40 border-b border-gray-200"><div class="h-16 w-full px-gutter-desktop flex items-center justify-between gap-space-md"><div class="flex items-center gap-space-sm w-64 shrink-0"><img alt="Cryple Logo" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1WLm5_FZP0Q9pAPexGF7eeZVVh-UJxnAa2QaSruMkHVu2qpwHESJQJyEjv2Il0x0T7Fo7yUwEil9eDfxAxzvixtY5iw4wnc3pbwVNUAIeK-Baq5aEqr01QT7BjhL4QUjKNER2YD6PWfMzLM-cTM05ossLf6WKLnHi1EDlTHptGUaiL_yrcFjg7ITONzhRxZYxHAw0GJr9awYy3dr7CuyrADv9J_5vb-XMOruYptBFEvaRE_a7WCKNuw4H4"/><div class="flex flex-col"><span class="font-headline-3 text-headline-3 text-on-surface leading-none tracking-tight">Cryple</span><span class="font-caption-badge text-caption-badge text-gray-500 uppercase tracking-wider">Vault Enterprise</span></div></div><div class="flex-1 max-w-2xl flex items-center gap-space-xs"><div class="relative w-full flex items-center bg-gray-50 border border-gray-200 rounded-lg px-space-sm py-1.5 focus-within:border-primary focus-within:ring-2 focus-within:ring-indigo-100 transition-all"><span class="material-symbols-outlined text-gray-500 text-lg mr-space-xs select-none">search</span><input class="w-full bg-transparent border-none outline-none font-body-compact text-body-compact text-on-surface placeholder-gray-500" placeholder="Search encrypted files, vaults, and shared documents..." type="text"/><div class="hidden sm:flex items-center gap-1 shrink-0 ml-space-xs pl-space-xs border-l border-gray-200"><button class="font-caption-badge text-caption-badge text-gray-500 hover:text-on-surface px-1.5 py-0.5 rounded bg-surface-white border border-gray-200" type="button">Type</button><button class="font-caption-badge text-caption-badge text-gray-500 hover:text-on-surface px-1.5 py-0.5 rounded bg-surface-white border border-gray-200" type="button">People</button><button class="font-caption-badge text-caption-badge text-gray-500 hover:text-on-surface px-1.5 py-0.5 rounded bg-surface-white border border-gray-200" type="button">Modified</button><kbd class="font-code-dense text-caption-badge text-gray-500 px-1.5 py-0.5 rounded bg-surface-container text-[10px]">⌘K</kbd></div></div></div><div class="flex items-center gap-space-sm shrink-0"><div class="hidden lg:flex items-center gap-space-xs bg-success-bg border border-success-border px-space-sm py-1 rounded-full"><span class="w-2 h-2 rounded-full bg-success-text animate-pulse"></span><span class="font-caption-badge text-caption-badge text-success-text uppercase tracking-wider">Client-side Keys Active</span></div><div class="h-5 w-[1px] bg-gray-200 hidden lg:block"></div><div class="flex items-center gap-1"><button class="w-9 h-9 flex items-center justify-center rounded-lg text-gray-500 hover:bg-indigo-50 hover:text-indigo-dark transition-colors" title="Help &amp; Encryption Docs" type="button"><span class="material-symbols-outlined text-xl">help</span></button><button class="w-9 h-9 flex items-center justify-center rounded-lg text-gray-500 hover:bg-indigo-50 hover:text-indigo-dark transition-colors relative" title="Activity Log" type="button"><span class="material-symbols-outlined text-xl">history</span><span class="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-primary"></span></button><button class="w-9 h-9 flex items-center justify-center rounded-lg text-gray-500 hover:bg-indigo-50 hover:text-indigo-dark transition-colors" title="Key &amp; Vault Settings" type="button"><span class="material-symbols-outlined text-xl">settings</span></button></div><div class="pl-space-xxs"><img alt="Profile" class="w-8 h-8 rounded-full object-cover ring-2 ring-indigo-100 hover:ring-primary transition-all cursor-pointer" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBISXygOcHkdG62xKztJS7ZU_nEl_mMg9AG9ryMqYnLeL8ePoadDTjC8eH98GGDLWWNK54yAalpERzYlNriyhj8kl0E4Q8xiUDv42aSmckc2aVXRHdtTv-OuTL716QvuUkGuTap_IJAmuV6iWjuDA6eBmvsd6XBp-81QnTwhmH_nhSRr46rULcBsXLhrDExXxKN67_2Yy5uqmt-dYyfTMvshWxyApi9dzFtyaDjOkUKG6EDH5OmG6rx"/></div></div></div></header><aside class="fixed left-0 top-16 bottom-0 w-64 bg-surface-white border-r border-gray-200 z-30 flex flex-col justify-between overflow-y-auto"><div class="p-space-md flex flex-col gap-space-lg"><button class="w-full flex items-center justify-center gap-space-xs bg-gradient-to-r from-primary to-secondary text-on-primary py-2.5 px-space-md rounded-xl font-card-title text-card-title shadow-sm hover:opacity-95 hover:shadow transition-all active:scale-[0.99]" type="button"><span class="material-symbols-outlined text-xl">lock_reset</span><span>New Upload / Encrypt</span></button><nav class="flex flex-col gap-0.5" data-active-classes="bg-indigo-50 text-indigo-dark font-card-title"><a aria-current="page" class="flex items-center gap-space-sm px-space-sm py-2 rounded-lg transition-all bg-indigo-50 text-indigo-dark font-card-title" data-path="my-drive" href="#"><span class="material-symbols-outlined text-xl text-primary">folder_supervised</span><span class="font-body-compact text-body-compact">My Drive</span></a><a class="flex items-center gap-space-sm px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-all" data-path="encrypted-vaults" href="#"><span class="material-symbols-outlined text-xl text-secondary">lock</span><span class="font-body-compact text-body-compact">Encrypted Vaults</span></a><a class="flex items-center gap-space-sm px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-all" data-path="shared-with-me" href="#"><span class="material-symbols-outlined text-xl text-gray-500">group</span><span class="font-body-compact text-body-compact">Shared with me</span></a><a class="flex items-center gap-space-sm px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-all" data-path="recent" href="#"><span class="material-symbols-outlined text-xl text-gray-500">schedule</span><span class="font-body-compact text-body-compact">Recent</span></a><a class="flex items-center gap-space-sm px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-all" data-path="starred-keymarked" href="#"><span class="material-symbols-outlined text-xl text-gray-500">grade</span><span class="font-body-compact text-body-compact">Starred / Keymarked</span></a><a class="flex items-center gap-space-sm px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-all" data-path="trash-shredder" href="#"><span class="material-symbols-outlined text-xl text-gray-500">delete_sweep</span><span class="font-body-compact text-body-compact">Trash / Shredder</span></a></nav><div class="flex flex-col gap-1 pt-space-xs border-t border-gray-200"><div class="flex items-center justify-between px-space-sm py-1"><span class="font-caption-badge text-caption-badge text-gray-500 uppercase tracking-wider">Workspaces</span><button class="text-gray-500 hover:text-on-surface" type="button"><span class="material-symbols-outlined text-sm">add</span></button></div><nav class="flex flex-col gap-0.5" data-active-classes="bg-indigo-50 text-indigo-dark font-card-title"><a class="flex items-center gap-space-sm px-space-sm py-1.5 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-all" data-path="engineering-secrets" href="#"><span class="w-2 h-2 rounded-full bg-primary"></span><span class="font-body-compact text-body-compact truncate">Engineering Secrets</span></a><a class="flex items-center gap-space-sm px-space-sm py-1.5 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-all" data-path="finance-audits-2026" href="#"><span class="w-2 h-2 rounded-full bg-secondary"></span><span class="font-body-compact text-body-compact truncate">Finance Audits 2026</span></a><a class="flex items-center gap-space-sm px-space-sm py-1.5 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-all" data-path="legal-compliance" href="#"><span class="w-2 h-2 rounded-full bg-success-text"></span><span class="font-body-compact text-body-compact truncate">Legal Compliance</span></a></nav></div></div><div class="p-space-md border-t border-gray-200"><div class="p-space-sm rounded-xl bg-gray-50 border border-gray-200 flex flex-col gap-space-xs"><div class="flex items-center justify-between"><span class="font-card-title text-caption-badge text-on-surface font-semibold">Storage Used</span><span class="font-code-dense text-caption-badge text-gray-600">2.1%</span></div><div class="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden"><div class="bg-primary h-full rounded-full w-[2.1%]"></div></div><div class="flex items-center justify-between text-gray-500 font-caption-badge text-caption-badge"><span class="font-code-dense">42.8 GB</span><span>2 TB total</span></div><div class="pt-space-xxs border-t border-gray-200 flex items-center justify-between text-caption-badge"><span class="text-success-text font-caption-badge flex items-center gap-1"><span class="material-symbols-outlined text-xs">verified_user</span>100% Encrypted</span><a class="text-primary hover:text-indigo-hover font-semibold underline" data-path="keys-and-plans" href="#">Manage</a></div></div></div></aside><div class="pl-64"><main class="w-full pt-16 min-h-screen bg-gray-50 px-gutter-desktop py-space-xl"><div class="flex flex-col w-full">
+<!-- Top Action & Context Bar -->
+<div class="flex flex-col lg:flex-row lg:items-center justify-between gap-space-md mb-space-lg">
+<div class="flex items-center gap-space-xs text-on-surface">
+<nav aria-label="Breadcrumb" class="flex items-center gap-1.5">
+<a class="font-headline-2 text-headline-2 text-on-surface hover:text-primary transition-colors" href="#">My Drive</a>
+<span class="material-symbols-outlined text-gray-500 text-lg">chevron_right</span>
+<button class="group flex items-center gap-1 font-headline-2 text-headline-2 text-on-surface hover:text-primary transition-colors" type="button">
+<span>Personal Vault</span>
+<span class="material-symbols-outlined text-gray-500 group-hover:text-primary transition-transform group-hover:translate-y-0.5">expand_more</span>
+</button>
+</nav>
+<span class="bg-indigo-50 text-indigo-dark font-caption-badge text-caption-badge px-2 py-0.5 rounded-full ml-space-xs">Private</span>
+</div>
+<!-- Right Controls: View Switcher, Filter & Share -->
+<div class="flex items-center flex-wrap gap-space-xs">
+<div class="flex items-center bg-surface-white rounded-lg p-0.5 shadow-sm">
+<button class="p-1.5 rounded-lg bg-indigo-50 text-indigo-dark transition-all" id="btn-view-grid" title="Grid View" type="button">
+<span class="material-symbols-outlined text-xl leading-none">grid_view</span>
+</button>
+<button class="p-1.5 rounded-lg text-gray-500 hover:text-on-surface transition-all" id="btn-view-list" title="List View" type="button">
+<span class="material-symbols-outlined text-xl leading-none">view_headline</span>
+</button>
+</div>
+<button class="flex items-center gap-1.5 bg-surface-white px-space-sm py-2 rounded-lg font-body-compact text-body-compact text-gray-600 hover:bg-gray-50 shadow-sm transition-all" type="button">
+<span class="material-symbols-outlined text-lg text-gray-500">filter_list</span>
+<span>All Types</span>
+<span class="material-symbols-outlined text-sm text-gray-500">expand_more</span>
+</button>
+<button class="flex items-center gap-1.5 bg-surface-white px-space-sm py-2 rounded-lg font-body-compact text-body-compact text-gray-600 hover:bg-gray-50 shadow-sm transition-all" type="button">
+<span class="material-symbols-outlined text-lg text-gray-500">security</span>
+<span>Security Level</span>
+<span class="material-symbols-outlined text-sm text-gray-500">expand_more</span>
+</button>
+<button class="flex items-center gap-1.5 bg-primary hover:bg-indigo-hover text-on-primary px-space-md py-2 rounded-lg font-card-title text-body-compact shadow-sm transition-all active:scale-[0.99]" type="button">
+<span class="material-symbols-outlined text-lg">share</span>
+<span>Share Vault</span>
+</button>
+</div>
+</div>
+<!-- Security Integrity Banner -->
+<div class="w-full bg-gradient-to-r from-surface-white via-indigo-50/50 to-success-bg/40 p-space-md rounded-2xl shadow-sm mb-space-xl flex flex-col md:flex-row md:items-center justify-between gap-space-md">
+<div class="flex items-start md:items-center gap-space-sm">
+<div class="w-10 h-10 rounded-xl bg-success-bg flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-success-text text-2xl">shield_locked</span>
+</div>
+<div class="flex flex-col">
+<div class="flex items-center gap-2">
+<span class="font-card-title text-card-title text-on-surface">Cryptographic Isolation Active</span>
+<span class="w-2 h-2 rounded-full bg-success-text animate-ping"></span>
+</div>
+<p class="font-body-compact text-body-compact text-gray-600">
+          End-to-end encrypted with <span class="font-code-dense text-indigo-dark font-medium">Argon2id + ChaCha20-Poly1305</span>. Readable by Cryple: <strong class="text-on-surface">Nothing.</strong>
+</p>
+</div>
+</div>
+<div class="flex items-center gap-space-xs shrink-0 self-end md:self-auto">
+<span class="font-code-dense text-caption-badge text-gray-500 bg-surface-white px-2 py-1 rounded-md">SESSION: 0x9bf4…c712</span>
+<button class="flex items-center gap-1 bg-surface-white hover:bg-gray-50 text-indigo-dark font-caption-badge text-caption-badge px-space-sm py-1.5 rounded-lg shadow-sm transition-all" type="button">
+<span class="material-symbols-outlined text-sm text-success-text">verified</span>
+<span>Verify Keys</span>
+</button>
+</div>
+</div>
+<!-- Quick Access / Pinned Folders Header -->
+<div class="flex items-center justify-between mb-space-sm">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-xl">push_pin</span>
+<h2 class="font-card-title text-card-title text-on-surface">Suggested &amp; Pinned Folders</h2>
+</div>
+<a class="font-caption-badge text-caption-badge text-primary hover:text-indigo-hover font-semibold" href="#">View all vaults →</a>
+</div>
+<!-- Pinned Folders Grid -->
+<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-space-md mb-space-2xl">
+<!-- Folder 1 -->
+<div class="group bg-surface-white p-space-md rounded-2xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer flex flex-col justify-between">
+<div>
+<div class="flex items-start justify-between mb-space-sm">
+<div class="w-11 h-11 rounded-xl bg-indigo-50 flex items-center justify-center text-primary group-hover:scale-105 transition-transform">
+<span class="material-symbols-outlined text-2xl">folder</span>
+</div>
+<span class="bg-success-bg text-success-text font-caption-badge text-caption-badge px-2 py-0.5 rounded-full">Zero-Knowledge</span>
+</div>
+<h3 class="font-card-title text-card-title text-on-surface truncate group-hover:text-primary transition-colors">Q3 Security Audit</h3>
+<p class="font-body-compact text-body-compact text-gray-500 mt-1">24 encrypted files</p>
+</div>
+<div class="pt-space-md mt-space-sm flex items-center justify-between bg-gradient-to-t from-gray-50/50 to-transparent">
+<div class="flex -space-x-1.5 overflow-hidden">
+<img class="inline-block h-6 w-6 rounded-full object-cover shadow-xs" data-alt="Portrait photo of a young security engineer with glasses smiling in a softly lit tech office, with soft blue and indigo interior background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCEhrfnwSb_TRqGHXp1Z3mclqn9IULnYVsw6idXJyhBFnk-FFBcfJ4eX6mayWzc2mlQTsq_NPXdGsCeyZ26_shOx-FA63-wynZFX8kEaDuIHoPxFetoCUuYtH10HaWLH8Yx-5SFwgB0k7R9O-U-DRZP7DGgwqYNraYcnObC9SM9f4M4CQ-zKpr0BjLhCDPXwJ2pBhyBSaMBcf6gPsKdfrn0tYrAKZ6wNbc9GHuZNE4L9U17cDrlUlID"/>
+<img class="inline-block h-6 w-6 rounded-full object-cover shadow-xs" data-alt="Close up professional portrait of a senior compliance auditor woman in corporate blazer with neutral studio lighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB97rHc2WDcqQ-obhKFjkYbeuOOI6wD43VJq2GHMLu9IR80tmNTC-WYmRf542prVtUuc6D9zEUOI4XCkNfiHjCpoYrq66iTpjLLFW8iiVMvGd8sLUA9ylaTpSfyogZDDqJXrBjQmpCriSMr-pXH0LD64sT9QtT7LmxUgGf3-F9hCKjn4Lacq8zjg4ZO0Qe18Y_AwYnp1z5X41wDB7veIXa8fVqtgBpb34hyhJB-XZCQfFeqBgvDH2jU"/>
+<div class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-surface-container font-caption-badge text-caption-badge text-on-surface font-semibold shadow-xs">+2</div>
+</div>
+<span class="font-caption-badge text-caption-badge text-gray-500">Updated 2h ago</span>
+</div>
+</div>
+<!-- Folder 2 -->
+<div class="group bg-surface-white p-space-md rounded-2xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer flex flex-col justify-between">
+<div>
+<div class="flex items-start justify-between mb-space-sm">
+<div class="w-11 h-11 rounded-xl bg-surface-container-high flex items-center justify-center text-secondary group-hover:scale-105 transition-transform">
+<span class="material-symbols-outlined text-2xl">lock</span>
+</div>
+<span class="bg-indigo-50 text-indigo-dark font-caption-badge text-caption-badge px-2 py-0.5 rounded-full">AES-256-GCM</span>
+</div>
+<h3 class="font-card-title text-card-title text-on-surface truncate group-hover:text-secondary transition-colors">Client Contracts &amp; NDAs</h3>
+<p class="font-body-compact text-body-compact text-gray-500 mt-1">82 vault files</p>
+</div>
+<div class="pt-space-md mt-space-sm flex items-center justify-between bg-gradient-to-t from-gray-50/50 to-transparent">
+<div class="flex items-center gap-1 text-gray-500">
+<span class="material-symbols-outlined text-sm">enhanced_encryption</span>
+<span class="font-caption-badge text-caption-badge">Key Derivation v2</span>
+</div>
+<span class="font-caption-badge text-caption-badge text-gray-500">Yesterday</span>
+</div>
+</div>
+<!-- Folder 3 -->
+<div class="group bg-surface-white p-space-md rounded-2xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer flex flex-col justify-between">
+<div>
+<div class="flex items-start justify-between mb-space-sm">
+<div class="w-11 h-11 rounded-xl bg-warning-bg flex items-center justify-center text-warning-text group-hover:scale-105 transition-transform">
+<span class="material-symbols-outlined text-2xl">key</span>
+</div>
+<span class="bg-warning-bg text-warning-text font-caption-badge text-caption-badge px-2 py-0.5 rounded-full">High Sensitivity</span>
+</div>
+<h3 class="font-card-title text-card-title text-on-surface truncate group-hover:text-warning-text transition-colors">Infra Credentials &amp; Keys</h3>
+<p class="font-body-compact text-body-compact text-gray-500 mt-1">12 protected secrets</p>
+</div>
+<div class="pt-space-md mt-space-sm flex items-center justify-between bg-gradient-to-t from-gray-50/50 to-transparent">
+<div class="flex items-center gap-1 text-warning-text font-caption-badge text-caption-badge">
+<span class="material-symbols-outlined text-sm">fingerprint</span>
+<span>Biometric Required</span>
+</div>
+<span class="font-caption-badge text-caption-badge text-gray-500">3 days ago</span>
+</div>
+</div>
+<!-- Folder 4 -->
+<div class="group bg-surface-white p-space-md rounded-2xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer flex flex-col justify-between">
+<div>
+<div class="flex items-start justify-between mb-space-sm">
+<div class="w-11 h-11 rounded-xl bg-gray-50 flex items-center justify-center text-gray-600 group-hover:scale-105 transition-transform">
+<span class="material-symbols-outlined text-2xl">folder_shared</span>
+</div>
+<span class="bg-gray-50 text-gray-600 font-caption-badge text-caption-badge px-2 py-0.5 rounded-full">Shared Workspace</span>
+</div>
+<h3 class="font-card-title text-card-title text-on-surface truncate group-hover:text-primary transition-colors">Product Design 2026</h3>
+<p class="font-body-compact text-body-compact text-gray-500 mt-1">140 design &amp; brand assets</p>
+</div>
+<div class="pt-space-md mt-space-sm flex items-center justify-between bg-gradient-to-t from-gray-50/50 to-transparent">
+<div class="flex items-center gap-1 text-gray-500">
+<span class="material-symbols-outlined text-sm">palette</span>
+<span class="font-caption-badge text-caption-badge">Figma Vault</span>
+</div>
+<span class="font-caption-badge text-caption-badge text-gray-500">Last week</span>
+</div>
+</div>
+</div>
+<!-- Main Split Canvas: Recent Files Table/Grid + Selected Inspector Panel -->
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-space-xl items-start">
+<!-- Left: Files Section (8 Cols on XL) -->
+<div class="xl:col-span-8 flex flex-col gap-space-md">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<h2 class="font-headline-3 text-headline-3 text-on-surface">Recent Encrypted Files</h2>
+<span class="bg-surface-container font-caption-badge text-caption-badge text-on-surface px-2 py-0.5 rounded-full">5 Items</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<button class="text-gray-500 hover:text-on-surface font-body-compact text-body-compact flex items-center gap-1" type="button">
+<span>Sort:</span>
+<span class="font-semibold text-on-surface">Last Opened</span>
+<span class="material-symbols-outlined text-sm">unfold_more</span>
+</button>
+</div>
+</div>
+<!-- Interactive Files List / Table Container -->
+<div class="bg-surface-white rounded-2xl shadow-sm overflow-hidden">
+<!-- Table Header -->
+<div class="grid grid-cols-12 px-space-md py-space-sm bg-gray-50 text-gray-500 font-caption-badge text-caption-badge uppercase tracking-wider">
+<div class="col-span-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-base">verified_user</span>
+<span>Name &amp; Cryptographic Hash</span>
+</div>
+<div class="col-span-2 hidden md:block">Security</div>
+<div class="col-span-2">Size</div>
+<div class="col-span-2 text-right">Activity</div>
+</div>
+<!-- File Row 1 (Active Selected File) -->
+<div class="group grid grid-cols-12 items-center px-space-md py-3.5 bg-indigo-50/60 hover:bg-indigo-50 cursor-pointer transition-colors relative" onclick="selectFile(1)">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>
+<div class="col-span-6 flex items-center gap-space-sm min-w-0 pr-2">
+<div class="w-9 h-9 rounded-lg bg-error-bg flex items-center justify-center text-error-text shrink-0">
+<span class="material-symbols-outlined text-xl">picture_as_pdf</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-card-title text-card-title text-on-surface truncate group-hover:text-primary transition-colors">Q3_SOC2_Compliance_Report.pdf</span>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-xs text-success-text">lock</span>
+<span class="font-code-dense text-[11px] text-gray-500 truncate">SHA-256: 7f8a…3b21</span>
+</div>
+</div>
+</div>
+<div class="col-span-2 hidden md:flex items-center">
+<span class="bg-success-bg text-success-text font-caption-badge text-caption-badge px-2 py-0.5 rounded-full">ChaCha20</span>
+</div>
+<div class="col-span-2 font-code-dense text-body-compact text-gray-600">4.2 MB</div>
+<div class="col-span-2 flex items-center justify-end gap-2">
+<span class="font-caption-badge text-caption-badge text-gray-500">14m ago</span>
+<button class="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-surface-white text-gray-500 hover:text-on-surface transition-all" title="More Actions" type="button">
+<span class="material-symbols-outlined text-lg">more_vert</span>
+</button>
+</div>
+</div>
+<!-- File Row 2 -->
+<div class="group grid grid-cols-12 items-center px-space-md py-3.5 hover:bg-gray-50/80 cursor-pointer transition-colors" onclick="selectFile(2)">
+<div class="col-span-6 flex items-center gap-space-sm min-w-0 pr-2">
+<div class="w-9 h-9 rounded-lg bg-indigo-100 flex items-center justify-center text-primary shrink-0">
+<span class="material-symbols-outlined text-xl">draw</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-card-title text-card-title text-on-surface truncate group-hover:text-primary transition-colors">Engineering_Architecture_v4.excalidraw</span>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-xs text-primary">group</span>
+<span class="font-code-dense text-[11px] text-gray-500 truncate">3 multi-key peers</span>
+</div>
+</div>
+</div>
+<div class="col-span-2 hidden md:flex items-center">
+<span class="bg-indigo-50 text-indigo-dark font-caption-badge text-caption-badge px-2 py-0.5 rounded-full">AES-GCM</span>
+</div>
+<div class="col-span-2 font-code-dense text-body-compact text-gray-600">1.8 MB</div>
+<div class="col-span-2 flex items-center justify-end gap-2">
+<span class="font-caption-badge text-caption-badge text-gray-500">1h ago</span>
+<button class="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-gray-200 text-gray-500 hover:text-on-surface transition-all" title="More Actions" type="button">
+<span class="material-symbols-outlined text-lg">more_vert</span>
+</button>
+</div>
+</div>
+<!-- File Row 3 -->
+<div class="group grid grid-cols-12 items-center px-space-md py-3.5 hover:bg-gray-50/80 cursor-pointer transition-colors" onclick="selectFile(3)">
+<div class="col-span-6 flex items-center gap-space-sm min-w-0 pr-2">
+<div class="w-9 h-9 rounded-lg bg-success-bg flex items-center justify-center text-success-text shrink-0">
+<span class="material-symbols-outlined text-xl">table_chart</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-card-title text-card-title text-on-surface truncate group-hover:text-primary transition-colors">Financial_Ledger_FY2026.xlsx</span>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-xs text-warning-text">key</span>
+<span class="font-code-dense text-[11px] text-gray-500 truncate">Argon2id Vault Master</span>
+</div>
+</div>
+</div>
+<div class="col-span-2 hidden md:flex items-center">
+<span class="bg-warning-bg text-warning-text font-caption-badge text-caption-badge px-2 py-0.5 rounded-full">Double Lock</span>
+</div>
+<div class="col-span-2 font-code-dense text-body-compact text-gray-600">8.4 MB</div>
+<div class="col-span-2 flex items-center justify-end gap-2">
+<span class="font-caption-badge text-caption-badge text-gray-500">Yesterday</span>
+<button class="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-gray-200 text-gray-500 hover:text-on-surface transition-all" title="More Actions" type="button">
+<span class="material-symbols-outlined text-lg">more_vert</span>
+</button>
+</div>
+</div>
+<!-- File Row 4 -->
+<div class="group grid grid-cols-12 items-center px-space-md py-3.5 hover:bg-gray-50/80 cursor-pointer transition-colors" onclick="selectFile(4)">
+<div class="col-span-6 flex items-center gap-space-sm min-w-0 pr-2">
+<div class="w-9 h-9 rounded-lg bg-surface-container-high flex items-center justify-center text-secondary shrink-0">
+<span class="material-symbols-outlined text-xl">folder_zip</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-card-title text-card-title text-on-surface truncate group-hover:text-secondary transition-colors">Production_SSL_Certificates.tar.gz</span>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-xs text-secondary">verified</span>
+<span class="font-code-dense text-[11px] text-gray-500 truncate">SHA-256: d41d…8cd9</span>
+</div>
+</div>
+</div>
+<div class="col-span-2 hidden md:flex items-center">
+<span class="bg-indigo-50 text-indigo-dark font-caption-badge text-caption-badge px-2 py-0.5 rounded-full">High-Sec</span>
+</div>
+<div class="col-span-2 font-code-dense text-body-compact text-gray-600">124 KB</div>
+<div class="col-span-2 flex items-center justify-end gap-2">
+<span class="font-caption-badge text-caption-badge text-gray-500">2d ago</span>
+<button class="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-gray-200 text-gray-500 hover:text-on-surface transition-all" title="More Actions" type="button">
+<span class="material-symbols-outlined text-lg">more_vert</span>
+</button>
+</div>
+</div>
+<!-- File Row 5 -->
+<div class="group grid grid-cols-12 items-center px-space-md py-3.5 hover:bg-gray-50/80 cursor-pointer transition-colors" onclick="selectFile(5)">
+<div class="col-span-6 flex items-center gap-space-sm min-w-0 pr-2">
+<div class="w-9 h-9 rounded-lg bg-surface-variant flex items-center justify-center text-primary shrink-0">
+<span class="material-symbols-outlined text-xl">description</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-card-title text-card-title text-on-surface truncate group-hover:text-primary transition-colors">Customer_Data_Privacy_Policy.docx</span>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-xs text-success-text">link</span>
+<span class="font-code-dense text-[11px] text-gray-500 truncate">Time-bombed share link</span>
+</div>
+</div>
+</div>
+<div class="col-span-2 hidden md:flex items-center">
+<span class="bg-success-bg text-success-text font-caption-badge text-caption-badge px-2 py-0.5 rounded-full">Public Link</span>
+</div>
+<div class="col-span-2 font-code-dense text-body-compact text-gray-600">520 KB</div>
+<div class="col-span-2 flex items-center justify-end gap-2">
+<span class="font-caption-badge text-caption-badge text-gray-500">3d ago</span>
+<button class="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-gray-200 text-gray-500 hover:text-on-surface transition-all" title="More Actions" type="button">
+<span class="material-symbols-outlined text-lg">more_vert</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Quick Storage Metric & Key Security Bar -->
+<div class="bg-surface-white p-space-md rounded-2xl shadow-sm flex flex-col md:flex-row items-center justify-between gap-space-md">
+<div class="flex items-center gap-space-sm w-full md:w-auto">
+<div class="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center text-primary">
+<svg class="w-6 h-6" viewbox="0 0 36 36">
+<path class="text-gray-200" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-width="3"></path>
+<path class="text-primary" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-dasharray="75, 100" stroke-linecap="round" stroke-width="3"></path>
+</svg>
+</div>
+<div>
+<div class="font-card-title text-card-title text-on-surface">Client Memory Key Cache</div>
+<div class="font-body-compact text-body-compact text-gray-500">Hardware isolation enabled via WebCrypto TPM API</div>
+</div>
+</div>
+<div class="flex items-center gap-space-xs w-full md:w-auto justify-end">
+<button class="px-space-md py-1.5 bg-gray-50 hover:bg-indigo-50 text-gray-600 hover:text-indigo-dark rounded-lg font-card-title text-body-compact transition-colors" type="button">
+            Rotate Session Keys
+          </button>
+<button class="px-space-md py-1.5 bg-primary hover:bg-indigo-hover text-on-primary rounded-lg font-card-title text-body-compact transition-colors" type="button">
+            Audit Cryptography
+          </button>
+</div>
+</div>
+</div>
+<!-- Right: Contextual File Details Inspector (4 Cols on XL) -->
+<div class="xl:col-span-4 flex flex-col gap-space-md">
+<div class="bg-surface-white rounded-2xl shadow-sm p-space-md flex flex-col gap-space-lg sticky top-20">
+<!-- Inspector Header -->
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-xl">info</span>
+<h3 class="font-card-title text-card-title text-on-surface">File Inspector</h3>
+</div>
+<div class="flex items-center gap-1">
+<button class="p-1 text-gray-500 hover:text-on-surface rounded-md hover:bg-gray-50" title="Close details" type="button">
+<span class="material-symbols-outlined text-lg">close</span>
+</button>
+</div>
+</div>
+<!-- Encrypted Preview Box with Watermark -->
+<div class="relative w-full h-44 rounded-xl overflow-hidden bg-gradient-to-br from-inverse-surface via-on-surface to-inverse-surface flex items-center justify-center p-space-md shadow-inner">
+<img class="absolute inset-0 w-full h-full object-cover opacity-25 mix-blend-luminosity" data-alt="High tech abstract cryptographic geometric visualization showing glowing mesh lines, encrypted data blocks, and deep indigo lighting on a dark secure slate canvas." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA9HikxlepTitZbegP5juTHRv26AOqCQTYds94TSBa4X2CXGFqA9tzXyZjBxRQmnudA-UgB08qZBVzDkXCdxGEkuGv0HWMz9J6b0UqWT7zeHmVNsnKYIayZO3hPd1V-X6VYVfae4p8QPuDmDOZB8U-TOq3krYm67gGmM42LEURt9_muRkcL5XKp9eDFkn_94StkWB8cZkzUTXv5oGR0_yVHxPsKuT44N8XDYlBF1ax_i7IdWZhICB1G"/>
+<div class="relative z-10 flex flex-col items-center text-center p-3">
+<div class="w-12 h-12 rounded-full bg-surface-white/10 backdrop-blur-md flex items-center justify-center text-on-primary mb-2 shadow-sm">
+<span class="material-symbols-outlined text-2xl">enhanced_encryption</span>
+</div>
+<span class="font-card-title text-caption-badge text-on-primary uppercase tracking-wider">Encrypted Payload At Rest</span>
+<span class="font-code-dense text-[11px] text-primary-fixed-dim mt-0.5">Zero Plaintext Stored on Servers</span>
+</div>
+<div class="absolute bottom-2 right-2 bg-inverse-surface/80 backdrop-blur-xs px-2 py-0.5 rounded text-[10px] font-code-dense text-outline-variant">
+            AES-GCM / 256
+          </div>
+</div>
+<!-- File Title & Actions -->
+<div>
+<h4 class="font-headline-3 text-headline-3 text-on-surface leading-tight break-all">Q3_SOC2_Compliance_Report.pdf</h4>
+<p class="font-body-compact text-body-compact text-gray-500 mt-1">Uploaded 14 mins ago by You • Verified</p>
+</div>
+<!-- Action Buttons -->
+<div class="grid grid-cols-2 gap-space-xs">
+<button class="flex items-center justify-center gap-1.5 bg-primary hover:bg-indigo-hover text-on-primary py-2 px-3 rounded-xl font-card-title text-body-compact shadow-sm transition-all active:scale-[0.98]" type="button">
+<span class="material-symbols-outlined text-lg">lock_open</span>
+<span>Decrypt &amp; Get</span>
+</button>
+<button class="flex items-center justify-center gap-1.5 bg-gray-50 hover:bg-indigo-50 text-gray-600 hover:text-indigo-dark py-2 px-3 rounded-xl font-card-title text-body-compact transition-all" type="button">
+<span class="material-symbols-outlined text-lg">link</span>
+<span>Share Link</span>
+</button>
+</div>
+<!-- Properties Grid -->
+<div class="bg-gray-50/70 rounded-xl p-space-sm flex flex-col gap-2.5">
+<span class="font-caption-badge text-caption-badge text-gray-500 uppercase tracking-wider">Properties</span>
+<div class="flex items-center justify-between text-body-compact">
+<span class="text-gray-500">File Type</span>
+<span class="font-medium text-on-surface">PDF Document (.pdf)</span>
+</div>
+<div class="flex items-center justify-between text-body-compact">
+<span class="text-gray-500">Original Size</span>
+<span class="font-code-dense text-on-surface font-medium">4.20 MB</span>
+</div>
+<div class="flex items-center justify-between text-body-compact">
+<span class="text-gray-500">Vault Location</span>
+<span class="text-primary font-medium truncate max-w-[180px]">Personal Vault / Audits</span>
+</div>
+</div>
+<!-- Cryptographic Specification -->
+<div class="bg-gray-50/70 rounded-xl p-space-sm flex flex-col gap-2.5">
+<span class="font-caption-badge text-caption-badge text-gray-500 uppercase tracking-wider">Cryptographic Specs</span>
+<div class="flex items-center justify-between text-body-compact">
+<span class="text-gray-500">Algorithm</span>
+<span class="font-code-dense text-success-text font-semibold">ChaCha20-Poly1305</span>
+</div>
+<div class="flex items-center justify-between text-body-compact">
+<span class="text-gray-500">Key Fingerprint</span>
+<span class="font-code-dense text-on-surface bg-surface-white px-1.5 py-0.5 rounded text-[12px]">4e:a1:8f:99:d2</span>
+</div>
+<div class="flex items-center justify-between text-body-compact">
+<span class="text-gray-500">Key Origin</span>
+<span class="text-on-surface text-right">Local Client Derivation</span>
+</div>
+</div>
+<!-- Access Activity Timeline -->
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center justify-between">
+<span class="font-caption-badge text-caption-badge text-gray-500 uppercase tracking-wider">Activity Log</span>
+<a class="font-caption-badge text-caption-badge text-primary hover:underline" href="#">Full Log</a>
+</div>
+<div class="relative pl-4 mt-2 flex flex-col gap-3.5 before:absolute before:left-1.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-gray-200">
+<!-- Timeline Item 1 -->
+<div class="relative flex items-start gap-2">
+<span class="absolute -left-4 top-1 w-2.5 h-2.5 rounded-full bg-primary ring-4 ring-surface-white"></span>
+<div class="flex flex-col">
+<span class="font-card-title text-caption-badge text-on-surface">Decrypted in browser session</span>
+<span class="font-caption-badge text-[11px] text-gray-500">14 minutes ago • IP: 192.168.1.1</span>
+</div>
+</div>
+<!-- Timeline Item 2 -->
+<div class="relative flex items-start gap-2">
+<span class="absolute -left-4 top-1 w-2.5 h-2.5 rounded-full bg-secondary ring-4 ring-surface-white"></span>
+<div class="flex flex-col">
+<span class="font-card-title text-caption-badge text-on-surface">Shared with Sarah Jenkins (Auditor)</span>
+<span class="font-caption-badge text-[11px] text-gray-500">2 hours ago • Zero-knowledge ticket issued</span>
+</div>
+</div>
+<!-- Timeline Item 3 -->
+<div class="relative flex items-start gap-2">
+<span class="absolute -left-4 top-1 w-2.5 h-2.5 rounded-full bg-success-text ring-4 ring-surface-white"></span>
+<div class="flex flex-col">
+<span class="font-card-title text-caption-badge text-on-surface">Encrypted &amp; Uploaded by You</span>
+<span class="font-caption-badge text-[11px] text-gray-500">Today at 09:12 AM</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Audit Trail Link -->
+<button class="w-full flex items-center justify-center gap-1.5 text-gray-600 hover:text-primary font-caption-badge text-caption-badge py-2 rounded-lg hover:bg-gray-50 transition-colors" type="button">
+<span class="material-symbols-outlined text-base">receipt_long</span>
+<span>View Complete Cryptographic Audit Trail</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<script>
+  function selectFile(id) {
+    // Simple state toggle visualization for file rows
+    const rows = document.querySelectorAll('.group.grid');
+    rows.forEach(r => {
+      r.classList.remove('bg-indigo-50/60');
+      const bar = r.querySelector('.bg-primary.w-1');
+      if (bar) bar.remove();
+    });
+    
+    // Add visual selection to current row target
+    event.currentTarget.classList.add('bg-indigo-50/60');
+    const indicator = document.createElement('div');
+    indicator.className = 'absolute left-0 top-0 bottom-0 w-1 bg-primary';
+    event.currentTarget.appendChild(indicator);
+  }
+
+  // View toggle interaction
+  const btnGrid = document.getElementById('btn-view-grid');
+  const btnList = document.getElementById('btn-view-list');
+  if (btnGrid && btnList) {
+    btnGrid.addEventListener('click', () => {
+      btnGrid.className = 'p-1.5 rounded-lg bg-indigo-50 text-indigo-dark transition-all';
+      btnList.className = 'p-1.5 rounded-lg text-gray-500 hover:text-on-surface transition-all';
+    });
+    btnList.addEventListener('click', () => {
+      btnList.className = 'p-1.5 rounded-lg bg-indigo-50 text-indigo-dark transition-all';
+      btnGrid.className = 'p-1.5 rounded-lg text-gray-500 hover:text-on-surface transition-all';
+    });
+  }
+</script></main></div></body></html>
