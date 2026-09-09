@@ -12,6 +12,7 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | `vault.ts` | The vault index view model, received-ciphertext integrity check, and the local secret name/value format |
 | `notes.ts` | The notes file-grid view model — title, thumbnail, selection, character budget and autosave state |
 | `modal.ts` | A modal's keyboard contract, backdrop dismissal and scroll-lock counting |
+| `shell.ts` | `accountInitial`, the sidebar avatar's letter |
 
 ## Onboarding
 
@@ -265,3 +266,15 @@ past its edge, let go, and the dialog closes mid-selection.
 **`scrollLockTransition` is reference-counted**, so a nested dialog closing cannot hand the page
 back its scrollbar while an outer one is still open.
 
+
+## The shell's account chrome
+
+`shell.ts` holds `accountInitial`, the letter in the sidebar avatar. It falls back to `?` for an
+absent or blank username so the circle is never empty.
+
+It once also held `ENCRYPTION_SUMMARY` and `sessionFingerprint`, for a banner above every screen
+that restated the encryption guarantee and showed a shortened `user_address`. **The banner was
+removed on 2026-09-09 as noise** — it said the same thing on every screen, next to screens whose
+own copy already says it. Both helpers went with it rather than being left as dead exports; the
+fingerprint's one non-obvious rule, if anything ever needs it again, was that it is **not**
+prefixed `0x` — Cryple derives no secp256k1 key and has no EOA.

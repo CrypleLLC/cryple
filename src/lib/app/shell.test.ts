@@ -13,6 +13,7 @@ import {
   MalformedSecretPayloadError,
   MODE_COPY,
   SECOND_FACTOR_COPY,
+  accountInitial,
   sessionExits,
   UNREADABLE_SECRET_NAME,
 } from "./index";
@@ -262,3 +263,11 @@ describe("the vault index", () => {
   });
 });
 
+
+describe("the shell's account chrome", () => {
+  it("takes the avatar letter from the username, falling back rather than rendering blank", () => {
+    expect(accountInitial("ada")).toBe("A");
+    expect(accountInitial("  ")).toBe("?");
+    expect(accountInitial(undefined)).toBe("?");
+  });
+});

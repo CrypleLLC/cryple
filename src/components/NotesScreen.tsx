@@ -15,7 +15,7 @@ import {
 import { useAuthedContext, useCryple } from './CrypleProvider';
 import NoteEditor from './NoteEditor';
 import { CheckIcon, NotesIcon, PlusIcon, TrashIcon } from './icons';
-import { Button, Empty, Notice, Spinner } from './ui';
+import { Button, Card, Empty, Notice, Spinner } from './ui';
 
 type View = { mode: 'list' } | { mode: 'note'; id?: string };
 
@@ -120,7 +120,7 @@ export default function NotesScreen() {
 
       {tiles !== undefined && tiles.length > 0 ? (
         <div className="flex min-h-10 flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-slate-500 dark:text-slate-400" aria-live="polite">
+          <p className="text-compact text-ink-muted" aria-live="polite">
             {selecting ? `${selected.length} selected` : noteCountLabel(tiles.length)}
           </p>
 
@@ -176,7 +176,12 @@ export default function NotesScreen() {
       {tiles === undefined ? (
         <Spinner />
       ) : tiles.length === 0 ? (
-        <Empty>No notes yet. Use the button in the corner to write one.</Empty>
+        <Card flush>
+          <Empty icon={<NotesIcon className="h-6 w-6" />}>
+            No notes yet. Use the button in the corner to write one — it is encrypted on this
+            device before it is stored.
+          </Empty>
+        </Card>
       ) : (
         <ul className="grid grid-cols-2 gap-x-5 gap-y-7 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {tiles.map((tile) => (
@@ -202,7 +207,7 @@ export default function NotesScreen() {
           aria-label="New note"
           title="New note"
           onClick={() => setView({ mode: 'note' })}
-          className="fixed bottom-6 right-6 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-brand-500 text-white shadow-lg transition hover:bg-brand-600 active:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 focus-visible:ring-offset-2"
+          className="brand-gradient fixed bottom-6 right-6 z-20 flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lift transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-ground"
         >
           <PlusIcon className="h-6 w-6 shrink-0" />
         </button>
@@ -233,32 +238,30 @@ function NoteFile({
         onClick={onOpen}
         disabled={busy}
         aria-label={selecting ? `${selected ? 'Deselect' : 'Select'} ${tile.title}` : tile.title}
-        className="flex w-full flex-col gap-2.5 rounded-lg p-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 disabled:opacity-60"
+        className="flex w-full flex-col gap-2.5 rounded-xl p-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 disabled:opacity-60"
       >
         <span
-          className={`relative block aspect-[3/4] w-full overflow-hidden rounded-md bg-white shadow-sm transition group-hover:shadow-md dark:bg-slate-900 ${
-            selected
-              ? 'ring-2 ring-brand-500'
-              : 'ring-1 ring-slate-900/10 group-hover:ring-slate-900/20 dark:ring-white/10 dark:group-hover:ring-white/20'
+          className={`relative block aspect-[3/4] w-full overflow-hidden rounded-xl bg-surface shadow-card transition-all duration-200 group-hover:-translate-y-0.5 group-hover:shadow-lift ${
+            selected ? 'ring-2 ring-brand-500' : 'ring-1 ring-line group-hover:ring-brand-200'
           }`}
         >
           {tile.readable ? (
-            <span className="block whitespace-pre-wrap break-words p-3 text-[9px] leading-[1.45] text-slate-600 dark:text-slate-400">
+            <span className="block whitespace-pre-wrap break-words p-3 text-[9px] leading-[1.45] text-ink-soft">
               {tile.thumbnail}
             </span>
           ) : (
             <span className="flex h-full w-full items-center justify-center">
-              <NotesIcon className="h-8 w-8 text-slate-300 dark:text-slate-700" />
+              <NotesIcon className="h-8 w-8 text-ink-faint" />
             </span>
           )}
-          <span className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent dark:from-slate-900" />
+          <span className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent" />
         </span>
 
         <span className="block min-w-0 px-0.5">
-          <span className="block truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+          <span className="block truncate text-compact font-semibold text-ink">
             {tile.title}
           </span>
-          <span className="mt-0.5 block truncate text-xs text-slate-500 dark:text-slate-400">
+          <span className="mt-0.5 block truncate text-caption normal-case tracking-normal text-ink-muted">
             {new Date(tile.updatedAt).toLocaleDateString()}
           </span>
         </span>
@@ -271,10 +274,10 @@ function NoteFile({
         aria-label={`${selected ? 'Deselect' : 'Select'} ${tile.title}`}
         disabled={busy}
         onClick={onToggle}
-        className={`absolute left-3 top-3 z-10 flex h-5 w-5 items-center justify-center rounded border shadow-sm transition focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 ${
+        className={`absolute left-3 top-3 z-10 flex h-5 w-5 items-center justify-center rounded-md border shadow-card transition focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 ${
           selected
             ? 'border-brand-500 bg-brand-500 text-white'
-            : 'border-slate-300 bg-white/90 text-transparent hover:border-slate-400 dark:border-slate-600 dark:bg-slate-800/90'
+            : 'border-line-strong bg-surface/90 text-transparent hover:border-brand-400'
         } ${selecting || selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
       >
         <CheckIcon className="h-3.5 w-3.5 shrink-0" />

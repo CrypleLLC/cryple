@@ -7,3 +7,4 @@ export * from './vault';
 export * from './notes';
 export * from './documents';
 export * from './modal';
+export * from './shell';

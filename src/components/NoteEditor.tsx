@@ -245,22 +245,22 @@ export default function NoteEditor({
           title="Back to notes"
           disabled={busy || saving}
           onClick={() => void close()}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-brand-50 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
         >
           <ArrowLeftIcon />
         </button>
 
-        <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900 dark:text-slate-100">
+        <h2 className="min-w-0 flex-1 truncate text-headline text-ink">
           {isNoteEmpty(draft) ? UNTITLED_NOTE : noteTitle(draft)}
         </h2>
 
         <div className="flex shrink-0 items-center gap-3">
           <span
             aria-live="polite"
-            className={`hidden text-xs sm:inline ${
+            className={`hidden text-caption normal-case tracking-normal sm:inline ${
               status === 'over-limit'
-                ? 'text-red-600 dark:text-red-400'
-                : 'text-slate-500 dark:text-slate-400'
+                ? 'text-danger'
+                : 'text-ink-muted'
             }`}
           >
             {NOTE_SAVE_LABELS[status]}
@@ -278,15 +278,6 @@ export default function NoteEditor({
           ) : null}
         </div>
       </div>
-
-      <NoteEditorToolbar
-        disabled={unreadable || busy}
-        fontSize={activeSize}
-        activeLine={activeLine}
-        onLineType={runLineType}
-        onInlineStyle={runInlineStyle}
-        onFontSize={runFontSize}
-      />
 
       {message ? <Notice tone="danger">{message}</Notice> : null}
 
@@ -314,7 +305,19 @@ export default function NoteEditor({
         </Notice>
       ) : null}
 
-      <div
+      <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
+        <div className="border-b border-line px-3 py-2">
+          <NoteEditorToolbar
+            disabled={unreadable || busy}
+            fontSize={activeSize}
+            activeLine={activeLine}
+            onLineType={runLineType}
+            onInlineStyle={runInlineStyle}
+            onFontSize={runFontSize}
+          />
+        </div>
+
+        <div
         ref={surface}
         role="textbox"
         aria-multiline="true"
@@ -332,23 +335,22 @@ export default function NoteEditor({
         onClick={onSurfaceClick}
         onKeyDown={onSurfaceKeyDown}
         onPaste={onSurfacePaste}
-        className="note-surface min-h-[60vh] w-full text-slate-900 dark:text-slate-100"
-      />
+        className="note-surface min-h-[55vh] w-full text-ink"
+        />
 
-      <p
-        className={`text-xs ${
-          isNoteWithinLimit(draft)
-            ? 'text-slate-500 dark:text-slate-400'
-            : 'text-red-600 dark:text-red-400'
-        }`}
-      >
-        {left >= 0
-          ? `${left.toLocaleString()} characters left`
-          : `${Math.abs(left).toLocaleString()} characters over the limit`}
-        <span className="sm:hidden">
-          {NOTE_SAVE_LABELS[status] ? ` · ${NOTE_SAVE_LABELS[status]}` : ''}
-        </span>
-      </p>
+        <p
+          className={`border-t border-line px-6 py-3 text-caption normal-case tracking-normal md:px-8 ${
+            isNoteWithinLimit(draft) ? 'text-ink-muted' : 'text-danger'
+          }`}
+        >
+          {left >= 0
+            ? `${left.toLocaleString()} characters left`
+            : `${Math.abs(left).toLocaleString()} characters over the limit`}
+          <span className="sm:hidden">
+            {NOTE_SAVE_LABELS[status] ? ` · ${NOTE_SAVE_LABELS[status]}` : ''}
+          </span>
+        </p>
+      </div>
     </div>
   );
 }

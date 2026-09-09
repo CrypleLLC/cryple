@@ -14,12 +14,13 @@ import {
   documentDeleteConfirmation,
   documentHref,
   retainSelectable,
+  UNTITLED_DOCUMENT,
   toggleNoteSelection,
   type DocumentTile,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
-import { CheckIcon, PlusIcon, TrashIcon } from './icons';
-import { Button, Empty, Notice, Spinner } from './ui';
+import { CheckIcon, DocumentsIcon, PlusIcon, TrashIcon } from './icons';
+import { Button, Card, Empty, Notice, Spinner } from './ui';
 
 export default function DocumentsScreen() {
   const context = useAuthedContext();
@@ -109,7 +110,7 @@ export default function DocumentsScreen() {
       {message !== undefined && <Notice tone="danger">{message}</Notice>}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-compact text-ink-muted">
           {tiles.length === 0 ? 'No documents yet' : documentCountLabel(tiles.length)}
           {selecting && selected.length > 0 && ` · ${selected.length} selected`}
         </p>
@@ -135,7 +136,7 @@ export default function DocumentsScreen() {
             </Button>
           )}
 
-          <Button disabled={busy} onClick={() => void create()}>
+          <Button variant="accent" disabled={busy} onClick={() => void create()}>
             <PlusIcon className="h-4 w-4" />
             New document
           </Button>
@@ -157,19 +158,26 @@ export default function DocumentsScreen() {
       )}
 
       {tiles.length === 0 ? (
-        <Empty>
-          Long-form writing, encrypted on this device before it is stored. Documents open in their
-          own tab.
-        </Empty>
+        <Card flush>
+          <Empty icon={<DocumentsIcon className="h-6 w-6" />}>
+            Long-form writing, encrypted on this device before it is stored. Documents open in
+            their own tab.
+          </Empty>
+        </Card>
       ) : (
-        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <ul className="grid grid-cols-2 gap-x-5 gap-y-7 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {tiles.map((tile) => (
-            <DocumentCard
+            <DocumentFile
               key={tile.id}
               tile={tile}
               selecting={selecting}
               selected={selected.includes(tile.id)}
-              onActivate={() => activate(tile.id)}
+              busy={busy}
+              onOpen={() => activate(tile.id)}
+              onToggle={() => {
+                setSelecting(true);
+                setSelected((current) => toggleNoteSelection(current, tile.id));
+              }}
             />
           ))}
         </ul>
@@ -178,45 +186,76 @@ export default function DocumentsScreen() {
   );
 }
 
-function DocumentCard({
+function DocumentFile({
   tile,
   selecting,
   selected,
-  onActivate,
+  busy,
+  onOpen,
+  onToggle,
 }: {
   tile: DocumentTile;
   selecting: boolean;
   selected: boolean;
-  onActivate: () => void;
+  busy: boolean;
+  onOpen: () => void;
+  onToggle: () => void;
 }) {
   return (
-    <li>
+    <li className="group relative">
       <button
         type="button"
-        onClick={onActivate}
-        aria-pressed={selecting ? selected : undefined}
-        className={`flex h-full w-full flex-col items-start gap-2 rounded-xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 ${
-          selected
-            ? 'border-brand-500 bg-brand-50 dark:border-brand-500 dark:bg-brand-950'
-            : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700'
-        }`}
+        onClick={onOpen}
+        disabled={busy}
+        aria-label={selecting ? `${selected ? 'Deselect' : 'Select'} ${tile.title}` : tile.title}
+        className="flex w-full flex-col gap-2.5 rounded-xl p-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 disabled:opacity-60"
       >
-        <div className="flex w-full items-start justify-between gap-2">
-          <span className="line-clamp-2 font-medium text-slate-900 dark:text-slate-100">
-            {tile.title}
-          </span>
-          {selecting && selected && (
-            <CheckIcon className="h-4 w-4 shrink-0 text-brand-600 dark:text-brand-400" />
+        <span
+          className={`relative block aspect-[210/297] w-full overflow-hidden rounded-xl bg-surface shadow-card transition-all duration-200 group-hover:-translate-y-0.5 group-hover:shadow-lift ${
+            selected ? 'ring-2 ring-brand-500' : 'ring-1 ring-line group-hover:ring-brand-200'
+          }`}
+        >
+          {tile.readable ? (
+            <span className="block px-[12%] py-[8.5%]">
+              {tile.title !== UNTITLED_DOCUMENT && (
+                <span className="mb-1 block truncate text-[10px] font-semibold leading-tight text-ink">
+                  {tile.title}
+                </span>
+              )}
+              <span className="block whitespace-pre-wrap break-words text-[8px] leading-[1.5] text-ink-soft">
+                {tile.thumbnail}
+              </span>
+            </span>
+          ) : (
+            <span className="flex h-full w-full items-center justify-center">
+              <DocumentsIcon className="h-8 w-8 text-ink-faint" />
+            </span>
           )}
-        </div>
+          <span className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent" />
+        </span>
 
-        <p className="line-clamp-3 flex-1 text-sm text-slate-500 dark:text-slate-400">
-          {tile.readable
-            ? tile.preview
-            : (tile.failure ?? 'This document could not be decrypted on this device.')}
-        </p>
+        <span className="block min-w-0 px-0.5">
+          <span className="block truncate text-compact font-semibold text-ink">{tile.title}</span>
+          <span className="mt-0.5 block truncate text-caption normal-case tracking-normal text-ink-muted">
+            {tile.readable ? tile.edited : (tile.failure ?? 'Could not be decrypted here')}
+          </span>
+        </span>
+      </button>
 
-        <span className="text-xs text-slate-400 dark:text-slate-500">{tile.edited}</span>
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={selected}
+        aria-label={`${selected ? 'Deselect' : 'Select'} ${tile.title}`}
+        disabled={busy}
+        onClick={onToggle}
+        className={`absolute left-3 top-3 z-10 flex h-5 w-5 items-center justify-center rounded-md border shadow-card transition focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 ${
+          selected
+            ? 'border-brand-500 bg-brand-500 text-white'
+            : 'border-line-strong bg-surface/90 text-transparent hover:border-brand-400'
+        } ${selecting || selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+      >
+        <CheckIcon className="h-3.5 w-3.5 shrink-0" />
       </button>
     </li>
   );

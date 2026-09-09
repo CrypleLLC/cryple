@@ -41,6 +41,8 @@ no gain.
 | `content.ts` | The `Y.Doc` layout: `body` fragment, `meta.title` |
 | `sync.ts` | `DocumentSync` — the engine: open, pull, debounce, push, compact |
 | `summaries.ts` | Decrypting enough of each document to render the dashboard list |
+| `outline.ts` | Headings out of a ProseMirror document, nested into a tree |
+| `pagination.ts` | Where the page breaks fall, given block heights |
 
 ## Sealing
 
@@ -133,6 +135,62 @@ The consequence is that the dashboard list cannot be rendered from `GET /documen
 `loadDocumentSummaries` opens each document (snapshot plus log) at a bounded concurrency of 4 and
 reads the title out, the same shape `listNotes` uses. An undecryptable document degrades to a
 tile marked unreadable rather than failing the whole list.
+
+## The outline is derived, and stays that way
+
+`outline.ts` turns a ProseMirror document into a heading tree for the navigation panel. It is a
+pure function of the document and is **never written back**, which is a storage decision as much as
+a design one.
+
+The obvious alternative is what most editors do: give each heading a stable `id` attribute and
+address it by that. An attribute is part of the CRDT, so minting ids appends sealed deltas — and an
+id minted during render appends them on *every* device that opens the document, forever, for a
+value that can be recomputed in microseconds. Everything in [§ Debounce is a storage
+decision](#debounce-is-a-storage-decision) applies with none of the compensating benefit.
+
+ProseMirror positions are enough. A position addresses a node exactly, and it is valid for the
+state it was read from — so the rule is to re-read the outline on every change and **never cache a
+position across transactions**. TipTap's own Table of Contents extension is built on the stamped-id
+model and is in the paid Pro tier; both facts are reasons not to reach for it.
+
+`activeHeadingPos` takes a cursor position rather than an editor, and `outlineTree` takes entries
+rather than a document, so both are testable in the node-environment suite. The DOM half — the
+scroll, the focus — lives in `components/documents/useOutline.ts`.
+
+## Pagination is measured, never written
+
+`pagination.ts` takes the measured height of each top-level block and returns the index of the
+first block on each page plus the blank space left above it. It is the same bargain as the outline:
+**a layout concern that must not reach the CRDT.**
+
+Automatic pagination is normally done by splitting or reflowing nodes so they fit the page. Here
+that would be a sealed delta appended on every device, on every reflow, for something no reader
+asked to persist — and it would fight every other device doing the same. So the break is expressed
+as a ProseMirror **decoration**, which lives in the view and never becomes a document step. The
+plugin's only transaction carries `setMeta` and no steps, so Yjs emits no update and the log does
+not grow.
+
+`paginate` is greedy: fill the page, and when the next block does not fit, start a new page with
+it. A block is never split, which is why `break-inside: avoid` on every top-level block is the
+matching print rule — the browser then reaches the same answer this function did.
+
+**A heading is `keepWithNext`.** When a break would land immediately after one, the heading is
+carried to the next page with the content it introduces, so a section title never dangles alone at
+the foot of a page. The pull-back stops if carrying the heading would not actually fit, and it
+never empties a page to rescue a heading that opens it — both cases are tested.
+
+The one thing that legitimately *is* content is an explicit page break: the user asked for it, so
+`pageBreak` is a real node in the document. `breaksAfter` ends the page wherever it sits.
+
+`paginate` builds a prefix-sum array first, so asking how much of a page a run of blocks fills is
+O(1) and the whole pass is O(n) — a long document is paginated in one linear sweep, and there is a
+20 000-block case in the tests to keep it that way.
+
+`samePagination` exists because comparing only the blank-space values is not enough to decide
+whether the layout changed. Split a paragraph that starts a page and the break moves to a
+different block while the space left above it barely moves — compare the fills alone and the
+plugin concludes nothing happened, skips the rebuild, and leaves the page geometry stale for good.
+It compares the block index as well, and only tolerates sub-pixel drift in the fill.
 
 ## Deletes
 

@@ -1,15 +1,19 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import type { Doc as YDoc } from 'yjs';
 import Image from 'next/image';
 import Link from 'next/link';
-import { EditorContent, useEditor } from '@tiptap/react';
+import { EditorContent, useEditor, useEditorState } from '@tiptap/react';
+import type { Editor } from '@tiptap/react';
 import { META_MAP, readTitle, writeTitle, type SyncState } from '@/lib/documents';
-import { saveStatusLabel, UNTITLED_DOCUMENT } from '@/lib/app';
+import { documentCountsLabel, saveStatusLabel, UNTITLED_DOCUMENT } from '@/lib/app';
 import { Notice, Spinner } from '@/components/ui';
 import { documentExtensions } from './extensions';
+import { pageCountOf } from './pagination';
 import DocumentToolbar from './DocumentToolbar';
+import DocumentOutline from './DocumentOutline';
 import { useDocumentSync } from './useDocumentSync';
 
 const TITLE_ORIGIN = Symbol('cryple/documents/title-input');
@@ -24,7 +28,7 @@ export default function DocumentWorkspace({ id }: { id: string }) {
           <strong className="font-medium">This document could not be opened.</strong> {error}
         </Notice>
         <p className="mt-6 text-sm">
-          <Link href="/" className="text-brand-700 hover:underline dark:text-brand-300">
+          <Link href="/" className="text-brand-700 hover:underline">
             Back to your vault
           </Link>
         </p>
@@ -34,7 +38,7 @@ export default function DocumentWorkspace({ id }: { id: string }) {
 
   if (sync === undefined) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-100 dark:bg-slate-950">
+      <main className="flex min-h-screen items-center justify-center bg-ground">
         <Spinner />
       </main>
     );
@@ -54,10 +58,15 @@ function DocumentSurface({ doc, state }: { doc: YDoc; state: SyncState }) {
       },
     },
   });
+  const chrome = useChromeHeight();
+  const pages = usePageCount(editor);
 
   return (
-    <main className="min-h-screen bg-slate-100 dark:bg-slate-950">
-      <header className="sticky top-[var(--staging-banner-h)] z-10 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+    <main className="min-h-screen bg-ground">
+      <header
+        ref={chrome}
+        className="cryple-no-print sticky top-[var(--staging-banner-h)] z-10 border-b border-line bg-surface/90 backdrop-blur"
+      >
         <div className="flex items-center gap-3 px-3 pt-2.5">
           <Link href="/" aria-label="Back to your vault" className="shrink-0">
             <Image src="/cryple-logo.png" alt="Cryple" width={28} height={28} priority />
@@ -69,16 +78,118 @@ function DocumentSurface({ doc, state }: { doc: YDoc; state: SyncState }) {
               gapDetected={state.gapDetected}
             />
           </div>
+          <DocumentCounts editor={editor} pages={pages} />
         </div>
         <DocumentToolbar editor={editor} />
       </header>
 
-      <div className="px-4 py-8">
-        <div className="mx-auto max-w-[816px] rounded-sm bg-white px-[72px] py-[80px] shadow-[0_1px_3px_rgba(15,23,42,0.12),0_8px_24px_rgba(15,23,42,0.08)] dark:bg-slate-900">
-          <EditorContent editor={editor} />
+      <div className="cryple-page-frame mx-auto flex max-w-[1180px] items-start gap-6 px-4 py-8">
+        <DocumentOutline editor={editor} />
+        <div className="min-w-0 flex-1 lg:flex lg:justify-center">
+          <div
+            className="cryple-page-stack"
+            style={{ '--page-count': pages } as CSSProperties}
+          >
+            <div aria-hidden="true" className="cryple-page-sheets">
+              {Array.from({ length: pages }, (_, page) => (
+                <div key={page} className="cryple-sheet" />
+              ))}
+            </div>
+            <div className="cryple-page">
+              <EditorContent editor={editor} className="cryple-page-body" />
+            </div>
+          </div>
         </div>
       </div>
     </main>
+  );
+}
+
+function useChromeHeight() {
+  const ref = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const header = ref.current;
+    if (header === null) {
+      return;
+    }
+
+    const observer = new ResizeObserver(([entry]) => {
+      document.documentElement.style.setProperty(
+        '--doc-chrome-h',
+        `${entry.contentRect.height}px`,
+      );
+    });
+
+    observer.observe(header);
+    return () => {
+      observer.disconnect();
+      document.documentElement.style.removeProperty('--doc-chrome-h');
+    };
+  }, []);
+
+  return ref;
+}
+
+function usePageCount(editor: Editor | null): number {
+  return (
+    useEditorState({
+      editor,
+      selector: () => pageCountOf(editor),
+    }) ?? 1
+  );
+}
+
+const COUNTS_DEBOUNCE_MS = 400;
+
+interface DocumentCountsValue {
+  words: number;
+  characters: number;
+}
+
+function useDocumentCounts(editor: Editor | null): DocumentCountsValue | undefined {
+  const [counts, setCounts] = useState<DocumentCountsValue>();
+
+  useEffect(() => {
+    if (editor === null) {
+      setCounts(undefined);
+      return;
+    }
+
+    let timer = 0;
+    const read = () =>
+      setCounts({
+        words: editor.storage.characterCount.words() as number,
+        characters: editor.storage.characterCount.characters() as number,
+      });
+    const schedule = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(read, COUNTS_DEBOUNCE_MS);
+    };
+
+    read();
+    editor.on('update', schedule);
+
+    return () => {
+      window.clearTimeout(timer);
+      editor.off('update', schedule);
+    };
+  }, [editor]);
+
+  return counts;
+}
+
+function DocumentCounts({ editor, pages }: { editor: Editor | null; pages: number }) {
+  const counts = useDocumentCounts(editor);
+
+  if (counts === undefined) {
+    return null;
+  }
+
+  return (
+    <p className="hidden shrink-0 text-caption normal-case tracking-normal text-ink-muted sm:block">
+      {documentCountsLabel(counts.words, counts.characters, pages)}
+    </p>
   );
 }
 
@@ -117,7 +228,7 @@ function TitleInput({ doc }: { doc: YDoc }) {
       value={title}
       placeholder={UNTITLED_DOCUMENT}
       onChange={(event) => onChange(event.target.value)}
-      className="w-full max-w-md truncate rounded-sm border border-transparent bg-transparent px-1 py-0.5 text-lg font-medium text-slate-900 transition placeholder:text-slate-400 hover:border-slate-300 focus-visible:border-brand-500 focus-visible:outline-none dark:text-slate-100 dark:hover:border-slate-600"
+      className="w-full max-w-md truncate rounded-lg border border-transparent bg-transparent px-2 py-1 text-headline text-ink transition-colors placeholder:text-ink-faint hover:border-line-strong focus-visible:border-brand-500 focus-visible:outline-none"
     />
   );
 }
@@ -126,8 +237,8 @@ function SaveStatus({ label, gapDetected }: { label: string; gapDetected: boolea
   return (
     <p
       aria-live="polite"
-      className={`px-1 text-xs ${
-        gapDetected ? 'text-amber-700 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'
+      className={`px-1 text-caption normal-case tracking-normal ${
+        gapDetected ? 'text-warning' : 'text-ink-muted'
       }`}
     >
       {gapDetected ? 'Some updates are missing — this document will not be compacted' : label}

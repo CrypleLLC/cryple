@@ -127,7 +127,9 @@ export function surfaceBlockAt(element: HTMLElement, node?: Node): HTMLElement |
     current = current.parentNode;
   }
 
-  return current.parentNode === element ? (current as HTMLElement) : undefined;
+  return current.parentNode === element && current.nodeType === Node.ELEMENT_NODE
+    ? (current as HTMLElement)
+    : undefined;
 }
 
 export function sizeAtCaret(element: HTMLElement): number {

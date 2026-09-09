@@ -87,7 +87,7 @@ export default function NoteEditorToolbar({
       </ToolButton>
       <span
         aria-live="polite"
-        className="min-w-8 text-center text-xs tabular-nums text-slate-500 dark:text-slate-400"
+        className="min-w-8 text-center text-caption normal-case tracking-normal tabular-nums text-ink-muted"
       >
         {fontSize}
       </span>
@@ -104,7 +104,7 @@ export default function NoteEditorToolbar({
 }
 
 function Divider() {
-  return <span aria-hidden="true" className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-700" />;
+  return <span aria-hidden="true" className="mx-1 h-5 w-px bg-line" />;
 }
 
 function ToolButton({
@@ -133,8 +133,8 @@ function ToolButton({
       onClick={onClick}
       className={`flex h-8 min-w-8 items-center justify-center rounded-md px-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 disabled:cursor-not-allowed disabled:opacity-40 ${
         pressed
-          ? 'bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300'
-          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100'
+          ? 'bg-brand-50 text-brand-700'
+          : 'text-ink-soft hover:bg-raised hover:text-ink'
       }`}
     >
       {children}
