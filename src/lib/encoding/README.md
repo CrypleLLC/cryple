@@ -3,7 +3,7 @@
 Byte-level conversions shared by every crypto module. No key derivation lives here — this
 module only changes the representation of bytes that another module produced.
 
-Task 4 of [tasks.md](../../../tasks.md).
+Task 4 of [tasks.md](../../../tasks/tasks.md).
 
 ## Why this module exists
 

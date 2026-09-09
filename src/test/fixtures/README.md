@@ -31,7 +31,6 @@ For the well-known all-`abandon` BIP39 mnemonic (test values only — never a re
 | `vault_kek`, `sealed_blob` | [`lib/keys`](../../lib/keys/README.md), [`lib/secrets`](../../lib/secrets/README.md) |
 | `server_auth_token` | [`lib/pin`](../../lib/pin/README.md) |
 | `pqxdh` | [`lib/pqxdh`](../../lib/pqxdh/README.md) |
-| `vault_merkle` | [`lib/vaultmerkle`](../../lib/vaultmerkle/README.md) |
 
 ### Refreshing the copy
 
@@ -51,3 +50,10 @@ existing value is the breaking one.
 `sealed_label_blob` were removed with digital inheritance, and the PQXDH vector's `usage` moved
 from `succession-dek` to `recovery-share` — which changes the `info` string, and therefore the
 session key and the recorded wire blob. Everything else is byte-identical.
+
+**One more breaking refresh is expected, and it is not a bug when it lands.** Guardian recovery
+left the product later the same day, so `recovery-share` names a flow that no longer exists.
+It is kept because the vector pins the PQXDH *combiner*, and the usage is only an input to the
+`info` string. Task 102 (private sharing) assigns the real label and moves this vector one last
+time, together with `crypto/pqxdh.md`, `PQXDH_USAGES` and the generator. Until that commit,
+`lib/pqxdh` has no caller and this fixture is the only thing exercising it.

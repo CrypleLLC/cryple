@@ -47,8 +47,8 @@ export default function Unlock() {
         <div className="space-y-4">
           <Notice tone="danger">
             After {MAX_UNLOCK_ATTEMPTS} wrong PINs, the copy of your recovery phrase stored on this
-            device was deleted. Your vault is untouched — sign in again with your recovery phrase,
-            or recover it through your guardians.
+            device was deleted. Your vault is untouched — sign in again with your recovery phrase.
+            It is the only way back in, and nobody can issue you another.
           </Notice>
           <Button onClick={logOut}>Start over on this device</Button>
         </div>

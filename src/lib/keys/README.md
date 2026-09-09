@@ -5,7 +5,7 @@ a wrong constant here does not throw, it produces a **different account**, and t
 surfaces long after the mistake was made.
 
 Implements [crypto/ECDSA.md](../../../../api-general/.docs/crypto/ECDSA.md) — a **FROZEN**
-spec. Task 3 of [tasks.md](../../../tasks.md).
+spec. Task 3 of [tasks.md](../../../tasks/tasks.md).
 
 > Nothing in this module may be changed to "fix" a mismatch. Every path, label and length
 > below is part of account identity. If a value disagrees with the spec, the code is wrong;
@@ -36,7 +36,7 @@ scope and the sealed-blob envelope it wraps into.
 | Export | Purpose |
 | --- | --- |
 | `deriveKeyTree(mnemonic, passphrase?)` | Mnemonic → the whole tree. Validates the checksum first. |
-| `deriveKeyTreeFromSeed(seed)` | Same, from 64 raw seed bytes. Used by the tests and by recovery. |
+| `deriveKeyTreeFromSeed(seed)` | Same, from 64 raw seed bytes. Used by the tests. |
 | `deriveUserAddress(seed)` | `SHA-256(seed)` as lowercase hex. |
 | `deriveIdentityKey` / `deriveX25519Key` / `deriveMlKem768Key` / `deriveVaultKek` | Individual leaves. |
 | `zeroKeyTree(tree)` | Zeroes every private buffer in the tree in place. |

@@ -6,14 +6,12 @@ import Image from 'next/image';
 import { hasSeedVault } from '@/lib/pin';
 import { sessionExits, type SessionExit, type SessionExitId } from '@/lib/app';
 import { useCryple } from './CrypleProvider';
-import GuardiansScreen from './GuardiansScreen';
 import NotesScreen from './NotesScreen';
 import SecurityScreen from './SecurityScreen';
 import VaultScreen from './VaultScreen';
 import { VaultRevealAction, VaultRevealProvider } from './VaultReveal';
 import {
   DocumentsIcon,
-  GuardiansIcon,
   LockSessionIcon,
   LogOutIcon,
   NotesIcon,
@@ -58,13 +56,6 @@ const NAV_ITEMS = [
     description: 'Long-form writing, encrypted here and synced across your devices.',
     icon: DocumentsIcon,
     screen: DocumentsScreen,
-  },
-  {
-    id: 'guardians',
-    label: 'Guardians',
-    description: 'The people who can help you recover this account.',
-    icon: GuardiansIcon,
-    screen: GuardiansScreen,
   },
   {
     id: 'security',

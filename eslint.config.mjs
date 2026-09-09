@@ -53,13 +53,6 @@ const config = [
   },
 
   {
-    files: ['scripts/**'],
-    rules: {
-      'no-console': 'off',
-    },
-  },
-
-  {
     files: ['**/*.test.ts', '**/*.test.tsx'],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',

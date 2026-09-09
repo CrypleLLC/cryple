@@ -9,10 +9,8 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | `onboarding.ts` | The onboarding state machine, PIN/mnemonic validation copy, backup verification |
 | `boot.ts` | Sign-in when the mode is not known yet, and account enrolment |
 | `mode-hint.ts` | The locally remembered Standard/Paranoid hint |
-| `inbox.ts` | Merging the two guardian queues into one list |
 | `vault.ts` | The vault index view model, received-ciphertext integrity check, and the local secret name/value format |
 | `notes.ts` | The notes file-grid view model — title, thumbnail, selection, character budget and autosave state |
-| `recovery-kit.ts` | The printable share-0 Recovery Kit |
 | `modal.ts` | A modal's keyboard contract, backdrop dismissal and scroll-lock counting |
 
 ## Onboarding
@@ -109,48 +107,12 @@ and `sessionExits(deviceRemembersPhrase)` is that choice as data:
 - **Only the erasing log-out confirms.** Wiping the device copy is worth a second look; ending a
   session that stored nothing is not, and a confirmation there would train the reflex that makes
   the real one useless.
-- The confirmation says the vault and guardians are **untouched**, because "log out and
+- The confirmation says the vault itself is **untouched**, because "log out and
   erase this device" reads like account deletion and is not. Losing the local copy costs one
   re-entry of the phrase.
 - Both exits run through the provider's `lock` / `logOut`; `logOut` is also what the `Unlock`
   screen's "Log out of this device" and post-wipe "Start over" buttons call — one concept, three
   entry points, no second implementation.
-
-## The guardian inbox
-
-All three guardian queues — **pending guardianship invitations**, pending recovery sessions and
-pending PIN resets — are one list, because to a guardian they are one job: somebody is asking for
-something. `buildInbox` sorts **actionable first, then newest**, so the thing needing a response is
-never below a completed one, and `INBOX_ACTION_LABELS` keeps the three verbs (`Accept`, `Approve`,
-`Send my share`) distinct so a row's button says what it does.
-
-- **Invitations come from `GET /recovery/guardianships`, not from a queue endpoint** — there is no
-  `…/pending` route for them. Only `pending_invite` rows become items; `active` and `revoked` rows
-  are not requests and are filtered out by the recovery domain's `pendingInvitations`.
-- The item's `id` is the **invitation id**, which is what `guardian-accept` signs and what the
-  `PATCH /recovery/guardians/{id}/accept` path takes — not the owner's id or username.
-- **Accepting is a signed action, not a formality** — the JWT alone is not enough
-  (`front-end-endpoints.md` § PATCH …/accept, changed 2026-07-29). It reveals the owner's
-  `user_address` to the guardian and raises the owner's effective quorum, so a bearer token must
-  not be able to forge the second leg of the handshake. The second factor demanded is the
-  **guardian's own**, which `context.paranoid` already supplies.
-- **There is no decline endpoint.** A guardian accepts or leaves it; only the owner can revoke.
-  `GUARDIAN_INVITE_DETAIL` says so on the row rather than offering a button that cannot exist.
-- A `contest_period` PIN reset is **informational, never a vote prompt**. Only `pending_quorum`
-  rows accept a vote; the API answers `409` otherwise. `canVoteOn` from the recovery domain is the
-  single source of that rule.
-- An already-submitted recovery share stays visible, marked done, rather than vanishing. An
-  accepted invitation does **not** — it stops being a request, so the row goes and a success notice
-  takes its place.
-- Recovery sessions carry a 30-minute `expires_at` and `hasExpired` gates the action. PIN resets
-  and invitations have no expiry here — a reset's clock is the 48h contest period, and an
-  invitation does not lapse.
-- The poll interval is the recovery domain's `GUARDIAN_INBOX_POLL_INTERVAL_MS` (60s), not a new
-  constant. There are no webhooks; polling faster buys nothing.
-
-Not built: a standing "accounts you guard for" list. `GET /recovery/guardianships` carries the
-`active` rows to render it, but it is a reference view rather than an inbox, and the inbox is what
-Task 30 was about.
 
 ## The vault index
 
@@ -177,7 +139,7 @@ than showing a crash. Both were removed once the seam stopped throwing; see
 
 The wire contract has no `name` field on a secret — only opaque `ciphertext`. `SecretPayload`
 (`{ name, value }`) is a **client-local convention** encoded as JSON before the plaintext ever
-reaches `createSecret`, the same discipline as the Recovery Kit's `CRK1-` encoding: it never
+reaches `createSecret`: it never
 reaches the server and no other party parses it.
 
 `decodeSecretPayload` rejects anything that isn't `{ name: string, value: string }` with
@@ -282,80 +244,6 @@ exactly the one autosave is allowed to write in.
 
 `noteCharactersLeft` deliberately **goes negative rather than clamping**, so the editor can say
 how far over the limit a paste landed instead of just refusing.
-
-## The Recovery Kit
-
-Share 0 — the user's own copy of the Shamir share — needs a durable, retypeable form.
-`encodeRecoveryKitShare` produces `CRK1-` followed by grouped uppercase hex with a 2-byte SHA-256
-checksum; `decodeRecoveryKitShare` is tolerant of case, spaces and dashes and **rejects a
-mistyped character instead of returning a wrong share**. A silently wrong share fails at
-reconstruction, months later, which is exactly the failure mode the checksum removes.
-
-> This encoding is a **local presentation format, not a protocol constant.** It never reaches the
-> server, no other party parses it, and the share bytes inside it are the SSS library's own format
-> (which *is* durable). The `CRK1` prefix is there so a future change is detectable rather than
-> silently misparsed — the same discipline as the versioned blob layouts, applied to paper.
-
-`renderRecoveryKit` states the k-of-n scheme, the guardians it was split among, and that Cryple
-cannot reissue it.
-
-**Sequencing note:** share 0 only exists once recovery setup runs, and setup needs guardians, so
-the kit is surfaced from the Guardians screen rather than during first-run onboarding. Onboarding
-covers phrase, PIN and mode; there is nothing to put in a kit before a guardian exists.
-
-## Guardian-assisted seed recovery
-
-`seed-recovery.ts` is the state machine behind the **I lost my recovery phrase** entry point on
-the login page. Four steps: `request` → `waiting` → `reconstructing` → `recovered`, after which
-the phrase rejoins the ordinary import path (`choose-origin: import`, then `mnemonic-ready`), so
-the PIN step and `enrol` are the same code a normal sign-in runs.
-
-### The session cannot survive a reload, so nothing is persisted
-
-`POST /recovery/request` mints an **ephemeral hybrid key pair that exists only in page memory**,
-and every guardian wraps their share to it. A reload loses the private halves, and the shares
-already submitted become permanently unopenable — a stored `session.id` would resume a session
-whose replies can no longer be read. So the id is held in component state, the keys in a ref,
-and both are disposed on unmount. The screen says to keep the tab open because that is literally
-the constraint, not a nicety.
-
-This is also why the request is made exactly once: it is unsigned and **not retry-safe**, so a
-second call strands the first session with its own 30-minute TTL and its own collected shares.
-`restart` disposes the old keys before asking for anything new.
-
-### The Recovery Kit is one of the `k`
-
-Share 0 is the owner's Recovery Kit copy. It is never submitted to a session — the server-stored
-copy is wrapped to the owner's own encryption keys, which a recovering device does not have — so
-a session collects at most `n - 1` shares and the server can never see the whole quorum.
-**Counting the threshold is this module's job**, because only the screen knows whether the user
-pasted their Kit.
-
-Every function here therefore takes `hasOwnShare` and adds it to what guardians have sent:
-
-| Function | Answers |
-| --- | --- |
-| `reachableShares` | how many pieces this session could ever assemble |
-| `thresholdIsReachable` | whether that can meet `k` at all — drives the dead-end notice |
-| `guardiansStillNeeded` | how many guardians are outstanding right now |
-| `describeProgress` | the same, as a sentence, naming the Kit when it is counted |
-
-So the recommended 2-of-3 needs **one** guardian from a user who has their Kit and **two** from
-one who does not, and a vault configured `k = n` completes only with the Kit. The dead-end notice
-fires when even every guardian plus whatever the device holds cannot reach `k` — the screen says
-so on arrival rather than letting a 30-minute timer run out on something that was never going to
-complete, and it points at the Kit field, since pasting the Kit is often what makes it reachable.
-
-`SeedRecovery.tsx` holds `hasOwnShare` in state rather than reading the `ownShare` ref, because
-the ref does not re-render the progress panel. The decoded share itself stays in the ref — it is
-key material and never belongs in React state.
-
-### What the user has to supply
-
-The **username**, which is on the Recovery Kit and is neither the email nor the account address.
-`GET /recovery/vault` and `POST /recovery/request` are both keyed by it, and neither has any
-other lookup. A user with neither phrase nor Kit has no way in, and the screen should keep
-saying so rather than letting them discover it one field at a time.
 
 ## A modal, minus the DOM
 

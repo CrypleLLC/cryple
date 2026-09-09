@@ -118,13 +118,13 @@ describe('status handling is by response, never by verb', () => {
   it('reads a DELETE that answers 200 with a body', async () => {
     mockFetch({
       status: 200,
-      body: { message: 'Guardian removed', data: { share_removed: true, votes_withdrawn: 2 } },
+      body: { message: 'Secrets deleted', data: { requested: 3, deleted: 2 } },
     });
-    const response = await request<{ share_removed: boolean; votes_withdrawn: number }>({
+    const response = await request<{ requested: number; deleted: number }>({
       method: 'DELETE',
-      path: '/recovery/guardians/abc',
+      path: '/secrets',
     });
-    expect(response.data).toEqual({ share_removed: true, votes_withdrawn: 2 });
+    expect(response.data).toEqual({ requested: 3, deleted: 2 });
   });
 
   it('distinguishes 201 created from 200 already existed', async () => {
@@ -136,11 +136,11 @@ describe('status handling is by response, never by verb', () => {
 describe('error envelope', () => {
   it('carries only a code — there is no message field', async () => {
     mockFetch({ status: 409, body: { code: 'CONFLICT' } });
-    const error = await request({ method: 'PATCH', path: '/auth/pin-reset/confirm' }).catch((e) => e);
+    const error = await request({ method: 'PUT', path: '/users/password' }).catch((e) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect(error.code).toBe('CONFLICT');
     expect(error.status).toBe(409);
-    expect(error.endpoint).toBe('PATCH /auth/pin-reset/confirm');
+    expect(error.endpoint).toBe('PUT /users/password');
   });
 
   it('separates 401 UNAUTHORIZED from 401 INVALID_CREDENTIALS', async () => {
@@ -164,7 +164,7 @@ describe('error envelope', () => {
 
   it('captures the Allow header on a 405', async () => {
     mockFetch({ status: 405, body: { code: 'METHOD_NOT_ALLOWED' }, headers: { Allow: 'GET, PATCH' } });
-    const error = await request({ method: 'POST', path: '/auth/pin-reset/confirm' }).catch((e) => e);
+    const error = await request({ method: 'POST', path: '/users/second-factor' }).catch((e) => e);
     expect(error.allow).toBe('GET, PATCH');
   });
 });

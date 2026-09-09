@@ -2,7 +2,7 @@
 
 Account identity, the mode read, and the two one-way second-factor transitions.
 
-Task 11 of [tasks.md](../../../tasks.md). Endpoints per
+Task 11 of [tasks.md](../../../tasks/tasks.md). Endpoints per
 [front-end-endpoints.md § 8](../../../front-end-endpoints.md).
 
 ## API
@@ -73,7 +73,7 @@ enrolment in a loop.**
 
 ## `DELETE /users`
 
-Irreversible, and cascades to secrets, notes, documents, guardians and recovery shares. The body is
+Irreversible, and cascades to secrets, notes and documents. The body is
 **required** — an absent body is `400 INVALID_BODY`, not a successful delete.
 
 A retry answers `401 INVALID_CREDENTIALS` rather than `404`: the account row is gone, so the
