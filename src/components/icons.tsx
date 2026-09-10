@@ -122,6 +122,37 @@ export function DocumentsIcon(props: IconProps) {
   );
 }
 
+export function DriveIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3.5 13.5 6 5.5a2 2 0 0 1 1.9-1.4h8.2A2 2 0 0 1 18 5.5l2.5 8" />
+      <path d="M3.5 13.5h17v4a2.5 2.5 0 0 1-2.5 2.5H6a2.5 2.5 0 0 1-2.5-2.5v-4Z" />
+      <path d="M7 16.75h.01" />
+      <path d="M10.5 16.75h.01" />
+    </Icon>
+  );
+}
+
+export function DownloadIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3.5v11" />
+      <path d="m7.5 10.5 4.5 4.5 4.5-4.5" />
+      <path d="M4.5 18.5h15" />
+    </Icon>
+  );
+}
+
+export function UploadIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 20.5v-11" />
+      <path d="m7.5 13.5 4.5-4.5 4.5 4.5" />
+      <path d="M4.5 5.5h15" />
+    </Icon>
+  );
+}
+
 export function PlusIcon(props: IconProps) {
   return (
     <Icon {...props}>

@@ -19,6 +19,7 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `NoteEditorToolbar.tsx` | The editor's formatting controls |
 | `note-surface.ts` | DOM ↔ note document, for the `contentEditable` surface |
 | `DocumentsScreen.tsx` | The documents grid of page miniatures — opens each document in its own tab |
+| `DriveScreen.tsx` | The drive: file grid, drag-and-drop upload, progress, storage bar, download and delete |
 | `documents/DocumentWorkspace.tsx` | The `/docs/[id]` page: title, toolbar, A4 sheet, counts, save status |
 | `documents/DocumentToolbar.tsx` | The TipTap formatting toolbar |
 | `documents/DocumentOutline.tsx` | The heading navigation panel beside the sheet |
@@ -406,6 +407,33 @@ this one guards a longer piece of writing.
 
 A note that will not decrypt opens read-only, with **saving disabled**, so a re-seal cannot
 overwrite content this device could not read in the first place.
+
+## The drive screen
+
+Everything decidable without a DOM is in [`lib/app/files.ts`](../lib/app/README.md) with tests —
+byte formatting, file kinds, the storage bar, and **every string that makes a durability claim**.
+The component is wiring.
+
+Three rules the copy has to keep, and each has a test asserting it rather than a reviewer
+remembering it:
+
+- **Never claim two providers.** Replication is asynchronous, so for up to a minute a file is real
+  and exists in one place. `replicationLabel` says *"Saved. A second copy is made within a minute"*
+  until `gcs_state` is `ok`, and the test asserts the pending string contains neither "two" nor
+  "provider". A failed replica gets its own line rather than hiding behind the happy one.
+- **A file opens the moment R2 has it.** `isOpenable` keys on `r2_state`, not on the replica —
+  waiting for `gcs_state` would make the product feel a minute slower than it is for no gain.
+- **Deleting does not free space immediately.** The row keeps its bytes until the reconciler removes
+  both copies, so `fileDeleteConfirmation` and `storageFullMessage` both say when the space returns.
+  A user who deletes a file and then hits the ceiling would otherwise think the product is broken.
+
+The tile is the same **file** shape notes and documents use — A4 miniature, name, a line underneath,
+hover actions — because a third layout for the same kind of thing is drift. A file has no page to
+draw, so the miniature is a kind glyph until [thumbnails](../../tasks/tasks.md) arrive.
+
+`FILES_ENABLE` is off by default, so `/files` answers `404` on a deployment without R2. That is not
+an error worth showing a user: `ApiError.isDriveDisabled` turns it into "the drive is not switched
+on for this deployment".
 
 ## Document and note tiles
 

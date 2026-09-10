@@ -152,7 +152,7 @@ describe('a sign-in signature can never be used as an action signature', () => {
   });
 });
 
-describe('secret-delete is the one batchable action', () => {
+describe('the three batchable delete actions', () => {
   it('sorts ids ascending before signing', () => {
     expect(normalizeActionArgs('secret-delete', ['c', 'a', 'b'])).toEqual(['a', 'b', 'c']);
   });
@@ -185,8 +185,25 @@ describe('secret-delete is the one batchable action', () => {
 });
 
 describe('the action table matches the authoritative spec', () => {
-  it('covers all 6 actions', () => {
-    expect(Object.keys(ACTIONS)).toHaveLength(6);
+  it('covers all 7 actions', () => {
+    expect(Object.keys(ACTIONS)).toHaveLength(7);
+  });
+
+  it('makes file-delete take exactly one id — the drive has no batch route', () => {
+    expect(ACTIONS['file-delete']).toMatchObject({
+      args: ['file_id'],
+      secondFactor: true,
+      signer: 'owner',
+    });
+    expect(ACTIONS['file-delete']).not.toHaveProperty('variadic', true);
+  });
+
+  it('does not sort or de-duplicate file-delete, because there is nothing to batch', () => {
+    const id = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
+
+    expect(buildActionPayload(CHALLENGE, TIMESTAMP, 'file-delete', [id])).toBe(
+      `${CHALLENGE}:${TIMESTAMP}:file-delete:${id}`,
+    );
   });
 
   it('makes document-delete batchable, like secret-delete and note-delete', () => {

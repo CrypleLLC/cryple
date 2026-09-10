@@ -6,5 +6,6 @@ export * from './second-factor';
 export * from './vault';
 export * from './notes';
 export * from './documents';
+export * from './files';
 export * from './modal';
 export * from './shell';

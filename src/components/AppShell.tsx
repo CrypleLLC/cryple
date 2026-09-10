@@ -17,6 +17,7 @@ import VaultScreen from './VaultScreen';
 import { VaultRevealAction, VaultRevealProvider } from './VaultReveal';
 import {
   DocumentsIcon,
+  DriveIcon,
   LockSessionIcon,
   LogOutIcon,
   NotesIcon,
@@ -27,6 +28,10 @@ import {
 import { Badge, Button, Notice, Spinner } from './ui';
 
 const DocumentsScreen = dynamic(() => import('./DocumentsScreen'), {
+  loading: () => <Spinner />,
+});
+
+const DriveScreen = dynamic(() => import('./DriveScreen'), {
   loading: () => <Spinner />,
 });
 
@@ -61,6 +66,13 @@ const NAV_ITEMS = [
     description: 'Long-form writing, encrypted here and synced across your devices.',
     icon: DocumentsIcon,
     screen: DocumentsScreen,
+  },
+  {
+    id: 'drive',
+    label: 'Drive',
+    description: 'Files, encrypted on this device before they are stored.',
+    icon: DriveIcon,
+    screen: DriveScreen,
   },
   {
     id: 'security',

@@ -12,11 +12,23 @@ function pathOf(endpoint: string): string {
   return parts.length > 1 ? parts[1] : endpoint;
 }
 
+export const STORAGE_FULL =
+  'There is no room left in your storage for this file. Deleting a file frees its space within a minute.';
+
+export const OBJECT_TOO_LARGE = 'That file is larger than a single upload allows.';
+
 export function userMessageFor(error: ApiError): string {
   const path = pathOf(error.endpoint);
 
   if (AUTH_ENDPOINTS.has(path) && error.status === 404) {
     return GENERIC_AUTH_FAILURE;
+  }
+
+  if (error.isQuotaExceeded) {
+    return STORAGE_FULL;
+  }
+  if (error.isObjectTooLarge) {
+    return OBJECT_TOO_LARGE;
   }
 
   switch (error.code) {

@@ -5,14 +5,27 @@ already holds** (as opposed to wrapping *for someone else*, which is
 [`lib/pqxdh`](../pqxdh/README.md)).
 
 ```
-sealed(key, plaintext) = base64( 0x01 ‖ iv(12) ‖ AES-256-GCM(key, iv, plaintext) ‖ tag(16) )
+sealed(key, plaintext) =         0x01 ‖ iv(12) ‖ AES-256-GCM(key, iv, plaintext) ‖ tag(16)
+                        base64( … ) for anything that goes in a TEXT column
 ```
 
-| Consumer | Key | Plaintext |
-| --- | --- | --- |
-| `ciphertext` — [`lib/secrets`](../secrets/README.md) | that item's DEK | the item payload |
-| `wrapped_dek` — [`lib/secrets`](../secrets/README.md) | the vault KEK | the item DEK |
-| the note and document payloads | that item's DEK | the item payload |
+| Consumer | Key | Plaintext | Encoding |
+| --- | --- | --- | --- |
+| `ciphertext` — [`lib/secrets`](../secrets/README.md) | that item's DEK | the item payload | base64 |
+| `wrapped_dek` — [`lib/secrets`](../secrets/README.md) | the vault KEK | the item DEK | base64 |
+| the note and document payloads | that item's DEK | the item payload | base64 |
+| a drive chunk — [`lib/files`](../files/README.md) | that file's DEK | `u32be(index) ‖ u32be(count) ‖ payload` | **raw** |
+
+## Base64 is an encoding, not part of the envelope
+
+`sealBytes` / `openBytes` are the envelope. `sealBlob` / `openBlob` are the same thing base64-encoded
+and delegate to them, and `sealText` / `openText` add a UTF-8 step on top of that.
+
+**The base64 exists for `TEXT` columns and for nothing else.** Every field this client sends the API
+is one, which is why it was the only form here until the drive arrived — an R2 object is not a text
+column, and base64-ing a multi-gigabyte file would inflate it by a third for no reason. The raw pair
+was added in 2026-09-09 for [`lib/files`](../files/README.md); the layout is identical either way,
+and there is one implementation of it.
 
 ## The layout is ratified
 
