@@ -185,8 +185,20 @@ describe('the four batchable delete actions', () => {
 });
 
 describe('the action table matches the authoritative spec', () => {
-  it('covers all 7 actions', () => {
-    expect(Object.keys(ACTIONS)).toHaveLength(7);
+  it('covers all 8 actions', () => {
+    expect(Object.keys(ACTIONS)).toHaveLength(8);
+  });
+
+  it('keeps username-update single-argument, and behind the second factor', () => {
+    expect(ACTIONS['username-update']).toMatchObject({
+      args: ['username'],
+      secondFactor: true,
+      signer: 'owner',
+    });
+    expect(ACTIONS['username-update']).not.toHaveProperty('variadic');
+    expect(() => normalizeActionArgs('username-update', ['pedrosilva', 'psilva'])).toThrow(
+      /expected 1 argument/,
+    );
   });
 
   it('makes file-delete batchable, since the drive gained DELETE /files', () => {

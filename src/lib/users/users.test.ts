@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import vectors from '@/test/fixtures/test-vectors.json';
-import { TokenStore } from '@/lib/api';
+import {
+  ApiError,
+  TokenStore,
+  userMessageFor,
+  USERNAME_MALFORMED,
+  USERNAME_UNAVAILABLE,
+} from '@/lib/api';
 import { SessionKeystore } from '@/lib/session';
 import { deriveServerAuthToken } from '@/lib/pin';
 import { buildActionPayload, verifyPayload } from '@/lib/signing';
@@ -10,11 +16,14 @@ import type { AuthedContext } from '@/lib/context';
 import {
   deleteAccount,
   enableSecondFactor,
+  MalformedUsernameError,
   fetchAccountMode,
   getMe,
   getPublicKeys,
   lookupUsername,
+  resolveUsername,
   rotateSecondFactor,
+  updateUsername,
 } from './index';
 
 const mnemonic = vectors.seed_and_user_address.mnemonic;
@@ -146,6 +155,116 @@ describe('lookup and public keys', () => {
     await expect(
       getPublicKeys(await newContext(), '0F5C8B1E-4F89-11D3-9A0C-0305E82C3301'),
     ).rejects.toThrow(/canonical/);
+  });
+});
+
+describe('PUT /users/username — claiming a name', () => {
+  it('signs and sends the normalised name, not what was typed', async () => {
+    const calls = mockFetch({ status: 204 });
+    const context = await newContext(true);
+
+    expect(await updateUsername(context, '  PedroSilva  ')).toBe('pedrosilva');
+
+    const body = calls[0].body!;
+    expect(calls[0].method).toBe('PUT');
+    expect(calls[0].url).toBe('http://localhost:8080/users/username');
+    expect(body.username).toBe('pedrosilva');
+    expect(
+      verifyPayload(
+        buildActionPayload(
+          body.challenge as string,
+          body.timestamp as number,
+          'username-update',
+          ['pedrosilva'],
+        ),
+        body.signature as string,
+        publicKey,
+      ),
+    ).toBe(true);
+  });
+
+  it('demands the second factor on a Paranoid account and omits it on a Standard one', async () => {
+    const paranoidCalls = mockFetch({ status: 204 });
+    await updateUsername(await newContext(true), 'pedrosilva');
+    expect(paranoidCalls[0].body!.password).toBe(currentToken);
+
+    const standardCalls = mockFetch({ status: 204 });
+    await updateUsername(await newContext(false), 'pedrosilva');
+    expect(standardCalls[0].body).not.toHaveProperty('password');
+  });
+
+  it('refuses a malformed name before sending, with copy the UI can render', async () => {
+    const calls = mockFetch({ status: 204 });
+    const context = await newContext(true);
+
+    await expect(updateUsername(context, '-pedro')).rejects.toThrow(MalformedUsernameError);
+    await expect(updateUsername(context, 'ab')).rejects.toThrow(MalformedUsernameError);
+    await expect(updateUsername(context, 'pedro silva')).rejects.toThrow(MalformedUsernameError);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('renders one message for a collision, whoever holds the name', async () => {
+    const taken = { status: 422, body: { code: 'USERNAME_UNAVAILABLE' } };
+
+    for (const _ of [0, 1]) {
+      mockFetch(taken);
+      const context = await newContext(true);
+      const error = await updateUsername(context, 'pedrosilva').catch((caught) => caught);
+
+      expect(error).toBeInstanceOf(ApiError);
+      expect((error as ApiError).isUsernameUnavailable).toBe(true);
+      expect(userMessageFor(error as ApiError)).toBe(USERNAME_UNAVAILABLE);
+    }
+  });
+
+  it('maps the server’s format rejection to its own message, not the generic one', async () => {
+    mockFetch({ status: 400, body: { code: 'INVALID_PARAM' } });
+    const context = await newContext(true);
+    const error = await updateUsername(context, 'pedrosilva').catch((caught) => caught);
+
+    expect(userMessageFor(error as ApiError)).toBe(USERNAME_MALFORMED);
+    expect(userMessageFor(error as ApiError)).not.toBe(USERNAME_UNAVAILABLE);
+  });
+});
+
+describe('GET /users/resolve — a username in, an account out', () => {
+  it('sends the normalised name behind the bearer token', async () => {
+    const uuid = '0c892e57-93cf-423a-a9e9-fee5a9f87681';
+    const calls = mockFetch({
+      status: 200,
+      body: { message: 'ok', data: { uuid, username: 'pedrosilva' } },
+    });
+
+    expect(await resolveUsername(await newContext(), ' PedroSilva ')).toEqual({
+      uuid,
+      username: 'pedrosilva',
+    });
+    expect(calls[0].url).toBe('http://localhost:8080/users/resolve?username=pedrosilva');
+    expect(calls[0].headers.Authorization).toBe('Bearer jwt-token');
+  });
+
+  it('gives a reserved name and a name nobody ever held the same outcome', async () => {
+    const notFound = { status: 404, body: { code: 'NOT_FOUND' } };
+
+    mockFetch(notFound);
+    const reserved = await resolveUsername(await newContext(), 'pedrosilva');
+
+    mockFetch(notFound);
+    const neverHeld = await resolveUsername(await newContext(), 'nobodyhasthis');
+
+    expect(reserved).toBeUndefined();
+    expect(neverHeld).toEqual(reserved);
+  });
+
+  it('answers a malformed name locally, the same way as an unknown one', async () => {
+    const calls = mockFetch({ status: 200, body: {} });
+    expect(await resolveUsername(await newContext(), 'pedro silva')).toBeUndefined();
+    expect(calls).toHaveLength(0);
+  });
+
+  it('propagates anything that is not a 404', async () => {
+    mockFetch({ status: 500, body: { code: 'INTERNAL_ERROR' } });
+    await expect(resolveUsername(await newContext(), 'pedrosilva')).rejects.toThrow(ApiError);
   });
 });
 

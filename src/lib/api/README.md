@@ -62,12 +62,26 @@ Three predicates matter more than the raw code:
 | `isSessionOver` | `401 UNAUTHORIZED` — token missing/expired. **Sign in again from scratch.** |
 | `isCredentialFailure` | `401 INVALID_CREDENTIALS` — token is fine, the account or second factor is not. Reachable on a plain `GET`. **Not an expiry signal.** |
 | `isAuthEndpointRejection` | `404` from `/sign-up`, `/sign-in`, `/auth/verify` — deliberately ambiguous |
+| `isUsernameUnavailable` | `422 USERNAME_UNAVAILABLE` from `PUT /users/username` — somebody holds the string, and **which somebody is not disclosed** |
 
 A URL matching no route at all returns `404` as `text/plain`; that is parsed into a
 `NOT_FOUND` `ApiError` rather than crashing the JSON reader.
 
 **Never render "user not found" for an auth `404`.** Unknown account, wrong signature and
 wrong PIN are all the same code, by design — see [`lib/auth`](../auth/README.md).
+
+Three codes are mapped by **endpoint as well as code**, because the same code means something
+different on a username route than it does anywhere else:
+
+| Where | Renders |
+| --- | --- |
+| `422 USERNAME_UNAVAILABLE`, any route | `USERNAME_UNAVAILABLE` — one string, identical whether the name is another account's current one or one it reserved. **Never narrate a difference the server refused to report** |
+| `400 INVALID_PARAM` from `PUT /users/username` | `USERNAME_MALFORMED` — the format rule, which is a property of the string the user just typed, not the generic failure |
+| `404` from `GET /users/resolve` | `USERNAME_NOT_IN_USE` — *no account is using that name right now*, and nothing more. It is the same answer for a name nobody ever held and one somebody renamed away from, so it must never read as "this user does not exist" |
+
+`422` is the only status in the API that carries it, and `USERNAME_UNAVAILABLE` is the only code
+that comes back with it; `fallbackCode` is deliberately not taught about `422`, since a body
+without the code would be a server that stopped answering the way this route is specified.
 
 ## Optional fields
 

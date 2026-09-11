@@ -17,6 +17,14 @@ export const STORAGE_FULL =
 
 export const OBJECT_TOO_LARGE = 'That file is larger than a single upload allows.';
 
+export const USERNAME_UNAVAILABLE = 'That username is unavailable. Choose another one.';
+
+export const USERNAME_MALFORMED =
+  'A username is 3 to 64 characters — lowercase letters and numbers, with dots, underscores or ' +
+  'hyphens between them, starting and ending with a letter or a number.';
+
+export const USERNAME_NOT_IN_USE = 'No account is using that username right now.';
+
 export function userMessageFor(error: ApiError): string {
   const path = pathOf(error.endpoint);
 
@@ -29,6 +37,15 @@ export function userMessageFor(error: ApiError): string {
   }
   if (error.isObjectTooLarge) {
     return OBJECT_TOO_LARGE;
+  }
+  if (error.isUsernameUnavailable) {
+    return USERNAME_UNAVAILABLE;
+  }
+  if (path === '/users/username' && error.code === 'INVALID_PARAM') {
+    return USERNAME_MALFORMED;
+  }
+  if (path === '/users/resolve' && error.status === 404) {
+    return USERNAME_NOT_IN_USE;
   }
 
   switch (error.code) {

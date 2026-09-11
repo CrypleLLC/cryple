@@ -20,6 +20,8 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `note-surface.ts` | DOM ↔ note document, for the `contentEditable` surface |
 | `DocumentsScreen.tsx` | The documents grid of page miniatures — opens each document in its own tab |
 | `DriveScreen.tsx` | The drive: file grid, drag-and-drop upload, progress, download, selection and delete |
+| `SecurityScreen.tsx` | The account section — the username panel, and the one-way upgrade to a PIN |
+| `UsernameCard.tsx` | The rename panel: the current name, the claim, and what a rename does |
 | `StorageMeter.tsx` | The account's storage bar, in the sidebar corner — stored bytes solid, reservations behind them |
 | `documents/DocumentWorkspace.tsx` | The `/docs/[id]` page: title, toolbar, A4 sheet, counts, save status |
 | `documents/DocumentToolbar.tsx` | The TipTap formatting toolbar |
@@ -50,7 +52,24 @@ panel; the Vault's global reveal toggle is the first of them. State shared betwe
 and its screen lives in a provider wrapping the shell, as `VaultReveal.tsx` does, since the header
 sits outside the screen's tree.
 
-### The token layer
+#### The username panel lives on the Security screen
+
+There is no Settings section, and adding one for a single field would split account chrome across
+two places. `UsernameCard` renders in both modes of `SecurityScreen`, first in the `PanelGrid`,
+so a Paranoid account — which has nothing left to configure about signing in — still has a panel
+to act on rather than a screen that only states a fact.
+
+Everything it decides is in [`lib/app/username.ts`](../lib/app/README.md#renaming-the-account);
+the component sends the claim, calls `refreshAccount` so the header avatar and name follow the
+rename, and clears the field only on success. The two sentences about what a rename does are
+rendered unconditionally, not behind a disclosure — they are the screen's reason for existing as
+much as the field is.
+
+The second factor is **not** re-prompted here. A Paranoid session already holds its
+`Server_Auth_Token` from the unlock, and `updateUsername` reads it the way `deleteAccount` and
+`rotateSecondFactor` do; a Standard account signs without one and the server accepts that.
+
+## The token layer
 
 Every colour, type step and shadow is a Tailwind v4 `@theme` token in
 [`globals.css`](../app/globals.css). Components name tokens (`bg-surface`, `text-ink-muted`,

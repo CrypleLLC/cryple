@@ -328,7 +328,7 @@ Your own account, as the API sees it. Takes no parameters: the account is the on
 | Field          | Notes                                                                                                            |
 | -------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `user_address` | The `SHA-256` of the seed you authenticated with. Useful to confirm the client derived the account you expected. |
-| `username`     | The auto-assigned username ([§8](#8-users-endpoints)); this is how one account addresses another. |
+| `username`     | The account's **current** username ([§8](#8-users-endpoints)); this is how one account addresses another. Assigned automatically at sign-up and changeable through `PUT /users/username`. |
 | `uuid`         | Your public identifier — feed it to `GET /users/{uuid}/public-keys`.                                             |
 | `has_password` | **`true` = Paranoid Mode**, `false` = Standard Mode. Always present, never omitted.                              |
 | `created_at`   | Account creation.                                                                                                |
@@ -343,7 +343,7 @@ It is also how you confirm a `POST /users/second-factor` that timed out actually
 
 ### `GET /users/lookup?address={user_address}` — public
 
-Resolves an address to its auto-assigned username.
+Resolves an address to that account's **current** username.
 
 | Param     | In    | Required | Notes                        |
 | --------- | ----- | -------- | ---------------------------- |
@@ -359,6 +359,74 @@ Resolves an address to its auto-assigned username.
 ```
 
 **Errors:** `400 INVALID_PARAM` (missing/malformed address) · `404 NOT_FOUND` (no such user, or user has no username).
+
+This is the **inverse** of `GET /users/resolve` below and is public, because its only key is a `user_address` — presenting a valid one already proves possession of the seed it derives from. A `users.uuid` proves nothing, which is why the reverse direction is behind the JWT.
+
+### `PUT /users/username` — 🔒 protected
+
+Claims a username and makes it the account's current one.
+
+**An account holds a set of usernames and displays one.** A rename **adds** a name and never
+releases the previous one, so nobody else can take a name this account has used, and the owner can
+switch back at any time by claiming it again — there is no separate reclaim call.
+
+```json
+{
+  "username": "pedrosilva",
+  "challenge": "...",
+  "timestamp": 1785000000,
+  "signature": "...",
+  "password": "..."
+}
+```
+
+| Field | Notes |
+| --- | --- |
+| `username` | **Normalised before signing**: lowercased and trimmed. Must match `^[a-z0-9][a-z0-9._-]{1,62}[a-z0-9]$` — ASCII only |
+| signed action | `username-update`, one argument: the normalised username. Second factor required on Paranoid accounts |
+
+⚠️ **Sign the normalised form, not what the user typed.** The server normalises again before
+verifying the signature, so signing the raw input produces a well-formed request that fails with
+`401 INVALID_CREDENTIALS` — a formatting mistake wearing an authentication error's clothes.
+
+**`204 No Content`** on success.
+
+**Errors:** `400 INVALID_PARAM` (fails the format) · `401 INVALID_CREDENTIALS` (signature or second
+factor) · **`422 USERNAME_UNAVAILABLE`**.
+
+⚠️ **The `422` is the same answer whoever holds the name.** A name held by another account returns
+it identically whether that account currently displays it or merely reserved it by renaming away.
+**Do not render a message that speculates about which** — the server does not tell you, on purpose.
+
+### `GET /users/resolve?username={username}` — 🔒 protected
+
+Resolves a username to an account. This is the direction safe sharing addresses a recipient in.
+
+| Param | In | Required | Notes |
+| --- | --- | --- | --- |
+| `username` | query | ✅ | Normalised client-side first, same rule as above |
+
+**`200 OK`**
+
+```json
+{
+  "message": "Account resolved successfully",
+  "data": { "uuid": "0e2a4c6e-8b0d-4f4a-8c8e-0b2d4f6a8c0e", "username": "pedrosilva" }
+}
+```
+
+Returns the `uuid` and nothing else — not the `user_address`, not a public key, not anything the
+account has configured. Feed the `uuid` to `GET /users/{uuid}/public-keys`.
+
+**Errors:** `404 NOT_FOUND`.
+
+⚠️ **Only the current username resolves**, and the `404` is deliberately ambiguous: a name nobody
+ever held, a malformed name, and a name someone renamed away from all return it. **Never render it
+as "this user does not exist"** — that claims something the server did not say, and the ambiguity is
+what stops an old name being used to confirm an account's new one.
+
+Floored by `AUTH_MIN_RESPONSE_MS` like `/users/lookup`, so a `404` is never measurably faster than a
+hit.
 
 ### `GET /users/{uuid}/public-keys` — 🔒 protected
 

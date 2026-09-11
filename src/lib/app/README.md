@@ -14,6 +14,7 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | `icon-size.ts` | The four-step size scale shared by all three grids, the columns each draws, and the remembered choice per screen |
 | `modal.ts` | A modal's keyboard contract, backdrop dismissal and scroll-lock counting |
 | `shell.ts` | `accountInitial`, the sidebar avatar's letter |
+| `username.ts` | The rename screen's validation and the copy that has to be on it |
 
 ## Onboarding
 
@@ -394,6 +395,33 @@ past its edge, let go, and the dialog closes mid-selection.
 **`scrollLockTransition` is reference-counted**, so a nested dialog closing cannot hand the page
 back its scrollbar while an outer one is still open.
 
+
+## Renaming the account
+
+`username.ts` is the Security screen's username panel minus the DOM. `checkUsername(input,
+current)` normalises first — lowercase and trim — then applies `USERNAME_PATTERN` from
+[`lib/users`](../users/README.md), then refuses a claim on the name already displayed. The order
+matters: normalising after validating would reject `PedroSilva`, which is the same claim as
+`pedrosilva` and cannot be used against it.
+
+**Two sentences on that screen are not optional, and a test pins each.**
+
+- **A rename adds a name, it does not remove one.** Every name the account has ever held stays
+  owned by it for ever — the server keeps the set because it *is* the uniqueness constraint, and
+  it cannot be moved into the client's encrypted space like every other label. A user who renames
+  to distance themselves from a name has not erased it, and this is the one place the product can
+  say so.
+- **The old name stops working.** Only the current name resolves, so a reference somebody wrote
+  down before the rename stops arriving. That is deliberate: it is what buys the unlinkability
+  between an old name and the account that now uses a new one.
+
+Switching back is claiming the name again — there is no reclaim affordance, because there is no
+reclaim call.
+
+**No copy here may speculate about who holds a name that was refused.** The server answers a
+collision identically whether the string is another account's current name or one it reserved, and
+narrating a difference would undo the uniformity that stops the claim route being a rename oracle.
+A test greps the whole copy object for *another account*, *someone else* and *taken by*.
 
 ## The shell's account chrome
 

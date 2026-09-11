@@ -13,3 +13,4 @@ export * from './usage';
 export * from './previews';
 export * from './modal';
 export * from './shell';
+export * from './username';

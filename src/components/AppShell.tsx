@@ -78,7 +78,7 @@ const NAV_ITEMS = [
   {
     id: 'security',
     label: 'Security',
-    description: 'How signing in to this account works.',
+    description: 'Your username, and how signing in to this account works.',
     icon: SecurityIcon,
     screen: SecurityScreen,
   },

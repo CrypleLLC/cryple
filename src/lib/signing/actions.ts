@@ -19,6 +19,7 @@ export const ACTIONS = {
     signer: 'owner',
   },
   'account-delete': { args: ['user_address'], secondFactor: true, signer: 'owner' },
+  'username-update': { args: ['username'], secondFactor: true, signer: 'owner' },
   'secret-delete': {
     args: ['secret_id'],
     secondFactor: true,
