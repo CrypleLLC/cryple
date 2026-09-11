@@ -30,6 +30,7 @@ Section numbers are **not contiguous** — they are the original numbering from 
 - [10–11. Recovery and PIN Reset Endpoints — removed](#1011-recovery-and-pin-reset-endpoints-removed-2026-09-04)
 - [12. Notes Endpoints](#12-notes-endpoints)
 - [16. Documents Endpoints](#16-documents-endpoints)
+- [17. Files Endpoints](#17-files-endpoints)
 
 ---
 
@@ -153,8 +154,10 @@ path** is not in that category — see `405` below — and does return the envel
 | 404  | `NOT_FOUND`           | Resource does not exist, is not yours, **or** authentication failed on an auth endpoint.                                                                                                                                                                                           |
 | 405  | `METHOD_NOT_ALLOWED`  | The path exists but does not accept this verb.                                                                                                                                                                                                                                     |
 | 409  | `CONFLICT`            | The resource is not in a state that accepts the request.                                                                                                                                                                                                                                                                                                                               |
+| 413  | `BAD_REQUEST`         | `POST /files` only ([§17](#17-files-endpoints)): the declared object exceeds `FILES_MAX_OBJECT_BYTES`. **Note the code is `BAD_REQUEST`, not a code of its own** — branch on the status, not the code, to tell this from an ordinary field rejection.                                                                                                                                    |
 | 500  | `INTERNAL_ERROR`      | Unexpected server/database failure. Safe to retry once.                                                                                                                                                                                                                            |
 | 503  | `NOT_READY`           | `GET /ready` only ([§6](#6-service-endpoints)): a dependency did not answer. Never returned by any other endpoint.                                                                                                                                                                 |
+| 507  | `QUOTA_EXCEEDED`      | `POST /files` only ([§17](#17-files-endpoints)): the account has no storage left for this upload. The only `5xx` in this file that is **not** a server fault and must not be retried unchanged.                                                                                     |
 
 Codes defined but not currently emitted by any handler: `DATABASE_ERROR`, `EMPTY_BODY`, `FORBIDDEN`.
 
@@ -971,3 +974,249 @@ One `document-delete` signature covering a whole set. **Sort the ids ascending a
 **`200 OK`:** `{ "requested": 2, "deleted": 2 }`
 
 `deleted` can be lower without being an error. An empty id set is `404 NOT_FOUND`, returned before the signature is checked so it cannot burn a challenge.
+
+---
+
+## 17. Files Endpoints
+
+🔒 All protected. The drive. A "file" is an opaque encrypted object in Cloudflare R2 plus one row of metadata here — **no byte of file content passes through this API.** It issues presigned URLs and records rows; you `PUT` and `GET` the bytes directly against R2.
+
+**The domain is opt-in.** With `FILES_ENABLE=false` — the default — none of these routes are wired and every one of them is `404`. Treat a `404` on `GET /files` as "the drive is off on this deployment", not as an error to show a user.
+
+Read [storage-plan.md](../api-general/.docs/storage-plan.md) before implementing. This section is the wire contract; that document is the format, and getting the format wrong corrupts data rather than failing a request.
+
+### The object layout, and the four numbers that must agree
+
+A file is `chunk_count` sealed chunks laid end to end:
+
+```
+chunk_plaintext = u32be(chunk_index) ‖ u32be(chunk_count) ‖ payload
+chunk_object    = 0x01 ‖ iv(12) ‖ AES-256-GCM(DEK, iv, chunk_plaintext) ‖ tag(16)
+```
+
+| Constant | Value | Why |
+| --- | --- | --- |
+| Chunk payload | 8 MiB (`8388608`) | One chunk is one R2 multipart part, and R2's minimum part size is 5 MiB |
+| Chunk overhead | `37` | `1` envelope byte + `12` IV + `8` position header + `16` GCM tag |
+| Chunk stride | `8388645` | Chunk *n* of a full object starts at `n × 8388645` — this is what makes a ranged read possible |
+| Padding bucket | 64 KiB (`65536`) | The plaintext is padded to the next multiple **before** chunking |
+
+> **The overhead is 37, not 29.** 29 is the envelope overhead of a chunk with no position header, which is what this format was before the index moved out of AEAD additional data — the sealed-blob envelope has none. An offset computed with 29 drifts 8 bytes per chunk and every ranged read after the first fails its GCM tag.
+
+**Raw bytes, not base64.** The envelope's base64 encoding exists for `TEXT` columns; an R2 object is not one, and base64-ing a multi-gigabyte file inflates it by a third for nothing. `ciphertext` (the manifest) is base64 because it is a column; the object is not.
+
+`size_bytes` is the **stored, padded** length of the whole object. Derive it, and never guess it:
+
+```
+padded     = ceil(true_size / 65536) × 65536
+chunk_count = ceil(padded / 8388608)
+size_bytes  = padded + chunk_count × 37
+```
+
+The last chunk is short, so `size_bytes` is **not** `chunk_count × 8388645`. The server rejects a `POST` whose two numbers do not describe the same object: it requires `ceil(size_bytes / 8388645) == chunk_count` and answers `400 BAD_REQUEST` with `size_bytes does not match chunk_count`.
+
+### The sealed manifest
+
+There is no filename column. A file's name, MIME type and **true plaintext length** live in `ciphertext`, sealed under the file's own DEK exactly like `secrets.ciphertext`:
+
+```json
+{
+  "name": "passport-scan.pdf",
+  "mime": "application/pdf",
+  "size": 2483911,
+  "chunk_size": 8388608,
+  "chunk_count": 1,
+  "thumbnail_id": "…optional uuid",
+  "created_at": "2026-09-09T10:14:22Z"
+}
+```
+
+`size` is the true length and lives only here — `size_bytes` on the wire is the padded one, which is what the account is billed and quota'd for.
+
+**`chunk_count` is a manifest field and nothing else.** `POST /files` takes one in its body, but no response ever returns it: the row carries `size_bytes` and not the chunk layout. So a client reads the layout from the manifest it just decrypted, and the only number it has to reconcile against the row is `size_bytes`. **Verify the manifest against the row before decrypting** ([storage-plan.md §5](../api-general/.docs/storage-plan.md#5-settled-decisions)): recompute `size_bytes` from `size` with the formula above and refuse if it disagrees. Present that as a data error, not a security alert — the likely cause is a bug in an upload.
+
+### `POST /files`
+
+Checks the quota, mints the object key, writes the row at `r2_state: "pending"`, and returns presigned upload URLs. **JWT only** — no signature.
+
+**Request:**
+
+```json
+{
+  "id": "6b2f…-uuid, generated by you",
+  "ciphertext": "base64 sealed manifest",
+  "wrapped_dek": "base64",
+  "size_bytes": 65573,
+  "chunk_count": 1,
+  "version": "v1"
+}
+```
+
+**`ciphertext_sha256` is not sent here** — it goes to `PATCH`. It is computed over the finished object, which does not exist yet at this point, and this is the call that hands you the URLs to create it with. Sending it here anyway is ignored.
+
+`id` is optional but **send it** — same idempotency contract as `POST /notes` and `POST /documents`. A replay returns `200` with the stored row instead of minting a second row and a second R2 object, and **if that row is still `pending` it comes back with a fresh ticket listing only the parts R2 does not yet have.** `POST` is therefore both create and resume; `GET /files/{id}/upload` is the same answer without re-sending the body.
+
+**`201 Created`** (or **`200 OK`** on replay):
+
+```json
+{
+  "message": "File created successfully",
+  "data": {
+    "id": "6b2f…-uuid",
+    "ciphertext": "base64…",
+    "wrapped_dek": "base64…",
+    "size_bytes": 65573,
+    "ciphertext_sha256": "…",
+    "version": "v1",
+    "r2_state": "pending",
+    "gcs_state": "pending",
+    "created_at": "…Z",
+    "updated_at": "…Z",
+    "upload": {
+      "multipart": false,
+      "chunk_size": 8388608,
+      "parts": [ { "number": 1, "url": "https://…presigned…", "size": 65573 } ],
+      "expires_at": "…Z"
+    }
+  }
+}
+```
+
+**`multipart` decides the upload shape and you must honour it.** `false` is a single presigned `PUT` of the whole object — no multipart, and therefore no minimum part size, which is what keeps small files cheap at an 8 MiB chunk. `true` is one `UploadPart` URL per chunk. Part numbers are 1-based and `size` is exactly what that part must carry.
+
+`expires_at` is one hour out by default (`FILES_UPLOAD_URL_TTL_SECONDS`). A large multipart that outlives it re-requests the ticket rather than failing the whole upload.
+
+**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (`id` is not a canonical UUID) · `400 BAD_REQUEST` (`size_bytes does not match chunk_count`, or an unsupported `version`) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · **`413 BAD_REQUEST`** (over `FILES_MAX_OBJECT_BYTES`, 5 GiB by default) · **`507 QUOTA_EXCEEDED`** · `500 INTERNAL_ERROR`.
+
+### `GET /files/{id}/upload` — resume
+
+Which parts R2 already holds, plus URLs for the ones it does not.
+
+**`200 OK`:** `{ "uploaded": [1, 3], "parts": [ { "number": 2, "url": "…", "size": 8388645 } ] }`
+
+**Nothing about a partial upload is recorded in this API** — the answer comes from R2's own `ListParts`. So a client that reloads mid-upload must ask rather than remember, and must not assume its own progress counter survived.
+
+**`uploaded` listing every part with an empty `parts` means the object is already assembled** and only the `PATCH` is outstanding — the state a client reaches when its completion call was cut off after R2 acted. Send nothing, hash the object, and `PATCH`.
+
+**The hash covers the finished object, not what you re-send.** So a resume still reads and re-seals every chunk; `uploaded` only says which ones need not be `PUT` again. That is possible because a chunk's IV is derived from its index, making sealing reproducible — see `storage-plan.md` §3.3.
+
+**Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
+
+### `DELETE /files/{id}/upload` — give the reservation back
+
+Abandons an upload that will not be finished: aborts the multipart if there is one, removes the row, and frees the quota immediately. **JWT only, and it takes no body** — the one `DELETE` in this API that does not, because it carries no signed action.
+
+**`204 No Content`** — no body.
+
+**Call this when an upload has failed and the user has given up on it**, not on every error. The row plus the parts R2 already holds are what make an interrupted upload resumable through `GET /files/{id}/upload`; abandoning throws that away. Nothing was stored, so there is nothing to restore.
+
+**Why a `POST /files` row costs quota at all:** the check runs *before* any URL is signed, so a `pending` row is a **reservation** — without it a client could mint unlimited signed capacity. That is also why the fix is to remove the row rather than to stop counting it.
+
+**Only a `pending` row can be abandoned.** A stored file, a row already deleted, another account's id, a second call, and a `PATCH` that landed between the failure and this request all answer `404` — and all of them mean *stop worrying about it*, never *retry*. `DELETE /files/{id}` with a `file-delete` signature stays the only way to remove a file that exists.
+
+**A closed tab never calls this**, so a server-side sweep still collects `pending` rows older than `FILES_ABANDONED_AFTER_SECONDS` (24 h). This route only turns "within a day" into "now" for the case the user is watching.
+
+**Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
+
+### `PATCH /files/{id}`
+
+Completes the upload. **JWT only.**
+
+**Request:**
+
+```json
+{ "ciphertext_sha256": "hex sha-256 of the whole stored object" }
+```
+
+**`ciphertext_sha256` is required here**, and this is the first moment it can exist: it is the hash of the finished object. Compute it incrementally as you seal and upload — one running SHA-256 over each sealed chunk in order — so a multi-gigabyte upload never has to hold more than the parts in flight. A malformed value is `400 BAD_REQUEST` before the service is reached.
+
+**Do not send part ETags, and do not read them.** A `parts` array is still accepted and **ignored** since 2026-09-10: the server builds the completion from R2's own `ListParts`. A client that reloaded mid-upload has forgotten the ETags it once had, so any list it could send would be incomplete. This also means **the bucket does not need `ETag` under CORS `ExposeHeaders`** — a browser never has to read a header off its own `PUT`.
+
+**Retrying a `PATCH` is safe, including one whose answer you never received.** Completion is what consumes the multipart, so a second attempt finds no upload id — that is treated as *already assembled*, not as an error, and the length check below decides. Without this a lost response left the object finished in R2 and the row stuck at `pending` forever.
+
+**`200 OK`** with the file row, now `r2_state: "ok"`.
+
+**The server verifies before it believes you.** It `HEAD`s the object and compares its length against the `size_bytes` you declared at `POST`. A mismatch is `409 CONFLICT`, and **the object is abandoned rather than repaired**: the multipart is aborted, the row stays `pending`, and a 24-hour sweep collects it. Do not retry with an adjusted size — start a new upload.
+
+**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` · `400 BAD_REQUEST` (`ciphertext_sha256` missing or not 64 hex characters) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `409 CONFLICT` (the stored object does not match the declared size) · `500 INTERNAL_ERROR`.
+
+### `GET /files`
+
+The listing. Returns the sealed manifests — **a directory listing is your render of data this API cannot read.**
+
+**`200 OK`:** the same row shape as `POST`, minus `upload`, in a `data` array with a `page` object.
+
+Paginated per [§3.1](#31-pagination), the same envelope `GET /notes` and `GET /documents` use — follow `next_cursor` until `has_more` is `false`, and never build a cursor yourself.
+
+Rows with `r2_state: "pending"` are uploads that have not completed. They are not in the vault and cannot be downloaded, but they are not junk either: `GET /files/{id}/upload` resumes one and `DELETE /files/{id}/upload` gives its reservation back, and the sweep collects whatever is left after `FILES_ABANDONED_AFTER_SECONDS`. Show them as unfinished uploads rather than as files — or as nothing at all, which leaves the user unable to reclaim the space.
+
+**Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
+
+### `GET /files/usage`
+
+What a storage bar needs.
+
+**`200 OK`:** `{ "used_bytes": 8454149, "stored_bytes": 65573, "quota_bytes": 524288000, "file_count": 2 }`
+
+`quota_bytes` is `users.storage_quota_bytes` — a ceiling, not a plan. The default is 500 MB.
+
+**There are two sums because they answer different questions**, and a client that shows the wrong one lies to the user:
+
+| | What it is | What it is for |
+| --- | --- | --- |
+| `stored_bytes` | `SUM(size_bytes) WHERE r2_state = 'ok'` — what R2 actually holds | **What a storage bar shows.** These are files that exist |
+| `used_bytes` | the same sum over **every** live row, `pending` included | What the ceiling is checked against, before any URL is signed |
+
+The difference is uploads that reserved their bytes and have not finished. **The reservation is deliberate** — without it a client could call `POST /files` a thousand times and mint unlimited signed capacity — and it is why `507 QUOTA_EXCEEDED` can arrive while a bar drawn from `stored_bytes` still shows room. Draw the difference as a second, quieter segment rather than hiding it, and `DELETE /files/{id}/upload` is what gives a reservation back.
+
+**A deleted row is in neither sum.** Its bytes are released the moment it is marked, before the objects leave R2 and GCS — the space returns to the user ahead of the storage bill, which is the friendlier way round.
+
+**Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
+
+### `GET /files/{id}`
+
+The manifest, the wrapped DEK, and a short-lived presigned `GET` for the object.
+
+**`200 OK`:** the file row plus `{ "url": "https://…presigned…", "expires_at": "…Z" }`
+
+The URL is scoped to one object and one method and lives **five minutes** by default (`FILES_DOWNLOAD_URL_TTL_SECONDS`). Re-request it rather than caching it; an expired URL fails in a way that looks like a missing file.
+
+**Reads never touch the GCS replica.** That is what keeps its egress at zero. `gcs_state` tells you about insurance, not about availability, and a file with `gcs_state: "pending"` is fully readable.
+
+**Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
+
+### `DELETE /files/{id}`
+
+**Requires a `file-delete` signed action** ([signed-actions.md](../api-general/.docs/auth/signed-actions.md)), plus the second factor on Paranoid accounts — unlike create and complete, which are JWT only.
+
+**Request:** `{ "challenge": "…", "timestamp": 1737676800, "signature": "…", "password": "Paranoid Mode only" }`
+
+**`204 No Content`** — no body.
+
+**This is the one-element case of `DELETE /files`**, below — same action label, same signature shape. Use whichever matches the gesture.
+
+**The row is marked, not removed.** `deleted_at` is set and the objects leave R2 and GCS when the mirror worker gets to them. Until then the bytes still count against the quota, and `GET /files/{id}` is already `404`.
+
+**Errors:** `400 INVALID_BODY` (a `DELETE` with no body is `400`, not `204`) · `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` (bad signature **or** wrong PIN — indistinguishable, by design) · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
+
+### `DELETE /files`
+
+Deletes a set of files under **one** signature. **Requires a `file-delete` signed action** over the ids, plus the second factor on Paranoid accounts.
+
+**Request:** `{ "ids": ["…", "…"], "challenge": "…", "timestamp": 1737676800, "signature": "…", "password": "Paranoid Mode only" }`
+
+The ids in the signed payload are **sorted ascending and de-duplicated**, exactly as for `secret-delete`, `note-delete` and `document-delete` — the server rebuilds the list its own way and a differently-ordered one verifies against nothing. Send `ids` in that same normalized order.
+
+**`200 OK`:** `{ "requested": 3, "deleted": 2 }` — read the body; this route does not return `204`.
+
+**A shortfall is not a partial failure.** The rows are marked in one statement, so it applies to the whole set or to none of it. `deleted < requested` means some ids matched no row — already deleted, never existed, or belonging to another account, all indistinguishable by design. Treat it as *the list is out of date* and reload.
+
+**`deleted` counts rows, never objects.** Each marked row is removed from R2 and GCS afterwards, one at a time, exactly as a single delete already was; the bytes leave the quota when the mirror worker gets to them.
+
+**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (any id that is not a canonical lowercase UUID, checked before anything is deleted) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (an empty id list) · `500 INTERNAL_ERROR`.
+
+### What this API does not do
+
+- **It does not see your bytes.** Uploads and downloads are client ↔ R2. What it holds is a wrapped key it cannot unwrap and a hash you computed.
+- **It does not verify your padding, your chunking or your hash.** It sees a stored length and checks it against the object that landed. Everything else — the 64 KiB bucket, the position header in each chunk, `ciphertext_sha256` actually matching — is a client obligation, and a client that gets one wrong produces a file only it can fail to open.
+- **It does not replicate synchronously.** `r2_state: "ok"` with `gcs_state: "pending"` is the normal state for up to a minute. **The UI must not claim two providers**; the honest promise is "replicated within a minute".

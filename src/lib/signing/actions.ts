@@ -37,6 +37,12 @@ export const ACTIONS = {
     signer: 'owner',
     variadic: true,
   },
+  'file-delete': {
+    args: ['file_id'],
+    secondFactor: true,
+    signer: 'owner',
+    variadic: true,
+  },
 } as const satisfies Record<string, ActionSpec>;
 
 export type ActionLabel = keyof typeof ACTIONS;

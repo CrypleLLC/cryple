@@ -3,19 +3,26 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { deleteNotes, listNotes, openNote, type NoteRecord } from '@/lib/notes';
 import {
+  NOTE_MINIATURE_TEXT_SHARE,
   batchDeleteConfirmation,
   batchDeleteSummary,
   buildNoteTiles,
+  defaultIconSize,
+  gridTemplate,
+  miniatureTextPixels,
   noteCountLabel,
+  readIconSize,
   retainSelectable,
   toggleNoteSelection,
+  writeIconSize,
+  type IconSize,
   type NoteTile,
   type OpenedNote,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
 import NoteEditor from './NoteEditor';
 import { CheckIcon, NotesIcon, PlusIcon, TrashIcon } from './icons';
-import { Button, Card, Empty, Notice, Spinner } from './ui';
+import { Button, Card, Empty, Notice, SizeStepper, Spinner } from './ui';
 
 type View = { mode: 'list' } | { mode: 'note'; id?: string };
 
@@ -30,6 +37,14 @@ export default function NotesScreen() {
   const [selected, setSelected] = useState<string[]>([]);
   const [confirmingBatch, setConfirmingBatch] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [pageSize, setPageSize] = useState<IconSize>(defaultIconSize('notes'));
+
+  useEffect(() => setPageSize(readIconSize('notes')), []);
+
+  const resize = useCallback((next: IconSize) => {
+    setPageSize(next);
+    writeIconSize('notes', next);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -125,6 +140,13 @@ export default function NotesScreen() {
           </p>
 
           <div className="flex flex-wrap items-center gap-2">
+            <SizeStepper
+              size={pageSize}
+              onChange={resize}
+              groupLabel="Note size"
+              smallerLabel="Smaller notes"
+              largerLabel="Larger notes"
+            />
             {selecting ? (
               <>
                 <Button
@@ -183,11 +205,15 @@ export default function NotesScreen() {
           </Empty>
         </Card>
       ) : (
-        <ul className="grid grid-cols-2 gap-x-5 gap-y-7 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <ul
+          className="grid gap-x-4 gap-y-6"
+          style={{ gridTemplateColumns: gridTemplate('notes', pageSize) }}
+        >
           {tiles.map((tile) => (
             <NoteFile
               key={tile.id}
               tile={tile}
+              textPixels={miniatureTextPixels(pageSize, NOTE_MINIATURE_TEXT_SHARE)}
               selecting={selecting}
               selected={selected.includes(tile.id)}
               busy={deleting}
@@ -218,6 +244,7 @@ export default function NotesScreen() {
 
 function NoteFile({
   tile,
+  textPixels,
   selecting,
   selected,
   busy,
@@ -225,6 +252,7 @@ function NoteFile({
   onToggle,
 }: {
   tile: NoteTile;
+  textPixels: number;
   selecting: boolean;
   selected: boolean;
   busy: boolean;
@@ -246,15 +274,18 @@ function NoteFile({
           }`}
         >
           {tile.readable ? (
-            <span className="block whitespace-pre-wrap break-words p-3 text-[9px] leading-[1.45] text-ink-soft">
+            <span
+              style={{ fontSize: `${textPixels}px` }}
+              className="block whitespace-pre-wrap break-words p-[6%] leading-[1.45] text-ink-soft"
+            >
               {tile.thumbnail}
             </span>
           ) : (
             <span className="flex h-full w-full items-center justify-center">
-              <NotesIcon className="h-8 w-8 text-ink-faint" />
+              <NotesIcon className="h-[22%] w-[22%] text-ink-faint" />
             </span>
           )}
-          <span className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent" />
+          <span className="pointer-events-none absolute inset-x-0 bottom-0 h-[18%] bg-gradient-to-t from-surface to-transparent" />
         </span>
 
         <span className="block min-w-0 px-0.5">

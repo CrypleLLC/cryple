@@ -9,18 +9,26 @@ import {
   type DocumentSummary,
 } from '@/lib/documents';
 import {
+  DOCUMENT_MINIATURE_TEXT_SHARE,
+  DOCUMENT_MINIATURE_TITLE_SHARE,
   buildDocumentTiles,
+  defaultIconSize,
   documentCountLabel,
   documentDeleteConfirmation,
   documentHref,
+  gridTemplate,
+  miniatureTextPixels,
+  readIconSize,
   retainSelectable,
   UNTITLED_DOCUMENT,
   toggleNoteSelection,
+  writeIconSize,
   type DocumentTile,
+  type IconSize,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
 import { CheckIcon, DocumentsIcon, PlusIcon, TrashIcon } from './icons';
-import { Button, Card, Empty, Notice, Spinner } from './ui';
+import { Button, Card, Empty, Notice, SizeStepper, Spinner } from './ui';
 
 export default function DocumentsScreen() {
   const context = useAuthedContext();
@@ -32,6 +40,14 @@ export default function DocumentsScreen() {
   const [selected, setSelected] = useState<string[]>([]);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [pageSize, setPageSize] = useState<IconSize>(defaultIconSize('documents'));
+
+  useEffect(() => setPageSize(readIconSize('documents')), []);
+
+  const resize = useCallback((next: IconSize) => {
+    setPageSize(next);
+    writeIconSize('documents', next);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -115,7 +131,16 @@ export default function DocumentsScreen() {
           {selecting && selected.length > 0 && ` · ${selected.length} selected`}
         </p>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {tiles.length > 0 && (
+            <SizeStepper
+              size={pageSize}
+              onChange={resize}
+              groupLabel="Document size"
+              smallerLabel="Smaller documents"
+              largerLabel="Larger documents"
+            />
+          )}
           {tiles.length > 0 && (
             <Button
               variant="secondary"
@@ -165,11 +190,16 @@ export default function DocumentsScreen() {
           </Empty>
         </Card>
       ) : (
-        <ul className="grid grid-cols-2 gap-x-5 gap-y-7 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <ul
+          className="grid gap-x-4 gap-y-6"
+          style={{ gridTemplateColumns: gridTemplate('documents', pageSize) }}
+        >
           {tiles.map((tile) => (
             <DocumentFile
               key={tile.id}
               tile={tile}
+              textPixels={miniatureTextPixels(pageSize, DOCUMENT_MINIATURE_TEXT_SHARE)}
+              titlePixels={miniatureTextPixels(pageSize, DOCUMENT_MINIATURE_TITLE_SHARE)}
               selecting={selecting}
               selected={selected.includes(tile.id)}
               busy={busy}
@@ -188,6 +218,8 @@ export default function DocumentsScreen() {
 
 function DocumentFile({
   tile,
+  textPixels,
+  titlePixels,
   selecting,
   selected,
   busy,
@@ -195,6 +227,8 @@ function DocumentFile({
   onToggle,
 }: {
   tile: DocumentTile;
+  textPixels: number;
+  titlePixels: number;
   selecting: boolean;
   selected: boolean;
   busy: boolean;
@@ -218,20 +252,26 @@ function DocumentFile({
           {tile.readable ? (
             <span className="block px-[12%] py-[8.5%]">
               {tile.title !== UNTITLED_DOCUMENT && (
-                <span className="mb-1 block truncate text-[10px] font-semibold leading-tight text-ink">
+                <span
+                  style={{ fontSize: `${titlePixels}px` }}
+                  className="mb-1 block truncate font-semibold leading-tight text-ink"
+                >
                   {tile.title}
                 </span>
               )}
-              <span className="block whitespace-pre-wrap break-words text-[8px] leading-[1.5] text-ink-soft">
+              <span
+                style={{ fontSize: `${textPixels}px` }}
+                className="block whitespace-pre-wrap break-words leading-[1.5] text-ink-soft"
+              >
                 {tile.thumbnail}
               </span>
             </span>
           ) : (
             <span className="flex h-full w-full items-center justify-center">
-              <DocumentsIcon className="h-8 w-8 text-ink-faint" />
+              <DocumentsIcon className="h-[22%] w-[22%] text-ink-faint" />
             </span>
           )}
-          <span className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent" />
+          <span className="pointer-events-none absolute inset-x-0 bottom-0 h-[18%] bg-gradient-to-t from-surface to-transparent" />
         </span>
 
         <span className="block min-w-0 px-0.5">

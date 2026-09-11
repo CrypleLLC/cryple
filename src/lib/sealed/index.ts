@@ -27,8 +27,18 @@ async function importKey(key: Uint8Array, usage: KeyUsage): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', key, 'AES-GCM', false, [usage]);
 }
 
-export async function sealBlob(plaintext: Uint8Array, key: Uint8Array): Promise<string> {
-  const iv = crypto.getRandomValues(new Uint8Array(SEALED_IV_LENGTH));
+export async function sealBytes(
+  plaintext: Uint8Array,
+  key: Uint8Array,
+  suppliedIv?: Uint8Array,
+): Promise<Uint8Array> {
+  if (suppliedIv !== undefined && suppliedIv.length !== SEALED_IV_LENGTH) {
+    throw new MalformedSealedBlobError(
+      `a supplied IV must be ${SEALED_IV_LENGTH} bytes, got ${suppliedIv.length}`,
+    );
+  }
+
+  const iv = suppliedIv ?? crypto.getRandomValues(new Uint8Array(SEALED_IV_LENGTH));
   const aes = await importKey(key, 'encrypt');
 
   const sealed = new Uint8Array(
@@ -39,12 +49,10 @@ export async function sealBlob(plaintext: Uint8Array, key: Uint8Array): Promise<
     ),
   );
 
-  return bytesToBase64(concatBytes(new Uint8Array([SEALED_VERSION]), iv, sealed));
+  return concatBytes(new Uint8Array([SEALED_VERSION]), iv, sealed);
 }
 
-export async function openBlob(blobBase64: string, key: Uint8Array): Promise<Uint8Array> {
-  const blob = base64ToBytes(blobBase64);
-
+export async function openBytes(blob: Uint8Array, key: Uint8Array): Promise<Uint8Array> {
   if (blob.length < MIN_SEALED_LENGTH) {
     throw new MalformedSealedBlobError(
       `${blob.length} bytes, shorter than the ${MIN_SEALED_LENGTH}-byte minimum`,
@@ -65,6 +73,14 @@ export async function openBlob(blobBase64: string, key: Uint8Array): Promise<Uin
       sealed,
     ),
   );
+}
+
+export async function sealBlob(plaintext: Uint8Array, key: Uint8Array): Promise<string> {
+  return bytesToBase64(await sealBytes(plaintext, key));
+}
+
+export async function openBlob(blobBase64: string, key: Uint8Array): Promise<Uint8Array> {
+  return openBytes(base64ToBytes(blobBase64), key);
 }
 
 export async function sealText(plaintext: string, key: Uint8Array): Promise<string> {
