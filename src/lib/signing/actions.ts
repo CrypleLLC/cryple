@@ -41,6 +41,7 @@ export const ACTIONS = {
     args: ['file_id'],
     secondFactor: true,
     signer: 'owner',
+    variadic: true,
   },
 } as const satisfies Record<string, ActionSpec>;
 

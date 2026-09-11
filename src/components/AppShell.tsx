@@ -25,6 +25,7 @@ import {
   VaultIcon,
   type IconProps,
 } from './icons';
+import StorageMeter from './StorageMeter';
 import { Badge, Button, Notice, Spinner } from './ui';
 
 const DocumentsScreen = dynamic(() => import('./DocumentsScreen'), {
@@ -131,7 +132,7 @@ export default function AppShell() {
               />
             ))}
           </nav>
-          <AccountSummary username={account?.username} paranoid={paranoid} />
+          <StorageMeter />
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
@@ -163,6 +164,7 @@ export default function AppShell() {
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {ScreenActions ? <ScreenActions /> : null}
+              <AccountSummary username={account?.username} paranoid={paranoid} />
               <ExitButtons exits={exits} onRun={run} />
             </div>
           </header>
@@ -241,18 +243,14 @@ function AccountSummary({
   paranoid: boolean;
 }) {
   return (
-    <div className="mt-4 rounded-xl border border-line bg-raised p-3">
-      <div className="flex items-center gap-3">
-        <span className="brand-gradient flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white">
-          {accountInitial(username)}
-        </span>
-        <div className="min-w-0 space-y-1">
-          <p className="truncate text-compact font-semibold text-ink">{username}</p>
-          <Badge tone={paranoid ? 'brand' : 'neutral'}>
-            {paranoid ? 'Paranoid mode' : 'Standard mode'}
-          </Badge>
-        </div>
+    <div className="flex min-w-0 items-center gap-2.5 rounded-xl border border-line bg-raised py-1.5 pl-1.5 pr-3">
+      <span className="brand-gradient flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-caption font-semibold text-white">
+        {accountInitial(username)}
+      </span>
+      <div className="hidden min-w-0 lg:block">
+        <p className="truncate text-compact font-semibold text-ink">{username}</p>
       </div>
+      <Badge tone={paranoid ? 'brand' : 'neutral'}>{paranoid ? 'Paranoid' : 'Standard'}</Badge>
     </div>
   );
 }

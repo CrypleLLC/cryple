@@ -1,4 +1,5 @@
 import type { ReactNode, SVGProps } from 'react';
+import type { FileKind } from '@/lib/app';
 
 export type IconProps = SVGProps<SVGSVGElement>;
 
@@ -162,6 +163,14 @@ export function PlusIcon(props: IconProps) {
   );
 }
 
+export function MinusIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M5 12h14" />
+    </Icon>
+  );
+}
+
 export function CloseIcon(props: IconProps) {
   return (
     <Icon {...props}>
@@ -227,3 +236,138 @@ export function TrashIcon(props: IconProps) {
 }
 
 
+
+const FILE_BAND: Record<FileKind, string> = {
+  image: 'fill-success',
+  video: 'fill-accent-600',
+  audio: 'fill-brand-500',
+  pdf: 'fill-danger',
+  archive: 'fill-warning',
+  document: 'fill-brand-600',
+  sheet: 'fill-success',
+  slides: 'fill-warning',
+  code: 'fill-accent-500',
+  text: 'fill-ink-muted',
+  other: 'fill-ink-faint',
+};
+
+const FILE_MARKS: Record<FileKind, ReactNode> = {
+  image: (
+    <>
+      <rect x="16" y="10.5" width="16" height="12" rx="1.6" />
+      <circle cx="20.5" cy="14.5" r="1.5" />
+      <path d="m17 20.5 4.5-4.5 3 2.8 3-3.2 3.5 4.9" />
+    </>
+  ),
+  video: (
+    <>
+      <rect x="16" y="10.5" width="16" height="12" rx="1.6" />
+      <path d="m22 14 6 2.5-6 2.5z" className="fill-ink-faint" />
+    </>
+  ),
+  audio: (
+    <>
+      <path d="M21 21V12l9-2v9" />
+      <circle cx="18.6" cy="21" r="2.4" />
+      <circle cx="27.6" cy="19" r="2.4" />
+    </>
+  ),
+  pdf: null,
+  archive: (
+    <>
+      <path d="M23 10.5h2.6" />
+      <path d="M23 14h2.6" />
+      <path d="M23 17.5h2.6" />
+      <rect x="21.2" y="20" width="6.2" height="5" rx="1.4" />
+    </>
+  ),
+  document: (
+    <>
+      <path d="M17 12.5h14" />
+      <path d="M17 16.5h14" />
+      <path d="M17 20.5h9" />
+    </>
+  ),
+  sheet: (
+    <>
+      <rect x="16" y="10.5" width="16" height="12" rx="1.6" />
+      <path d="M16 15h16" />
+      <path d="M16 19h16" />
+      <path d="M24 10.5v12" />
+    </>
+  ),
+  slides: (
+    <>
+      <rect x="16" y="10" width="16" height="11" rx="1.6" />
+      <path d="M24 21v3" />
+      <path d="M20 24h8" />
+    </>
+  ),
+  code: (
+    <>
+      <path d="m21 11.5-5 5 5 5" />
+      <path d="m27 11.5 5 5-5 5" />
+    </>
+  ),
+  text: (
+    <>
+      <path d="M17 11.5h14" />
+      <path d="M17 15h11" />
+      <path d="M17 18.5h14" />
+      <path d="M17 22h8" />
+    </>
+  ),
+  other: null,
+};
+
+export function FileTypeIcon({
+  kind,
+  extension,
+  labelled = true,
+  ...props
+}: IconProps & { kind: FileKind; extension?: string; labelled?: boolean }) {
+  const label = labelled && extension !== undefined && extension !== '' ? extension : undefined;
+
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 48 48"
+      fill="none"
+      className="h-full w-full"
+      {...props}
+    >
+      <path
+        d="M12.5 4h15.9L38 13.6V41.5a2.5 2.5 0 0 1-2.5 2.5h-23A2.5 2.5 0 0 1 10 41.5v-35A2.5 2.5 0 0 1 12.5 4Z"
+        className="fill-surface stroke-line-strong"
+        strokeWidth={1.4}
+      />
+      <path
+        d="M28.4 4 38 13.6h-7.1a2.5 2.5 0 0 1-2.5-2.5Z"
+        className="fill-raised stroke-line-strong"
+        strokeWidth={1.4}
+      />
+      <g
+        className="stroke-ink-faint"
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {FILE_MARKS[kind]}
+      </g>
+      <rect x="7" y="27.5" width="27" height="11" rx="2.6" className={FILE_BAND[kind]} />
+      {label !== undefined && (
+        <text
+          x="20.5"
+          y="35.4"
+          textAnchor="middle"
+          className="fill-white"
+          fontSize={label.length > 3 ? 7 : 8.4}
+          fontWeight={700}
+          letterSpacing={0.2}
+        >
+          {label}
+        </text>
+      )}
+    </svg>
+  );
+}

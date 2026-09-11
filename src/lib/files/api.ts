@@ -1,6 +1,6 @@
-import { assertCanonicalUuid, collectPages, request, type PageRequest } from '@/lib/api';
+import { ApiError, assertCanonicalUuid, collectPages, request, type PageRequest } from '@/lib/api';
 import { requireToken, type AuthedContext } from '@/lib/context';
-import { signActionEnvelope } from '@/lib/signing';
+import { normalizeActionArgs, signActionEnvelope } from '@/lib/signing';
 import { vaultKekDekWrapper, type DekWrapper } from '@/lib/secrets';
 import {
   FILE_VERSION,
@@ -26,7 +26,6 @@ export interface CreateFileRequest {
   ciphertext: string;
   wrapped_dek: string;
   size_bytes: number;
-  ciphertext_sha256: string;
   chunk_count: number;
 }
 
@@ -43,9 +42,6 @@ export async function createFile(
 ): Promise<CreateFileResult> {
   const id = body.id === undefined ? crypto.randomUUID() : assertCanonicalUuid(body.id);
 
-  if (!SHA256_HEX.test(body.ciphertext_sha256)) {
-    throw new Error('ciphertext_sha256 must be 64 lowercase hex characters');
-  }
   if (!Number.isInteger(body.size_bytes) || body.size_bytes < 1) {
     throw new Error(`size_bytes must be a positive integer, got ${body.size_bytes}`);
   }
@@ -63,7 +59,6 @@ export async function createFile(
       ciphertext: body.ciphertext,
       wrapped_dek: body.wrapped_dek,
       size_bytes: body.size_bytes,
-      ciphertext_sha256: body.ciphertext_sha256,
       chunk_count: body.chunk_count,
       version: FILE_VERSION,
     },
@@ -128,14 +123,22 @@ export async function getUploadState(
 export async function completeUpload(
   context: FilesContext,
   id: string,
+  ciphertextSha256: string,
   parts: readonly CompletedPart[] = [],
 ): Promise<FileRecord> {
+  if (!SHA256_HEX.test(ciphertextSha256)) {
+    throw new Error('ciphertext_sha256 must be 64 lowercase hex characters');
+  }
+
   const response = await request<FileRecord>({
     method: 'PATCH',
     path: `/files/${assertCanonicalUuid(id)}`,
     token: requireToken(context),
     timeoutMs: context.timeoutMs,
-    body: parts.length === 0 ? {} : { parts: [...parts].sort((a, b) => a.number - b.number) },
+    body: {
+      ciphertext_sha256: ciphertextSha256,
+      ...(parts.length === 0 ? {} : { parts: [...parts].sort((a, b) => a.number - b.number) }),
+    },
   });
   return response.data;
 }
@@ -160,6 +163,55 @@ export async function deleteFile(context: FilesContext, id: string): Promise<voi
     timeoutMs: context.timeoutMs,
     body: envelope,
   });
+}
+
+export async function abandonUpload(context: FilesContext, id: string): Promise<void> {
+  try {
+    await request<void>({
+      method: 'DELETE',
+      path: `/files/${assertCanonicalUuid(id)}/upload`,
+      token: requireToken(context),
+      timeoutMs: context.timeoutMs,
+    });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return;
+    }
+    throw error;
+  }
+}
+
+export interface BatchDeleteFilesResult {
+  requested: number;
+  deleted: number;
+}
+
+export async function deleteFiles(
+  context: FilesContext,
+  ids: readonly string[],
+): Promise<BatchDeleteFilesResult> {
+  const canonical = ids.map((id) => assertCanonicalUuid(id));
+  const normalized = normalizeActionArgs('file-delete', canonical);
+
+  const envelope = signActionEnvelope(
+    'file-delete',
+    normalized,
+    {
+      privateKey: context.session.identityPrivateKey,
+      serverAuthToken: context.session.serverAuthToken(),
+    },
+    { paranoid: context.paranoid },
+  );
+
+  const response = await request<BatchDeleteFilesResult>({
+    method: 'DELETE',
+    path: '/files',
+    token: requireToken(context),
+    timeoutMs: context.timeoutMs,
+    body: { ids: normalized, ...envelope },
+  });
+
+  return response.data;
 }
 
 export function declaredLayoutFor(plaintextBytes: number): {

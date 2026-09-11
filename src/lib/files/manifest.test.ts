@@ -15,47 +15,47 @@ const AT = new Date('2026-09-09T10:14:22.000Z');
 
 describe('building a manifest', () => {
   it('records the true plaintext length, not the padded one', () => {
-    const manifest = buildManifest('passport-scan.pdf', 'application/pdf', 2_483_911, AT);
+    const manifest = buildManifest({ name: 'passport-scan.pdf', mime: 'application/pdf', size: 2_483_911, createdAt: AT });
 
     expect(manifest.size).toBe(2_483_911);
     expect(manifest.size).toBeLessThan(layoutFor(2_483_911).storedBytes);
   });
 
   it('carries the chunk layout the object was built with', () => {
-    const manifest = buildManifest('clip.mp4', 'video/mp4', CHUNK_PAYLOAD_BYTES * 2 + 5, AT);
+    const manifest = buildManifest({ name: 'clip.mp4', mime: 'video/mp4', size: CHUNK_PAYLOAD_BYTES * 2 + 5, createdAt: AT });
 
     expect(manifest.chunk_size).toBe(CHUNK_PAYLOAD_BYTES);
     expect(manifest.chunk_count).toBe(3);
   });
 
   it('has no thumbnail until one is derived', () => {
-    expect(buildManifest('a.txt', 'text/plain', 10, AT).thumbnail_id).toBeUndefined();
+    expect(buildManifest({ name: 'a.txt', mime: 'text/plain', size: 10, createdAt: AT }).thumbnail_id).toBeUndefined();
   });
 });
 
 describe('sealing a manifest', () => {
   it('round-trips under the file DEK', async () => {
-    const manifest = buildManifest('passport-scan.pdf', 'application/pdf', 2_483_911, AT);
+    const manifest = buildManifest({ name: 'passport-scan.pdf', mime: 'application/pdf', size: 2_483_911, createdAt: AT });
     const sealed = await sealManifest(manifest, DEK);
 
     expect(await openManifest(sealed, DEK)).toEqual(manifest);
   });
 
   it('is base64, because it is a ciphertext column and not an object', async () => {
-    const sealed = await sealManifest(buildManifest('a.txt', 'text/plain', 10, AT), DEK);
+    const sealed = await sealManifest(buildManifest({ name: 'a.txt', mime: 'text/plain', size: 10, createdAt: AT }), DEK);
 
     expect(typeof sealed).toBe('string');
     expect(sealed).toMatch(/^[A-Za-z0-9+/]+=*$/);
   });
 
   it('does not open under another file DEK', async () => {
-    const sealed = await sealManifest(buildManifest('a.txt', 'text/plain', 10, AT), DEK);
+    const sealed = await sealManifest(buildManifest({ name: 'a.txt', mime: 'text/plain', size: 10, createdAt: AT }), DEK);
 
     await expect(openManifest(sealed, OTHER_DEK)).rejects.toThrow();
   });
 
   it('never puts the filename anywhere but the ciphertext', async () => {
-    const sealed = await sealManifest(buildManifest('passport.pdf', 'application/pdf', 10, AT), DEK);
+    const sealed = await sealManifest(buildManifest({ name: 'passport.pdf', mime: 'application/pdf', size: 10, createdAt: AT }), DEK);
 
     expect(sealed).not.toContain('passport');
   });
@@ -76,7 +76,7 @@ describe('sealing a manifest', () => {
 
   it('refuses a manifest whose size is not a whole number', async () => {
     const { sealText } = await import('@/lib/sealed');
-    const broken = { ...buildManifest('a.txt', 'text/plain', 10, AT), size: 1.5 };
+    const broken = { ...buildManifest({ name: 'a.txt', mime: 'text/plain', size: 10, createdAt: AT }), size: 1.5 };
 
     await expect(openManifest(await sealText(JSON.stringify(broken), DEK), DEK)).rejects.toThrow(
       MalformedManifestError,
@@ -86,7 +86,7 @@ describe('sealing a manifest', () => {
 
 describe('checking a manifest against its ledger row', () => {
   it('accepts a row that describes the same object', () => {
-    const manifest = buildManifest('a.pdf', 'application/pdf', 2_483_911, AT);
+    const manifest = buildManifest({ name: 'a.pdf', mime: 'application/pdf', size: 2_483_911, createdAt: AT });
     const layout = layoutFor(2_483_911);
 
     expect(() =>
@@ -95,7 +95,7 @@ describe('checking a manifest against its ledger row', () => {
   });
 
   it('accepts a small file, which the old formula would have refused', () => {
-    const manifest = buildManifest('note.txt', 'text/plain', 40_000, AT);
+    const manifest = buildManifest({ name: 'note.txt', mime: 'text/plain', size: 40_000, createdAt: AT });
 
     expect(() => assertManifestMatchesRow(manifest, 65_573)).not.toThrow();
     expect(() =>
@@ -104,7 +104,7 @@ describe('checking a manifest against its ledger row', () => {
   });
 
   it('refuses a row whose stored size disagrees', () => {
-    const manifest = buildManifest('a.pdf', 'application/pdf', 2_483_911, AT);
+    const manifest = buildManifest({ name: 'a.pdf', mime: 'application/pdf', size: 2_483_911, createdAt: AT });
     const layout = layoutFor(2_483_911);
 
     expect(() =>
@@ -113,7 +113,7 @@ describe('checking a manifest against its ledger row', () => {
   });
 
   it('takes the chunk layout from the manifest, because the row does not carry one', () => {
-    const manifest = buildManifest('a.pdf', 'application/pdf', 2_483_911, AT);
+    const manifest = buildManifest({ name: 'a.pdf', mime: 'application/pdf', size: 2_483_911, createdAt: AT });
     const layout = layoutFor(2_483_911);
 
     expect(() => assertManifestMatchesRow(manifest, layout.storedBytes)).not.toThrow();
@@ -121,7 +121,7 @@ describe('checking a manifest against its ledger row', () => {
   });
 
   it('refuses a manifest whose own chunk count contradicts its size', () => {
-    const manifest = { ...buildManifest('a.pdf', 'application/pdf', 2_483_911, AT), chunk_count: 4 };
+    const manifest = { ...buildManifest({ name: 'a.pdf', mime: 'application/pdf', size: 2_483_911, createdAt: AT }), chunk_count: 4 };
     const layout = layoutFor(2_483_911);
 
     expect(() => assertManifestMatchesRow(manifest, layout.storedBytes)).toThrow(
@@ -130,13 +130,13 @@ describe('checking a manifest against its ledger row', () => {
   });
 
   it('refuses a manifest written with a different chunk size', () => {
-    const manifest = { ...buildManifest('a.pdf', 'application/pdf', 40_000, AT), chunk_size: 1 << 20 };
+    const manifest = { ...buildManifest({ name: 'a.pdf', mime: 'application/pdf', size: 40_000, createdAt: AT }), chunk_size: 1 << 20 };
 
     expect(() => assertManifestMatchesRow(manifest, 65_573)).toThrow(ManifestLayoutError);
   });
 
   it('reads as a data error, not as a security alert', () => {
-    const manifest = buildManifest('a.pdf', 'application/pdf', 2_483_911, AT);
+    const manifest = buildManifest({ name: 'a.pdf', mime: 'application/pdf', size: 2_483_911, createdAt: AT });
     const layout = layoutFor(2_483_911);
 
     try {

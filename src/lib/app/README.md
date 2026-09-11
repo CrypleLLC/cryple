@@ -11,6 +11,7 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | `mode-hint.ts` | The locally remembered Standard/Paranoid hint |
 | `vault.ts` | The vault index view model, received-ciphertext integrity check, and the local secret name/value format |
 | `notes.ts` | The notes file-grid view model — title, thumbnail, selection, character budget and autosave state |
+| `icon-size.ts` | The four-step size scale shared by all three grids, the columns each draws, and the remembered choice per screen |
 | `modal.ts` | A modal's keyboard contract, backdrop dismissal and scroll-lock counting |
 | `shell.ts` | `accountInitial`, the sidebar avatar's letter |
 
@@ -208,6 +209,63 @@ would be telling them to redo something that cannot succeed and does not need to
 `batchDeleteConfirmation` carries the consequence the server performs but never reports: that
 deleting a note also removes it from anyone set to inherit it.
 
+## Uploads outlive the screen that started them
+
+`transfers.ts` is a tiny subscribable store: the drive's in-flight uploads, keyed by their file id,
+read through `useSyncExternalStore`.
+
+**It is not there for tidiness.** `AppShell` renders only the active section, so opening Notes
+unmounts the drive. When this state lived in the component, the upload carried on — the promise does
+not care that its caller is gone — but its progress died with the component, and returning to the
+drive showed a file with no sign that anything was happening. The bug that made this necessary was
+reported that way exactly: *"I go to notes and go back to drive, the animation doesn't show up
+anymore."*
+
+Three things it has to get right, and each has a test:
+
+- **The snapshot is a stable reference** until something actually changes. `useSyncExternalStore`
+  compares snapshots by identity and will loop forever on a getter that builds a fresh array.
+- **A dropped transfer cannot be resurrected.** A late `advanceTransfer` or `failTransfer` for a key
+  that is gone does nothing, so a progress callback that lands after a dismissal does not put the
+  notice back on screen.
+- **A failure stays in the list.** Only `dropTransfer` removes anything, and for a failure that is
+  the user's dismissal — the one report nobody else will repeat.
+
+Nothing here knows about React, and nothing about it is drive-specific except its use: it holds what
+a screen must not own, which is any work that continues after the screen is gone.
+
+## The storage reading, and why two numbers
+
+`usage.ts` holds the account's last `GET /files/usage`, shared the same way transfers are: the
+sidebar's meter and the drive both read it, and whoever fetches a reading publishes it. It skips the
+notification when a reading says exactly what the last one did, so a poll that finds nothing new
+does not repaint anything.
+
+`storageBar` in `files.ts` turns it into what a bar draws, and the whole reason it is worth testing
+is that **the endpoint returns two sums and only one of them belongs in the fill**:
+
+- `stored_bytes` is `r2_state = 'ok'` — files that exist. This is `percent`, the solid part.
+- `used_bytes` also counts `pending` rows, because that is what the quota is checked against before
+  any upload URL is signed. The difference is `reservedPercent`, drawn behind the fill, and named by
+  `uploadingSummary`.
+
+Filling the bar with `used_bytes` would show space consumed by a file the user cannot open — an
+upload that died at its first part looks identical to a stored one. Filling it with `stored_bytes`
+and hiding the rest is the opposite failure: the account gets refused an upload while the bar shows
+room. **`nearlyFull` keys on `used_bytes`**, because that is the number that will do the refusing.
+
+## Previews outlive the grid that fetched them
+
+`previews.ts` maps a thumbnail's file id to an object URL of its decrypted bytes. Each one costs a
+`GET /files/{id}` plus an R2 fetch plus a decrypt, so the store exists to make that happen **once a
+session** rather than once per visit to the drive — leaving and returning is a tab switch, and the
+grid re-mounts every time.
+
+It refuses to replace a url it already holds, which is what keeps two racing fetches from leaking
+one of them, and it is the reason `forgetPreviews` revokes every url it hands back. Nothing calls
+that yet; the urls live for the session, bounded by the number of images in the drive. A cache that
+survives a reload is [109.8](../../../tasks/tasks.md#task-109-8), and it belongs on disk, encrypted.
+
 ### The save gate
 
 **There is no Save button.** The editor autosaves `NOTE_AUTOSAVE_DELAY_MS` (2s) after the user
@@ -245,6 +303,76 @@ exactly the one autosave is allowed to write in.
 
 `noteCharactersLeft` deliberately **goes negative rather than clamping**, so the editor can say
 how far over the limit a paste landed instead of just refusing.
+
+## How large the three grids draw themselves
+
+`icon-size.ts` is the whole zoom control as data. One vocabulary of four steps — `small`, `medium`,
+`large`, `huge` — serves the drive, notes and documents, because they are three views of the same
+idea and a user who has learned the control on one should not meet a different one on the next.
+
+The steps carry **two geometries**, because the screens are not drawing the same kind of thing:
+
+| | Drive | Notes and documents |
+| --- | --- | --- |
+| What is drawn | a square icon, `glyphPixels` | a page miniature filling the column |
+| What the step sets | `tilePixels`, the column the icon sits in | `pagePixels`, the column, which *is* the page width |
+| Sizes | 48 / 64 / 96 / 128 glyphs | 136 / 160 / 200 / 264 columns |
+
+**A drive file has no page to draw, and a note is nothing but one.** That is the whole reason for
+the split. The drive's glyph sizes are the ones a desktop file manager uses, and for its reason:
+they are the sizes an SVG of a sheet of paper stays legible at. A note's miniature is its *content*,
+so shrinking it to 48px would be showing the user nothing at all — the page grid starts at 136px,
+where a title is still readable and the body is at least a texture.
+
+- **The drive tile is always wider than the glyph it holds.** The name wraps under the icon over up
+  to two lines, so a tile sized to the glyph would break every filename after four characters. A
+  test pins the inequality rather than the two numbers. A page grid needs no such gap: the miniature
+  *is* the column.
+- **Every grid is `auto-fill`, not a column count.** Choosing a size chooses how big a thing is, and
+  the row fits however many of them fit — a fixed `grid-cols-5` would make the small step draw five
+  enormous gaps instead of twenty small tiles, which is the opposite of what was asked for.
+- **`labelsTheGlyph` is false only at `small`.** The drive's extension badge is drawn inside a
+  48-unit viewBox, so at 48px it renders around 6px tall — present, unreadable, and noise. The
+  coloured band it sits on stays: the colour is the type signal at that size, exactly as it is on a
+  desktop.
+- **Stepping holds at the ends rather than wrapping**, because a `+` that jumps from the largest
+  back to the smallest is a control nobody can aim.
+
+### A miniature is a scale drawing, so its text scales too
+
+The document miniature already expressed its margins as percentages — `12%` / `8.5%` is the 25.4mm
+margin as a fraction of the page — so that it is a scale drawing of a sheet rather than a box with
+arbitrary inset. Sizing the page broke the half of that which was still in fixed pixels: a 9px body
+is right on a 200px page and absurd on a 264px one.
+
+`miniatureTextPixels(size, share)` closes it. The shares are constants beside it —
+`NOTE_MINIATURE_TEXT_SHARE`, `DOCUMENT_MINIATURE_TEXT_SHARE`, `DOCUMENT_MINIATURE_TITLE_SHARE` —
+chosen so the `large` step reproduces exactly what shipped before the control existed: 9px note
+body, 8px document body, 10px document title. Everything else follows from the ratio.
+
+`MINIATURE_TEXT_FLOOR_PIXELS` stops the small step rounding text away to nothing. A test pins that
+the document title stays larger than its body at **every** step, including the one where the floor
+bites — that is the assertion that caught the small page being 120px, where both landed on 6.
+
+### Remembered per screen, not once
+
+Each grid has its own key — `cryple_drive_icon_size`, `cryple_notes_icon_size`,
+`cryple_documents_icon_size` — and its own default: the drive opens at `medium`, the two page grids
+at `large`, which is the size they were fixed at before. They are separate because the shapes are:
+wanting dense file icons says nothing about wanting unreadable note previews, and one shared value
+would make each screen's control quietly reach into the other two.
+
+That needs the third exemption to the `no-restricted-globals` ban
+([`AGENTS.md` § Commands](../../../AGENTS.md)), and the reason is narrow: the stored value is one of
+four literal words naming how large a grid draws itself, read back through a guard that treats
+anything unrecognised as no preference at all, and an unreadable or absent value costs nothing. It
+is not key material and it is not content. Holding it in memory instead was the alternative —
+`AppShell` renders one section at a time, so a module-level store would survive a tab switch — but
+not a reload, and a size that resets every visit is the kind of small wrongness a user meets every
+single time.
+
+Reading it during render would desynchronise the server-rendered HTML from the first client paint,
+so each screen starts at `defaultIconSize(grid)` and reads the stored value in an effect.
 
 ## A modal, minus the DOM
 

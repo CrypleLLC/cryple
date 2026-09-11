@@ -7,6 +7,7 @@ export interface FileManifest {
   size: number;
   chunk_size: number;
   chunk_count: number;
+  first_chunk_sha256?: string;
   thumbnail_id?: string;
   created_at: string;
 }
@@ -34,21 +35,29 @@ export class ManifestLayoutError extends Error {
   }
 }
 
-export function buildManifest(
-  name: string,
-  mime: string,
-  size: number,
-  createdAt: Date = new Date(),
-): FileManifest {
-  const layout = layoutFor(size);
+export interface ManifestInput {
+  name: string;
+  mime: string;
+  size: number;
+  createdAt?: Date;
+  firstChunkSha256?: string;
+  thumbnailId?: string;
+}
+
+export function buildManifest(input: ManifestInput): FileManifest {
+  const layout = layoutFor(input.size);
 
   return {
-    name,
-    mime,
-    size,
+    name: input.name,
+    mime: input.mime,
+    size: input.size,
     chunk_size: CHUNK_PAYLOAD_BYTES,
     chunk_count: layout.chunkCount,
-    created_at: createdAt.toISOString(),
+    ...(input.firstChunkSha256 === undefined
+      ? {}
+      : { first_chunk_sha256: input.firstChunkSha256 }),
+    ...(input.thumbnailId === undefined ? {} : { thumbnail_id: input.thumbnailId }),
+    created_at: (input.createdAt ?? new Date()).toISOString(),
   };
 }
 
@@ -88,6 +97,13 @@ function assertManifest(value: unknown): FileManifest {
   }
   if (candidate.thumbnail_id !== undefined && typeof candidate.thumbnail_id !== 'string') {
     throw new MalformedManifestError('thumbnail_id is not an id');
+  }
+  if (
+    candidate.first_chunk_sha256 !== undefined &&
+    (typeof candidate.first_chunk_sha256 !== 'string' ||
+      !/^[0-9a-f]{64}$/.test(candidate.first_chunk_sha256))
+  ) {
+    throw new MalformedManifestError('first_chunk_sha256 is not a digest');
   }
 
   return candidate as unknown as FileManifest;

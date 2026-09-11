@@ -1,4 +1,4 @@
-import { openBytes, sealBytes } from '@/lib/sealed';
+import { openBytes, sealBytes, SEALED_IV_LENGTH } from '@/lib/sealed';
 import { concatBytes } from '@/lib/encoding';
 import { CHUNK_OVERHEAD_BYTES, POSITION_HEADER_BYTES } from './layout';
 
@@ -15,6 +15,13 @@ export class ChunkPositionError extends Error {
     this.expected = expected;
     this.found = found;
   }
+}
+
+export function chunkIv(index: number): Uint8Array {
+  const iv = new Uint8Array(SEALED_IV_LENGTH);
+  new DataView(iv.buffer).setUint32(SEALED_IV_LENGTH - 4, index, false);
+
+  return iv;
 }
 
 function positionHeader(index: number, count: number): Uint8Array {
@@ -39,7 +46,7 @@ export async function sealChunk(
 
   const plaintext = concatBytes(positionHeader(index, count), payload);
 
-  return sealBytes(plaintext, dek);
+  return sealBytes(plaintext, dek, chunkIv(index));
 }
 
 export async function openChunk(

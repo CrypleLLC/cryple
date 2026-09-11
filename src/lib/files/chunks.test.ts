@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { ChunkPositionError, openChunk, sealChunk, sealedChunkLength } from './chunks';
+import { ChunkPositionError, chunkIv, openChunk, sealChunk, sealedChunkLength } from './chunks';
 import { CHUNK_OVERHEAD_BYTES } from './layout';
 import { MalformedSealedBlobError, UnsupportedSealedVersionError } from '@/lib/sealed';
+import { concatBytes } from '@/lib/encoding';
 
 const DEK = new Uint8Array(32).fill(7);
 const OTHER_DEK = new Uint8Array(32).fill(9);
@@ -134,10 +135,50 @@ describe('a whole object', () => {
     await expect(openChunk(chunks[2], 1, 3, DEK)).rejects.toThrow(ChunkPositionError);
   });
 
-  it('gives every chunk a different IV, so identical payloads do not seal identically', async () => {
+  it('is reproducible, which is what lets a chunk be re-sealed instead of held', async () => {
     const first = await sealChunk(payload(64), 0, 2, DEK);
     const second = await sealChunk(payload(64), 0, 2, DEK);
 
-    expect(first).not.toEqual(second);
+    expect(first).toEqual(second);
+  });
+});
+
+describe('the derived IV', () => {
+  it('is the deterministic construction: eight zero bytes then the index', () => {
+    expect(chunkIv(0)).toEqual(new Uint8Array(12));
+    expect(chunkIv(1)).toEqual(Uint8Array.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]));
+    expect(chunkIv(258)).toEqual(Uint8Array.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2]));
+  });
+
+  it('is 12 bytes, so the envelope layout is unchanged', () => {
+    expect(chunkIv(7)).toHaveLength(12);
+  });
+
+  it('never repeats within a file', () => {
+    const seen = new Set([0, 1, 2, 3, 9999].map((index) => chunkIv(index).join(',')));
+
+    expect(seen.size).toBe(5);
+  });
+
+  it('travels in the blob, so a reader never has to know how it was chosen', async () => {
+    const sealed = await sealChunk(payload(64), 5, 9, DEK);
+
+    expect(sealed.subarray(1, 13)).toEqual(chunkIv(5));
+  });
+
+  it('does not repeat (key, IV) across chunks of one object', async () => {
+    const first = await sealChunk(payload(64), 0, 2, DEK);
+    const second = await sealChunk(payload(64), 1, 2, DEK);
+
+    expect(first.subarray(1, 13)).not.toEqual(second.subarray(1, 13));
+  });
+
+  it('leaves a chunk sealed under a random IV readable, because the reader takes it from the blob', async () => {
+    const { sealBytes } = await import('@/lib/sealed');
+    const header = Uint8Array.from([0, 0, 0, 0, 0, 0, 0, 1]);
+    const legacy = await sealBytes(concatBytes(header, payload(32)), DEK);
+
+    expect(legacy.subarray(1, 13)).not.toEqual(chunkIv(0));
+    expect(await openChunk(legacy, 0, 1, DEK)).toEqual(payload(32));
   });
 });

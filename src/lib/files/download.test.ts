@@ -17,10 +17,9 @@ import {
 } from './download';
 import { ManifestLayoutError } from './manifest';
 import { ChunkPositionError } from './chunks';
-import { sealObject } from './seal';
-import { memorySink } from './sink';
+import { sealChunk } from './chunks';
 import { buildManifest, sealManifest } from './manifest';
-import { CHUNK_PAYLOAD_BYTES } from './layout';
+import { CHUNK_PAYLOAD_BYTES, layoutFor } from './layout';
 
 const ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
 
@@ -68,23 +67,26 @@ async function store(
   name = 'passport.pdf',
 ): Promise<Stored> {
   const dek = generateDek();
-  const sink = memorySink();
-  const source = { size: plaintext.length, stream: () => streamOf(plaintext) };
-  const sealed = await sealObject(source, dek, sink);
+  const layout = layoutFor(plaintext.length);
+  const padded = new Uint8Array(layout.paddedBytes);
+  padded.set(plaintext);
 
   const chunks: Uint8Array[] = [];
-  for (let index = 0; index < sealed.chunkCount; index += 1) {
-    chunks.push(await sink.read(index));
+  for (let index = 0; index < layout.chunkCount; index += 1) {
+    const from = index * CHUNK_PAYLOAD_BYTES;
+    const to = Math.min(from + CHUNK_PAYLOAD_BYTES, layout.paddedBytes);
+    chunks.push(await sealChunk(padded.subarray(from, to), index, layout.chunkCount, dek));
   }
 
-  const manifest = buildManifest(name, 'application/pdf', plaintext.length);
+  const object = concatBytes(...chunks);
+  const manifest = buildManifest({ name, mime: 'application/pdf', size: plaintext.length });
 
   return {
-    object: concatBytes(...chunks),
+    object,
     ciphertext: await sealManifest(manifest, dek),
     wrapped_dek: await vaultKekDekWrapper(context.session.vaultKek).wrapDek(dek),
-    size_bytes: sealed.storedBytes,
-    sha256: sealed.ciphertextSha256,
+    size_bytes: layout.storedBytes,
+    sha256: bytesToHex(sha256(object)),
     dek,
     manifest,
   };
@@ -358,6 +360,7 @@ describe('the whole round trip', () => {
 
     const objectParts: Uint8Array[] = [];
     let posted: Record<string, string | number> = {};
+    let patched: Record<string, string> = {};
 
     vi.stubGlobal(
       'fetch',
@@ -388,6 +391,7 @@ describe('the whole round trip', () => {
           } as unknown as Response;
         }
         if (init?.method === 'PATCH') {
+          patched = JSON.parse(String(init.body));
           return {
             status: 200,
             ok: true,
@@ -410,7 +414,6 @@ describe('the whole round trip', () => {
       id: ID,
       put: async (_part, body) => {
         objectParts.push(Uint8Array.from(body));
-        return '"e"';
       },
     });
 
@@ -423,9 +426,9 @@ describe('the whole round trip', () => {
         ciphertext: String(posted.ciphertext),
         wrapped_dek: String(posted.wrapped_dek),
         size_bytes: Number(posted.size_bytes),
-        sha256: String(posted.ciphertext_sha256),
+        sha256: String(patched.ciphertext_sha256),
         dek: new Uint8Array(),
-        manifest: buildManifest('report.pdf', 'application/pdf', plaintext.length),
+        manifest: buildManifest({ name: 'report.pdf', mime: 'application/pdf', size: plaintext.length }),
       },
     );
 
@@ -434,5 +437,7 @@ describe('the whole round trip', () => {
     expect(manifest.name).toBe('report.pdf');
     expect(got).toHaveLength(plaintext.length);
     expect(bytesToHex(sha256(got))).toBe(bytesToHex(sha256(plaintext)));
+    expect(patched.ciphertext_sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(posted).not.toHaveProperty('ciphertext_sha256');
   });
 });

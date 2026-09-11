@@ -211,6 +211,35 @@ export async function downloadFile(
   }
 }
 
+export async function fetchSealedObject(
+  context: FilesContext,
+  id: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<Uint8Array> {
+  const record = await getFileDownload(context, id);
+  const response = await fetchImpl(record.url);
+  if (!response.ok) {
+    throw new Error(`the object store answered ${response.status} for this file`);
+  }
+
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+export async function openSealedObject(
+  sealed: Uint8Array,
+  manifest: FileManifest,
+  dek: Uint8Array,
+): Promise<Uint8Array> {
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(sealed);
+      controller.close();
+    },
+  });
+
+  return collect(decryptStream(source, manifest, dek), manifest.size);
+}
+
 export async function readChunk(
   url: string,
   manifest: FileManifest,

@@ -1047,11 +1047,12 @@ Checks the quota, mints the object key, writes the row at `r2_state: "pending"`,
   "ciphertext": "base64 sealed manifest",
   "wrapped_dek": "base64",
   "size_bytes": 65573,
-  "ciphertext_sha256": "hex sha-256 of the whole stored object",
   "chunk_count": 1,
   "version": "v1"
 }
 ```
+
+**`ciphertext_sha256` is not sent here** — it goes to `PATCH`. It is computed over the finished object, which does not exist yet at this point, and this is the call that hands you the URLs to create it with. Sending it here anyway is ignored.
 
 `id` is optional but **send it** — same idempotency contract as `POST /notes` and `POST /documents`. A replay returns `200` with the stored row instead of minting a second row and a second R2 object, and **if that row is still `pending` it comes back with a fresh ticket listing only the parts R2 does not yet have.** `POST` is therefore both create and resume; `GET /files/{id}/upload` is the same answer without re-sending the body.
 
@@ -1087,8 +1088,6 @@ Checks the quota, mints the object key, writes the row at `r2_state: "pending"`,
 
 **Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (`id` is not a canonical UUID) · `400 BAD_REQUEST` (`size_bytes does not match chunk_count`, or an unsupported `version`) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · **`413 BAD_REQUEST`** (over `FILES_MAX_OBJECT_BYTES`, 5 GiB by default) · **`507 QUOTA_EXCEEDED`** · `500 INTERNAL_ERROR`.
 
-> **`ciphertext_sha256` is moving to `PATCH`** ([Task 110](../tasks.md#task-110), decided 2026-09-10). It describes an object that does not exist yet at `POST`, and requiring it here is what forces a client to seal the whole file before it can ask permission to upload — which bounds an upload by the tab's memory rather than by the chunk size. **This section documents the API as it runs today**; when the task lands, the field leaves this request and joins `PATCH`. Nothing else about the call changes, and `size_bytes` stays here because the quota is checked before a URL is signed.
-
 ### `GET /files/{id}/upload` — resume
 
 Which parts R2 already holds, plus URLs for the ones it does not.
@@ -1097,46 +1096,59 @@ Which parts R2 already holds, plus URLs for the ones it does not.
 
 **Nothing about a partial upload is recorded in this API** — the answer comes from R2's own `ListParts`. So a client that reloads mid-upload must ask rather than remember, and must not assume its own progress counter survived.
 
+**`uploaded` listing every part with an empty `parts` means the object is already assembled** and only the `PATCH` is outstanding — the state a client reaches when its completion call was cut off after R2 acted. Send nothing, hash the object, and `PATCH`.
+
+**The hash covers the finished object, not what you re-send.** So a resume still reads and re-seals every chunk; `uploaded` only says which ones need not be `PUT` again. That is possible because a chunk's IV is derived from its index, making sealing reproducible — see `storage-plan.md` §3.3.
+
+**Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
+
+### `DELETE /files/{id}/upload` — give the reservation back
+
+Abandons an upload that will not be finished: aborts the multipart if there is one, removes the row, and frees the quota immediately. **JWT only, and it takes no body** — the one `DELETE` in this API that does not, because it carries no signed action.
+
+**`204 No Content`** — no body.
+
+**Call this when an upload has failed and the user has given up on it**, not on every error. The row plus the parts R2 already holds are what make an interrupted upload resumable through `GET /files/{id}/upload`; abandoning throws that away. Nothing was stored, so there is nothing to restore.
+
+**Why a `POST /files` row costs quota at all:** the check runs *before* any URL is signed, so a `pending` row is a **reservation** — without it a client could mint unlimited signed capacity. That is also why the fix is to remove the row rather than to stop counting it.
+
+**Only a `pending` row can be abandoned.** A stored file, a row already deleted, another account's id, a second call, and a `PATCH` that landed between the failure and this request all answer `404` — and all of them mean *stop worrying about it*, never *retry*. `DELETE /files/{id}` with a `file-delete` signature stays the only way to remove a file that exists.
+
+**A closed tab never calls this**, so a server-side sweep still collects `pending` rows older than `FILES_ABANDONED_AFTER_SECONDS` (24 h). This route only turns "within a day" into "now" for the case the user is watching.
+
 **Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
 
 ### `PATCH /files/{id}`
 
 Completes the upload. **JWT only.**
 
-**Request** (multipart only; omit `parts` for a single-`PUT` object):
+**Request:**
 
 ```json
-{ "parts": [ { "number": 1, "etag": "\"…from the PUT response…\"" } ] }
+{ "ciphertext_sha256": "hex sha-256 of the whole stored object" }
 ```
 
-Keep the `ETag` each part `PUT` returns — R2 needs them to complete the multipart and this API has no way to reconstruct them.
+**`ciphertext_sha256` is required here**, and this is the first moment it can exist: it is the hash of the finished object. Compute it incrementally as you seal and upload — one running SHA-256 over each sealed chunk in order — so a multi-gigabyte upload never has to hold more than the parts in flight. A malformed value is `400 BAD_REQUEST` before the service is reached.
 
-> **This request will gain `ciphertext_sha256`** ([Task 110](../tasks.md#task-110)). It is the completion call, so it is the first moment the finished object's hash exists. Until the task lands the field is sent at `POST` and this body carries only `parts`.
+**Do not send part ETags, and do not read them.** A `parts` array is still accepted and **ignored** since 2026-09-10: the server builds the completion from R2's own `ListParts`. A client that reloaded mid-upload has forgotten the ETags it once had, so any list it could send would be incomplete. This also means **the bucket does not need `ETag` under CORS `ExposeHeaders`** — a browser never has to read a header off its own `PUT`.
+
+**Retrying a `PATCH` is safe, including one whose answer you never received.** Completion is what consumes the multipart, so a second attempt finds no upload id — that is treated as *already assembled*, not as an error, and the length check below decides. Without this a lost response left the object finished in R2 and the row stuck at `pending` forever.
 
 **`200 OK`** with the file row, now `r2_state: "ok"`.
 
 **The server verifies before it believes you.** It `HEAD`s the object and compares its length against the `size_bytes` you declared at `POST`. A mismatch is `409 CONFLICT`, and **the object is abandoned rather than repaired**: the multipart is aborted, the row stays `pending`, and a 24-hour sweep collects it. Do not retry with an adjusted size — start a new upload.
 
-**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `409 CONFLICT` (the stored object does not match the declared size) · `500 INTERNAL_ERROR`.
+**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` · `400 BAD_REQUEST` (`ciphertext_sha256` missing or not 64 hex characters) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `409 CONFLICT` (the stored object does not match the declared size) · `500 INTERNAL_ERROR`.
 
 ### `GET /files`
 
 The listing. Returns the sealed manifests — **a directory listing is your render of data this API cannot read.**
 
-**`200 OK`:** the same row shape as `POST`, minus `upload`, in a `data` array.
+**`200 OK`:** the same row shape as `POST`, minus `upload`, in a `data` array with a `page` object.
 
-> ### ⚠ This route accepts `limit` and `cursor` but does not paginate
->
-> **Known defect as of 2026-09-09, and it caps a drive at 50 files.** Unlike every other paginated route in this file, `GET /files` returns **no `page` object** — no `has_more`, no `next_cursor`. It parses both query parameters and applies `limit` and `cursor` to the query, but never emits the envelope described in [§3.1](#31-pagination).
->
-> Two things follow, and the second is the one that bites:
->
-> - You cannot tell a full page from the last page. A response of exactly `limit` rows may or may not have more behind it.
-> - **You cannot reach the second page at all.** Cursors are opaque and [§3.1](#31-pagination) says never to build one — and since this route never returns a `next_cursor`, there is no legal value to send. With `limit` capped at **200** (`MaxLimit`), an account with more than 200 files has files it cannot list.
->
-> The cause is narrow: the handler never calls `paging.Apply`, and the repository queries with `page.Limit` where `notes` and `documents` both use `page.FetchLimit()` — the extra row is what makes `has_more` knowable. **Do not design a client around the current behaviour.** Build the listing to read `page` per [§3.1](#31-pagination) and it will work unchanged when this is fixed; until then it sees one page.
+Paginated per [§3.1](#31-pagination), the same envelope `GET /notes` and `GET /documents` use — follow `next_cursor` until `has_more` is `false`, and never build a cursor yourself.
 
-Rows with `r2_state: "pending"` are uploads that never completed. They are not in the vault and the sweep will collect them; do not show them as files.
+Rows with `r2_state: "pending"` are uploads that have not completed. They are not in the vault and cannot be downloaded, but they are not junk either: `GET /files/{id}/upload` resumes one and `DELETE /files/{id}/upload` gives its reservation back, and the sweep collects whatever is left after `FILES_ABANDONED_AFTER_SECONDS`. Show them as unfinished uploads rather than as files — or as nothing at all, which leaves the user unable to reclaim the space.
 
 **Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
 
@@ -1144,11 +1156,20 @@ Rows with `r2_state: "pending"` are uploads that never completed. They are not i
 
 What a storage bar needs.
 
-**`200 OK`:** `{ "used_bytes": 65573, "quota_bytes": 524288000, "file_count": 1 }`
+**`200 OK`:** `{ "used_bytes": 8454149, "stored_bytes": 65573, "quota_bytes": 524288000, "file_count": 2 }`
 
 `quota_bytes` is `users.storage_quota_bytes` — a ceiling, not a plan. The default is 500 MB.
 
-> **Deleted files still count until the mirror worker runs.** `used_bytes` is `SUM(size_bytes) WHERE deleted_at IS NULL`, and a deleted row keeps its bytes in both buckets until reconciliation removes them. **Say so in the UI**: a user who deletes a file and immediately hits the ceiling needs to be told the space returns within a minute, not left guessing.
+**There are two sums because they answer different questions**, and a client that shows the wrong one lies to the user:
+
+| | What it is | What it is for |
+| --- | --- | --- |
+| `stored_bytes` | `SUM(size_bytes) WHERE r2_state = 'ok'` — what R2 actually holds | **What a storage bar shows.** These are files that exist |
+| `used_bytes` | the same sum over **every** live row, `pending` included | What the ceiling is checked against, before any URL is signed |
+
+The difference is uploads that reserved their bytes and have not finished. **The reservation is deliberate** — without it a client could call `POST /files` a thousand times and mint unlimited signed capacity — and it is why `507 QUOTA_EXCEEDED` can arrive while a bar drawn from `stored_bytes` still shows room. Draw the difference as a second, quieter segment rather than hiding it, and `DELETE /files/{id}/upload` is what gives a reservation back.
+
+**A deleted row is in neither sum.** Its bytes are released the moment it is marked, before the objects leave R2 and GCS — the space returns to the user ahead of the storage bill, which is the friendlier way round.
 
 **Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
 
@@ -1172,11 +1193,27 @@ The URL is scoped to one object and one method and lives **five minutes** by def
 
 **`204 No Content`** — no body.
 
-**There is no batch delete**, so unlike `secret-delete`, `note-delete` and `document-delete` the argument list is exactly one `file_id` and there is nothing to sort. Deleting *n* files is *n* signatures, each needing its own fresh challenge.
+**This is the one-element case of `DELETE /files`**, below — same action label, same signature shape. Use whichever matches the gesture.
 
 **The row is marked, not removed.** `deleted_at` is set and the objects leave R2 and GCS when the mirror worker gets to them. Until then the bytes still count against the quota, and `GET /files/{id}` is already `404`.
 
 **Errors:** `400 INVALID_BODY` (a `DELETE` with no body is `400`, not `204`) · `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` (bad signature **or** wrong PIN — indistinguishable, by design) · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
+
+### `DELETE /files`
+
+Deletes a set of files under **one** signature. **Requires a `file-delete` signed action** over the ids, plus the second factor on Paranoid accounts.
+
+**Request:** `{ "ids": ["…", "…"], "challenge": "…", "timestamp": 1737676800, "signature": "…", "password": "Paranoid Mode only" }`
+
+The ids in the signed payload are **sorted ascending and de-duplicated**, exactly as for `secret-delete`, `note-delete` and `document-delete` — the server rebuilds the list its own way and a differently-ordered one verifies against nothing. Send `ids` in that same normalized order.
+
+**`200 OK`:** `{ "requested": 3, "deleted": 2 }` — read the body; this route does not return `204`.
+
+**A shortfall is not a partial failure.** The rows are marked in one statement, so it applies to the whole set or to none of it. `deleted < requested` means some ids matched no row — already deleted, never existed, or belonging to another account, all indistinguishable by design. Treat it as *the list is out of date* and reload.
+
+**`deleted` counts rows, never objects.** Each marked row is removed from R2 and GCS afterwards, one at a time, exactly as a single delete already was; the bytes leave the quota when the mirror worker gets to them.
+
+**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (any id that is not a canonical lowercase UUID, checked before anything is deleted) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (an empty id list) · `500 INTERNAL_ERROR`.
 
 ### What this API does not do
 

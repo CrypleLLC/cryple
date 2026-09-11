@@ -7,10 +7,12 @@ import { deriveKeyTreeFromSeed } from '@/lib/keys';
 import { hexToBytes } from '@/lib/encoding';
 import type { AuthedContext } from '@/lib/context';
 import {
+  abandonUpload,
   completeUpload,
   createFile,
   declaredLayoutFor,
   deleteFile,
+  deleteFiles,
   getFileDownload,
   getStorageUsage,
   getUploadState,
@@ -92,8 +94,7 @@ describe('creating a file', () => {
     await createFile(context, {
       ciphertext: 'sealed',
       wrapped_dek: 'wrapped',
-      ...declaredLayoutFor(40_000),
-      ciphertext_sha256: SHA,
+      ...declaredLayoutFor(40_000)
     });
 
     const sent = JSON.parse(String(calls[0].init.body));
@@ -107,8 +108,7 @@ describe('creating a file', () => {
     await createFile(await newContext(), {
       ciphertext: 'sealed',
       wrapped_dek: 'wrapped',
-      ...declaredLayoutFor(40_000),
-      ciphertext_sha256: SHA,
+      ...declaredLayoutFor(40_000)
     });
 
     const sent = JSON.parse(String(calls[0].init.body));
@@ -120,15 +120,13 @@ describe('creating a file', () => {
   it('reports 201 as created and 200 as a replay', async () => {
     mockFetch({ status: 201, body: body(row()) });
     const created = await createFile(await newContext(), {
-      ciphertext: 'a', wrapped_dek: 'b', ...declaredLayoutFor(10), ciphertext_sha256: SHA,
-    });
+      ciphertext: 'a', wrapped_dek: 'b', ...declaredLayoutFor(10)});
     expect(created.created).toBe(true);
 
     vi.unstubAllGlobals();
     mockFetch({ status: 200, body: body(row()) });
     const replayed = await createFile(await newContext(), {
-      id: ID, ciphertext: 'a', wrapped_dek: 'b', ...declaredLayoutFor(10), ciphertext_sha256: SHA,
-    });
+      id: ID, ciphertext: 'a', wrapped_dek: 'b', ...declaredLayoutFor(10)});
     expect(replayed.created).toBe(false);
   });
 
@@ -147,24 +145,23 @@ describe('creating a file', () => {
     });
 
     const result = await createFile(await newContext(), {
-      id: ID, ciphertext: 'a', wrapped_dek: 'b', ...declaredLayoutFor(10), ciphertext_sha256: SHA,
-    });
+      id: ID, ciphertext: 'a', wrapped_dek: 'b', ...declaredLayoutFor(10)});
 
     expect(result.created).toBe(false);
     expect(result.file.upload?.parts).toHaveLength(1);
     expect(result.file.upload?.parts[0].number).toBe(2);
   });
 
-  it('refuses a malformed hash before spending a request', async () => {
+  it('does not send the hash, because it describes an object that does not exist yet', async () => {
     const calls = mockFetch({ status: 201, body: body(row()) });
-    const context = await newContext();
 
-    await expect(
-      createFile(context, {
-        ciphertext: 'a', wrapped_dek: 'b', ...declaredLayoutFor(10), ciphertext_sha256: 'ABC',
-      }),
-    ).rejects.toThrow(/64 lowercase hex/);
-    expect(calls).toHaveLength(0);
+    await createFile(await newContext(), {
+      ciphertext: 'a',
+      wrapped_dek: 'b',
+      ...declaredLayoutFor(10),
+    });
+
+    expect(JSON.parse(String(calls[0].init.body))).not.toHaveProperty('ciphertext_sha256');
   });
 
   it('refuses a non-canonical id at the edge', async () => {
@@ -172,9 +169,7 @@ describe('creating a file', () => {
 
     await expect(
       createFile(await newContext(), {
-        id: ID.toUpperCase(), ciphertext: 'a', wrapped_dek: 'b',
-        ...declaredLayoutFor(10), ciphertext_sha256: SHA,
-      }),
+        id: ID.toUpperCase(), ciphertext: 'a', wrapped_dek: 'b', ...declaredLayoutFor(10)}),
     ).rejects.toThrow();
   });
 });
@@ -185,8 +180,7 @@ describe('the two error codes the drive introduced', () => {
 
     try {
       await createFile(await newContext(), {
-        ciphertext: 'a', wrapped_dek: 'b', ...declaredLayoutFor(10), ciphertext_sha256: SHA,
-      });
+        ciphertext: 'a', wrapped_dek: 'b', ...declaredLayoutFor(10)});
       expect.unreachable();
     } catch (error) {
       const api = error as ApiError;
@@ -201,8 +195,7 @@ describe('the two error codes the drive introduced', () => {
 
     try {
       await createFile(await newContext(), {
-        ciphertext: 'a', wrapped_dek: 'b', ...declaredLayoutFor(10), ciphertext_sha256: SHA,
-      });
+        ciphertext: 'a', wrapped_dek: 'b', ...declaredLayoutFor(10)});
       expect.unreachable();
     } catch (error) {
       const api = error as ApiError;
@@ -238,13 +231,22 @@ describe('listing', () => {
 
 describe('usage', () => {
   it('reads the storage bar numbers', async () => {
-    mockFetch({ status: 200, body: body({ used_bytes: 65_573, quota_bytes: 524_288_000, file_count: 1 }) });
+    mockFetch({
+      status: 200,
+      body: body({
+        used_bytes: 8_454_149,
+        stored_bytes: 65_573,
+        quota_bytes: 524_288_000,
+        file_count: 2,
+      }),
+    });
 
     const usage = await getStorageUsage(await newContext());
 
-    expect(remainingBytes(usage)).toBe(524_288_000 - 65_573);
+    expect(remainingBytes(usage)).toBe(524_288_000 - 8_454_149);
     expect(fits(usage, layoutFor(1_000_000).storedBytes)).toBe(true);
     expect(fits(usage, 524_288_000)).toBe(false);
+    expect(usage.stored_bytes).toBe(65_573);
   });
 });
 
@@ -280,7 +282,7 @@ describe('completing an upload', () => {
   it('sends parts in number order, because R2 completes a multipart that way', async () => {
     const calls = mockFetch({ status: 200, body: body(row({ r2_state: 'ok' })) });
 
-    await completeUpload(await newContext(), ID, [
+    await completeUpload(await newContext(), ID, SHA, [
       { number: 3, etag: 'c' },
       { number: 1, etag: 'a' },
       { number: 2, etag: 'b' },
@@ -290,23 +292,40 @@ describe('completing an upload', () => {
     expect(sent.parts.map((part: { number: number }) => part.number)).toEqual([1, 2, 3]);
   });
 
-  it('sends no parts for a single-PUT object', async () => {
+  it('sends no parts for a single-PUT object, but always the hash', async () => {
     const calls = mockFetch({ status: 200, body: body(row({ r2_state: 'ok' })) });
 
-    await completeUpload(await newContext(), ID);
+    await completeUpload(await newContext(), ID, SHA);
 
-    expect(JSON.parse(String(calls[0].init.body))).toEqual({});
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ ciphertext_sha256: SHA });
+  });
+
+  it('carries the hash, which is the whole reason this call changed', async () => {
+    const calls = mockFetch({ status: 200, body: body(row({ r2_state: 'ok' })) });
+
+    await completeUpload(await newContext(), ID, SHA, [{ number: 1, etag: 'a' }]);
+
+    expect(JSON.parse(String(calls[0].init.body)).ciphertext_sha256).toBe(SHA);
+  });
+
+  it('refuses a malformed hash before spending a request', async () => {
+    const calls = mockFetch({ status: 200, body: body(row()) });
+
+    await expect(completeUpload(await newContext(), ID, 'ABC')).rejects.toThrow(
+      /64 lowercase hex/,
+    );
+    expect(calls).toHaveLength(0);
   });
 
   it('surfaces a length mismatch as a conflict rather than retrying', async () => {
     mockFetch({ status: 409, body: { code: 'CONFLICT' } });
 
-    await expect(completeUpload(await newContext(), ID)).rejects.toMatchObject({ status: 409 });
+    await expect(completeUpload(await newContext(), ID, SHA)).rejects.toMatchObject({ status: 409 });
   });
 });
 
 describe('deleting a file', () => {
-  it('signs file-delete with exactly one id and no sorting', async () => {
+  it('signs file-delete with the one id it was given', async () => {
     const calls = mockFetch({ status: 204 });
     const context = await newContext();
 
@@ -342,5 +361,87 @@ describe('deleting a file', () => {
     await deleteFile(await newContext(), ID);
 
     expect(calls[0].init.body).toBeDefined();
+  });
+});
+
+describe('deleting a selection of files', () => {
+  const OTHER = '0c892e57-93cf-423a-a9e9-fee5a9f87681';
+
+  it('signs the sorted, de-duplicated set and sends the same order', async () => {
+    const calls = mockFetch({ status: 200, body: { message: 'ok', data: { requested: 2, deleted: 2 } } });
+    const context = await newContext();
+
+    await deleteFiles(context, [ID, OTHER, ID]);
+
+    const sent = JSON.parse(String(calls[0].init.body));
+    const tree = await deriveKeyTreeFromSeed(hexToBytes(vectors.seed_and_user_address.seed_hex));
+    const payload = buildActionPayload(sent.challenge, sent.timestamp, 'file-delete', [OTHER, ID]);
+
+    expect(sent.ids).toEqual([OTHER, ID]);
+    expect(verifyPayload(payload, sent.signature, tree.identity.publicKeyUncompressed)).toBe(true);
+    expect(calls[0].url).toContain('/files');
+    expect(calls[0].init.method).toBe('DELETE');
+  });
+
+  it('returns the counts, because this route answers 200 with a body', async () => {
+    mockFetch({ status: 200, body: { message: 'ok', data: { requested: 3, deleted: 1 } } });
+
+    expect(await deleteFiles(await newContext(), [ID, OTHER])).toEqual({
+      requested: 3,
+      deleted: 1,
+    });
+  });
+
+  it('refuses an empty selection before it reaches the network', async () => {
+    const calls = mockFetch({ status: 200, body: { message: 'ok', data: {} } });
+
+    await expect(deleteFiles(await newContext(), [])).rejects.toThrow(/at least one/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses a non-canonical id before it reaches the network', async () => {
+    const calls = mockFetch({ status: 200, body: { message: 'ok', data: {} } });
+
+    await expect(deleteFiles(await newContext(), [ID.toUpperCase()])).rejects.toThrow();
+    expect(calls).toHaveLength(0);
+  });
+
+  it('attaches the second factor on a Paranoid account', async () => {
+    const calls = mockFetch({ status: 200, body: { message: 'ok', data: { requested: 1, deleted: 1 } } });
+
+    await deleteFiles(await newContext(true), [ID]);
+
+    expect(typeof JSON.parse(String(calls[0].init.body)).password).toBe('string');
+  });
+});
+
+describe('giving a reservation back', () => {
+  it('asks the upload route to drop it, with no body and no signature', async () => {
+    const calls = mockFetch({ status: 204 });
+
+    await abandonUpload(await newContext(), ID);
+
+    expect(calls[0].url).toContain(`/files/${ID}/upload`);
+    expect(calls[0].init.method).toBe('DELETE');
+    expect(calls[0].init.body).toBeUndefined();
+  });
+
+  it('treats a 404 as already done, because a retry must be silent', async () => {
+    mockFetch({ status: 404, body: { code: 'NOT_FOUND' } });
+
+    await expect(abandonUpload(await newContext(), ID)).resolves.toBeUndefined();
+  });
+
+  it('still reports a real failure', async () => {
+    mockFetch({ status: 500, body: { code: 'INTERNAL_ERROR' } });
+
+    await expect(abandonUpload(await newContext(), ID)).rejects.toThrow();
+  });
+
+  it('refuses a non-canonical id before it reaches the network', async () => {
+    const calls = mockFetch({ status: 204 });
+
+    await expect(abandonUpload(await newContext(), ID.toUpperCase())).rejects.toThrow();
+    expect(calls).toHaveLength(0);
   });
 });

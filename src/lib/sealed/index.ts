@@ -27,8 +27,18 @@ async function importKey(key: Uint8Array, usage: KeyUsage): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', key, 'AES-GCM', false, [usage]);
 }
 
-export async function sealBytes(plaintext: Uint8Array, key: Uint8Array): Promise<Uint8Array> {
-  const iv = crypto.getRandomValues(new Uint8Array(SEALED_IV_LENGTH));
+export async function sealBytes(
+  plaintext: Uint8Array,
+  key: Uint8Array,
+  suppliedIv?: Uint8Array,
+): Promise<Uint8Array> {
+  if (suppliedIv !== undefined && suppliedIv.length !== SEALED_IV_LENGTH) {
+    throw new MalformedSealedBlobError(
+      `a supplied IV must be ${SEALED_IV_LENGTH} bytes, got ${suppliedIv.length}`,
+    );
+  }
+
+  const iv = suppliedIv ?? crypto.getRandomValues(new Uint8Array(SEALED_IV_LENGTH));
   const aes = await importKey(key, 'encrypt');
 
   const sealed = new Uint8Array(

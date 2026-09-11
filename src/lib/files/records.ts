@@ -48,6 +48,7 @@ export interface FileDownload extends FileRecord {
 
 export interface StorageUsage {
   used_bytes: number;
+  stored_bytes: number;
   quota_bytes: number;
   file_count: number;
 }

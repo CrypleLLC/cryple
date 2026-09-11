@@ -1,36 +1,88 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { DragEvent } from 'react';
 import { ApiError } from '@/lib/api';
 import {
-  deleteFile,
+  abandonUpload,
+  chooseSources,
+  deleteFiles,
+  deriveThumbnail,
   downloadFile,
+  droppedSources,
+  openPreview,
+  pruneCachedObjects,
+  forgetSource,
+  forgetSourcesExcept,
   getStorageUsage,
   listFiles,
   openManifest,
+  openRememberedSource,
+  recallSource,
+  rememberSource,
+  rememberedSourceIds,
+  resumeUpload,
+  thumbnailIdsOf,
   uploadFile,
+  uploadThumbnail,
   wrapper,
   type FileRecord,
-  type StorageUsage,
-  type UploadProgress,
+  type ResumableFile,
+  type UploadSource,
 } from '@/lib/files';
 import {
+  advanceTransfer,
+  beginTransfer,
+  dropTransfer,
+  failTransfer,
+  discardConfirmation,
+  fileBatchDeleteConfirmation,
+  fileBatchDeleteSummary,
+  fileCaption,
   fileCountLabel,
+  fileExtension,
   fileDeleteConfirmation,
   fileKind,
   fileName,
-  formatBytes,
+  defaultIconSize,
+  gridTemplate,
+  hasPreview,
+  iconScale,
   isOpenable,
+  isResumable,
+  previewUrls,
+  readIconSize,
   replicationLabel,
-  storageBar,
+  resumeHint,
+  retainSelectable,
+  setPreview,
+  setStorageUsage,
   storageFullMessage,
+  storageUsage,
+  subscribeToPreviews,
+  subscribeToStorageUsage,
+  subscribeToTransfers,
+  toggleFileSelection,
+  transferLabel,
+  transfersInFlight,
   uploadPercent,
+  writeIconSize,
   type FileKind,
+  type IconScale,
+  type IconSize,
+  type Transfer,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
-import { DocumentsIcon, DownloadIcon, DriveIcon, TrashIcon, UploadIcon } from './icons';
-import { Button, Card, Empty, Notice, Spinner } from './ui';
+import {
+  CheckIcon,
+  CloseIcon,
+  DownloadIcon,
+  DriveIcon,
+  FileTypeIcon,
+  TrashIcon,
+  UploadIcon,
+} from './icons';
+import { Button, Card, Empty, Notice, SizeStepper, Spinner } from './ui';
 
 interface DriveTile {
   id: string;
@@ -43,14 +95,10 @@ interface DriveTile {
   openable: boolean;
   readable: boolean;
   updatedAt: string;
-}
-
-interface Transfer {
-  key: string;
-  name: string;
-  percent: number;
-  phase: UploadProgress['phase'] | 'failed';
-  error?: string;
+  resume?: ResumableFile;
+  remembered: boolean;
+  placeholder?: boolean;
+  thumbnailId?: string;
 }
 
 export default function DriveScreen() {
@@ -58,15 +106,35 @@ export default function DriveScreen() {
   const { reportError } = useCryple();
 
   const [tiles, setTiles] = useState<DriveTile[]>();
-  const [usage, setUsage] = useState<StorageUsage>();
-  const [message, setMessage] = useState<string>();
+  const [message, setMessage] = useState<{ text: string; tone: 'info' | 'danger' }>();
   const [unavailable, setUnavailable] = useState(false);
-  const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [confirming, setConfirming] = useState<DriveTile>();
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [confirmingBatch, setConfirmingBatch] = useState(false);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [iconSize, setIconSize] = useState<IconSize>(defaultIconSize('drive'));
+
+  useEffect(() => setIconSize(readIconSize('drive')), []);
+
+  const resize = useCallback((next: IconSize) => {
+    setIconSize(next);
+    writeIconSize('drive', next);
+  }, []);
+
+  const transfers = useSyncExternalStore(
+    subscribeToTransfers,
+    transfersInFlight,
+    transfersInFlight,
+  );
+
+  const usage = useSyncExternalStore(subscribeToStorageUsage, storageUsage, storageUsage);
 
   const picker = useRef<HTMLInputElement>(null);
+  const resumePicker = useRef<HTMLInputElement>(null);
+  const resuming = useRef<DriveTile>(undefined);
+  const derivatives = useRef(new Map<string, FileRecord>());
 
   const load = useCallback(async () => {
     try {
@@ -75,16 +143,36 @@ export default function DriveScreen() {
         getStorageUsage(context),
       ]);
 
-      setTiles(await Promise.all(records.map((record) => toTile(context, record))));
-      setUsage(storage);
+      const unfinished = records.filter(isResumable).map((record) => record.id);
+      await forgetSourcesExcept(unfinished);
+      const remembered = new Set(await rememberedSourceIds());
+
+      const opened = await Promise.all(
+        records.map((record) => toTile(context, record, remembered.has(record.id))),
+      );
+      const previewIds = thumbnailIdsOf(opened.map((tile) => ({ thumbnail_id: tile.thumbnailId })));
+
+      derivatives.current = new Map(
+        records.filter((record) => previewIds.has(record.id)).map((record) => [record.id, record]),
+      );
+      void pruneCachedObjects(new Set(records.map((record) => record.id)));
+
+      setTiles(opened.filter((tile) => !previewIds.has(tile.id)));
+      setStorageUsage(storage);
       setMessage(undefined);
+      setSelected((current) =>
+        retainSelectable(
+          current,
+          records.map((record) => record.id),
+        ),
+      );
     } catch (error) {
       if (error instanceof ApiError && error.isDriveDisabled) {
         setUnavailable(true);
         setTiles([]);
         return;
       }
-      setMessage(reportError(error));
+      setMessage({ text: reportError(error), tone: 'danger' });
       setTiles([]);
     }
   }, [context, reportError]);
@@ -93,45 +181,152 @@ export default function DriveScreen() {
     void load();
   }, [load]);
 
+  const previews = useSyncExternalStore(subscribeToPreviews, previewUrls, previewUrls);
+
+  useEffect(() => {
+    const wanted = (tiles ?? [])
+      .map((tile) => tile.thumbnailId)
+      .filter((id): id is string => id !== undefined && !hasPreview(id));
+
+    if (wanted.length === 0) {
+      return;
+    }
+
+    let live = true;
+    void (async () => {
+      for (const id of wanted) {
+        if (!live) {
+          return;
+        }
+        const record = derivatives.current.get(id);
+        if (record === undefined) {
+          continue;
+        }
+
+        try {
+          const preview = await openPreview(context, record);
+          setPreview(
+            id,
+            URL.createObjectURL(new Blob([preview.bytes as BlobPart], { type: preview.mime })),
+          );
+        } catch {
+          setPreview(id, '');
+        }
+      }
+    })();
+
+    return () => {
+      live = false;
+    };
+  }, [context, tiles]);
+
   const send = useCallback(
-    async (files: readonly File[]) => {
-      for (const file of files) {
-        const key = `${file.name}:${crypto.randomUUID()}`;
-        setTransfers((current) => [
-          ...current,
-          { key, name: file.name, percent: 0, phase: 'sealing' },
-        ]);
+    async (sources: readonly UploadSource[]) => {
+      for (const { file, handle } of sources) {
+        const id = crypto.randomUUID();
+        const key = `${file.name}:${id}`;
+        beginTransfer({ key, fileId: id, name: file.name, mime: file.type, bytes: file.size });
+
+        if (handle !== undefined) {
+          await rememberSource(id, handle);
+        }
+
+        let stored = 0;
+        const preview = await deriveThumbnail(file);
+        const thumbnailId = preview === undefined ? undefined : crypto.randomUUID();
 
         try {
           await uploadFile(context, file, {
-            onProgress: ({ phase, doneBytes, totalBytes }) =>
-              setTransfers((current) =>
-                current.map((transfer) =>
-                  transfer.key === key
-                    ? { ...transfer, phase, percent: uploadPercent(doneBytes, totalBytes) }
-                    : transfer,
-                ),
-              ),
+            id,
+            thumbnailId,
+            onProgress: ({ phase, doneBytes, totalBytes }) => {
+              stored = doneBytes;
+              advanceTransfer(key, phase, uploadPercent(doneBytes, totalBytes));
+            },
           });
 
-          setTransfers((current) => current.filter((transfer) => transfer.key !== key));
+          if (preview !== undefined && thumbnailId !== undefined) {
+            await uploadThumbnail(context, preview, thumbnailId);
+          }
+
+          await forgetSource(id);
+          dropTransfer(key);
         } catch (error) {
           const text =
             error instanceof ApiError && error.isQuotaExceeded && usage !== undefined
               ? storageFullMessage(usage, file.size)
               : reportError(error);
 
-          setTransfers((current) =>
-            current.map((transfer) =>
-              transfer.key === key ? { ...transfer, phase: 'failed', error: text } : transfer,
-            ),
-          );
+          failTransfer(key, text);
+
+          if (stored === 0) {
+            await forgetSource(id);
+            await abandonUpload(context, id).catch(() => undefined);
+          }
         }
       }
 
       await load();
     },
     [context, load, reportError, usage],
+  );
+
+  const carryOn = useCallback(
+    async (tile: DriveTile, source: File) => {
+      if (tile.resume === undefined) {
+        return;
+      }
+
+      const key = `${tile.id}:${crypto.randomUUID()}`;
+      beginTransfer({
+        key,
+        fileId: tile.id,
+        name: tile.name,
+        mime: tile.mime,
+        bytes: tile.trueBytes,
+      });
+
+      try {
+        await resumeUpload(context, tile.resume, source, {
+          onProgress: ({ phase, doneBytes, totalBytes }) =>
+            advanceTransfer(key, phase, uploadPercent(doneBytes, totalBytes)),
+        });
+
+        await forgetSource(tile.id);
+        dropTransfer(key);
+      } catch (error) {
+        failTransfer(key, reportError(error));
+      }
+
+      await load();
+    },
+    [context, load, reportError],
+  );
+
+  const choose = useCallback(async () => {
+    const chosen = await chooseSources(true);
+    if (chosen === undefined) {
+      picker.current?.click();
+      return;
+    }
+
+    await send(chosen);
+  }, [send]);
+
+  const resume = useCallback(
+    async (tile: DriveTile) => {
+      const handle = tile.remembered ? await recallSource(tile.id) : undefined;
+      const source = handle === undefined ? undefined : await openRememberedSource(handle);
+
+      if (source === undefined) {
+        resuming.current = tile;
+        resumePicker.current?.click();
+        return;
+      }
+
+      await carryOn(tile, source);
+    },
+    [carryOn],
   );
 
   const save = useCallback(
@@ -141,7 +336,7 @@ export default function DriveScreen() {
         const { manifest, bytes } = await downloadFile(context, tile.id);
         offerDownload(manifest.name, manifest.mime, bytes);
       } catch (error) {
-        setMessage(reportError(error));
+        setMessage({ text: reportError(error), tone: 'danger' });
       } finally {
         setBusy(false);
       }
@@ -153,19 +348,75 @@ export default function DriveScreen() {
     if (confirming === undefined) {
       return;
     }
+    const unfinished = confirming.resume !== undefined;
+
     setBusy(true);
     try {
-      await deleteFile(context, confirming.id);
+      if (unfinished) {
+        await abandonUpload(context, confirming.id);
+      } else {
+        await deleteFiles(context, withThumbnails([confirming]));
+      }
+      await forgetSource(confirming.id);
+      for (const transfer of transfersInFlight()) {
+        if (transfer.fileId === confirming.id) {
+          dropTransfer(transfer.key);
+        }
+      }
       setConfirming(undefined);
       await load();
     } catch (error) {
-      setMessage(reportError(error));
+      setMessage({ text: reportError(error), tone: 'danger' });
     } finally {
       setBusy(false);
     }
   }, [confirming, context, load, reportError]);
 
-  const bar = useMemo(() => (usage === undefined ? undefined : storageBar(usage)), [usage]);
+  const stopSelecting = useCallback(() => {
+    setSelecting(false);
+    setSelected([]);
+    setConfirmingBatch(false);
+  }, []);
+
+  const removeSelected = useCallback(async () => {
+    setBusy(true);
+    try {
+      const chosen = (tiles ?? []).filter((tile) => selected.includes(tile.id));
+      const result = await deleteFiles(context, withThumbnails(chosen));
+      await Promise.all(selected.map((id) => forgetSource(id)));
+      stopSelecting();
+      await load();
+
+      const summary = fileBatchDeleteSummary(result);
+      if (summary !== undefined) {
+        setMessage({ text: summary, tone: 'info' });
+      }
+    } catch (error) {
+      setMessage({ text: reportError(error), tone: 'danger' });
+      setConfirmingBatch(false);
+    } finally {
+      setBusy(false);
+    }
+  }, [context, load, reportError, selected, stopSelecting, tiles]);
+
+  const byFile = useMemo(() => {
+    const latest = new Map<string, Transfer>();
+    for (const transfer of transfers) {
+      latest.set(transfer.fileId, transfer);
+    }
+
+    return latest;
+  }, [transfers]);
+
+  const grid = useMemo(() => {
+    const rows = tiles ?? [];
+    const shown = new Set(rows.map((tile) => tile.id));
+    const waiting = transfers
+      .filter((transfer) => !shown.has(transfer.fileId))
+      .map(placeholderTile);
+
+    return [...waiting, ...rows];
+  }, [tiles, transfers]);
 
   if (tiles === undefined) {
     return <Spinner />;
@@ -192,100 +443,126 @@ export default function DriveScreen() {
       onDrop={(event: DragEvent) => {
         event.preventDefault();
         setDragging(false);
-        void send([...event.dataTransfer.files]);
+        void droppedSources(event.dataTransfer).then(send);
       }}
     >
-      {message !== undefined && <Notice tone="danger">{message}</Notice>}
+      {message !== undefined && <Notice tone={message.tone}>{message.text}</Notice>}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-compact text-ink-muted">
-            {tiles.length === 0 ? 'No files yet' : fileCountLabel(tiles.length)}
+          <p className="text-compact text-ink-muted" aria-live="polite">
+            {selecting
+              ? `${selected.length} selected`
+              : grid.length === 0
+                ? 'No files yet'
+                : fileCountLabel(grid.length)}
           </p>
-          {bar !== undefined && (
-            <div className="mt-1.5 w-56">
-              <div
-                role="progressbar"
-                aria-label="Storage used"
-                aria-valuenow={bar.percent}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                className="h-1.5 w-full overflow-hidden rounded-full bg-line"
-              >
-                <div
-                  style={{ width: `${bar.percent}%` }}
-                  className={`h-full rounded-full ${bar.nearlyFull ? 'bg-warning' : 'bg-brand-500'}`}
-                />
-              </div>
-              <p className="mt-1 text-caption normal-case tracking-normal text-ink-muted">
-                {bar.summary}
-              </p>
-            </div>
-          )}
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input
             ref={picker}
             type="file"
             multiple
             className="hidden"
             onChange={(event) => {
-              void send([...(event.target.files ?? [])]);
+              void send([...(event.target.files ?? [])].map((file) => ({ file })));
               event.target.value = '';
             }}
           />
-          <Button variant="accent" disabled={busy} onClick={() => picker.current?.click()}>
-            <UploadIcon className="h-4 w-4" />
-            Upload
-          </Button>
+          <input
+            ref={resumePicker}
+            type="file"
+            className="hidden"
+            onChange={(event) => {
+              const tile = resuming.current;
+              const source = event.target.files?.[0];
+              event.target.value = '';
+              resuming.current = undefined;
+              if (tile !== undefined && source !== undefined) {
+                void carryOn(tile, source);
+              }
+            }}
+          />
+          {grid.length > 0 && (
+            <SizeStepper
+              size={iconSize}
+              onChange={resize}
+              groupLabel="Icon size"
+              smallerLabel="Smaller icons"
+              largerLabel="Larger icons"
+            />
+          )}
+          {selecting ? (
+            <>
+              <Button
+                variant="secondary"
+                disabled={busy || selected.length === tiles.length}
+                onClick={() => setSelected(tiles.map((tile) => tile.id))}
+              >
+                Select all
+              </Button>
+              <Button variant="secondary" disabled={busy} onClick={stopSelecting}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                disabled={busy || selected.length === 0}
+                onClick={() => setConfirmingBatch(true)}
+              >
+                <TrashIcon className="h-4 w-4" />
+                {busy ? 'Deleting…' : `Delete${selected.length > 0 ? ` (${selected.length})` : ''}`}
+              </Button>
+            </>
+          ) : (
+            <>
+              {tiles.length > 0 && (
+                <Button variant="secondary" disabled={busy} onClick={() => setSelecting(true)}>
+                  Select
+                </Button>
+              )}
+              <Button variant="accent" disabled={busy} onClick={() => void choose()}>
+                <UploadIcon className="h-4 w-4" />
+                Upload
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
-      {transfers.length > 0 && (
-        <Card>
-          <ul className="space-y-3">
-            {transfers.map((transfer) => (
-              <li key={transfer.key}>
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="truncate text-compact text-ink">{transfer.name}</span>
-                  <span className="shrink-0 text-caption normal-case tracking-normal text-ink-muted">
-                    {transfer.phase === 'failed' ? 'Failed' : `${transfer.phase} · ${transfer.percent}%`}
-                  </span>
-                </div>
-                {transfer.phase === 'failed' ? (
-                  <p className="mt-1 text-caption normal-case tracking-normal text-danger">
-                    {transfer.error}
-                  </p>
-                ) : (
-                  <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-line">
-                    <div
-                      style={{ width: `${transfer.percent}%` }}
-                      className="h-full rounded-full bg-brand-500 transition-all"
-                    />
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-
-      {confirming !== undefined && (
-        <Notice tone="warning">
-          <p>{fileDeleteConfirmation(confirming.name)}</p>
-          <div className="mt-3 flex gap-2">
-            <Button variant="danger" disabled={busy} onClick={() => void remove()}>
-              Delete permanently
+      {confirmingBatch && selected.length > 0 && (
+        <Notice tone="danger">
+          <p>{fileBatchDeleteConfirmation(selected.length)}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button variant="danger" disabled={busy} onClick={() => void removeSelected()}>
+              {busy ? 'Deleting…' : `Delete ${fileCountLabel(selected.length)}`}
             </Button>
-            <Button variant="secondary" disabled={busy} onClick={() => setConfirming(undefined)}>
-              Keep it
+            <Button variant="secondary" disabled={busy} onClick={() => setConfirmingBatch(false)}>
+              Keep them
             </Button>
           </div>
         </Notice>
       )}
 
-      {tiles.length === 0 ? (
+      {confirming !== undefined && (
+        <Notice tone="warning">
+          <p>
+            {confirming.resume !== undefined
+              ? discardConfirmation(confirming.name)
+              : fileDeleteConfirmation(confirming.name)}
+          </p>
+          <div className="mt-3 flex gap-2">
+            <Button variant="danger" disabled={busy} onClick={() => void remove()}>
+              {confirming.resume !== undefined ? 'Discard the upload' : 'Delete permanently'}
+            </Button>
+            <Button variant="secondary" disabled={busy} onClick={() => setConfirming(undefined)}>
+              {confirming.resume !== undefined ? 'Keep it for now' : 'Keep it'}
+            </Button>
+          </div>
+        </Notice>
+      )}
+
+      {grid.length === 0 ? (
         <Card flush>
           <Empty icon={<DriveIcon className="h-6 w-6" />}>
             {dragging
@@ -294,20 +571,44 @@ export default function DriveScreen() {
           </Empty>
         </Card>
       ) : (
-        <ul className="grid grid-cols-2 gap-x-5 gap-y-7 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {tiles.map((tile) => (
-            <DriveFile
-              key={tile.id}
-              tile={tile}
-              busy={busy}
-              onOpen={() => void save(tile)}
-              onDelete={() => setConfirming(tile)}
-            />
-          ))}
+        <ul
+          className="grid gap-1"
+          style={{ gridTemplateColumns: gridTemplate('drive', iconSize) }}
+        >
+          {grid.map((tile) => {
+            const transfer = byFile.get(tile.id);
+
+            return (
+              <DriveFile
+                key={tile.id}
+                tile={tile}
+                scale={iconScale(iconSize)}
+                busy={busy}
+                transfer={transfer}
+                preview={tile.thumbnailId === undefined ? undefined : previews.get(tile.thumbnailId)}
+                selecting={selecting}
+                selected={selected.includes(tile.id)}
+                onOpen={() => {
+                  if (selecting) {
+                    setSelected((current) => toggleFileSelection(current, tile.id));
+                    return;
+                  }
+                  void save(tile);
+                }}
+                onToggle={() => {
+                  setSelecting(true);
+                  setSelected((current) => toggleFileSelection(current, tile.id));
+                }}
+                onDelete={() => setConfirming(tile)}
+                onResume={() => void resume(tile)}
+                onDismiss={transfer === undefined ? undefined : () => dropTransfer(transfer.key)}
+              />
+            );
+          })}
         </ul>
       )}
 
-      {dragging && tiles.length > 0 && (
+      {dragging && grid.length > 0 && (
         <p className="text-compact text-brand-700">Drop the files here.</p>
       )}
     </div>
@@ -316,84 +617,220 @@ export default function DriveScreen() {
 
 function DriveFile({
   tile,
+  scale,
   busy,
+  transfer,
+  preview,
+  selecting,
+  selected,
   onOpen,
+  onToggle,
   onDelete,
+  onResume,
+  onDismiss,
 }: {
   tile: DriveTile;
+  scale: IconScale;
   busy: boolean;
+  transfer?: Transfer;
+  preview?: string;
+  selecting: boolean;
+  selected: boolean;
   onOpen: () => void;
+  onToggle: () => void;
   onDelete: () => void;
+  onResume: () => void;
+  onDismiss?: () => void;
 }) {
+  const failed = transfer?.phase === 'failed';
+  const running = transfer !== undefined && !failed;
+  const inert = running || tile.placeholder === true;
+  const showing = preview !== undefined && preview !== '';
+
   return (
     <li className="group relative">
       <button
         type="button"
         onClick={onOpen}
-        disabled={busy || !tile.openable}
-        title={tile.status}
-        aria-label={`Download ${tile.name}`}
-        className="flex w-full flex-col gap-2.5 rounded-xl p-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 disabled:opacity-60"
+        disabled={busy || inert || (!selecting && !tile.openable)}
+        title={failed ? transfer.error : tile.status}
+        aria-label={
+          selecting ? `${selected ? 'Deselect' : 'Select'} ${tile.name}` : `Download ${tile.name}`
+        }
+        className={`flex w-full flex-col items-center gap-1.5 rounded-lg p-2 text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 disabled:opacity-60 ${
+          selected ? 'bg-brand-50 ring-1 ring-brand-300' : 'hover:bg-raised'
+        }`}
       >
-        <span className="relative flex aspect-[210/297] w-full items-center justify-center overflow-hidden rounded-xl bg-surface shadow-card ring-1 ring-line transition-all duration-200 group-hover:-translate-y-0.5 group-hover:shadow-lift group-hover:ring-brand-200">
-          <KindGlyph kind={tile.kind} readable={tile.readable} />
-          <span className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-3">
-            <span className="rounded-full bg-raised px-2 py-0.5 text-caption normal-case tracking-normal text-ink-muted">
-              {formatBytes(tile.trueBytes)}
-            </span>
+        <span
+          className="flex flex-col items-center justify-end gap-1"
+          style={{ width: scale.glyphPixels }}
+        >
+          <span
+            className="flex items-end justify-center"
+            style={{ height: scale.glyphPixels, width: scale.glyphPixels }}
+          >
+            {showing ? (
+              <img
+                src={preview}
+                alt=""
+                loading="lazy"
+                className="max-h-full max-w-full rounded-sm bg-surface object-contain shadow-card ring-1 ring-line"
+              />
+            ) : (
+              <FileTypeIcon
+                kind={tile.kind}
+                extension={tile.readable ? fileExtension(tile.name) : ''}
+                labelled={scale.labelsTheGlyph}
+              />
+            )}
           </span>
+          {running && (
+            <span
+              role="progressbar"
+              aria-label={`Uploading ${tile.name}`}
+              aria-valuenow={transfer.percent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              className="block h-1 w-full overflow-hidden rounded-full bg-line"
+            >
+              <span
+                style={{ width: `${transfer.percent}%` }}
+                className="block h-full bg-brand-500 transition-all duration-200"
+              />
+            </span>
+          )}
+          {failed && <span className="block h-1 w-full rounded-full bg-danger" />}
         </span>
 
-        <span className="block min-w-0 px-0.5">
-          <span className="block truncate text-compact font-semibold text-ink">{tile.name}</span>
-          <span className="mt-0.5 block truncate text-caption normal-case tracking-normal text-ink-muted">
-            {tile.status}
+        <span className="block w-full min-w-0">
+          <span className="line-clamp-2 block break-words text-compact font-medium text-ink">
+            {tile.name}
+          </span>
+          <span
+            className={`mt-0.5 block text-caption normal-case tracking-normal ${
+              failed ? 'line-clamp-3 text-danger' : 'truncate'
+            } ${running ? 'text-brand-700' : failed ? '' : 'text-ink-muted'}`}
+          >
+            {transfer === undefined
+              ? fileCaption(tile.status, tile.trueBytes)
+              : transfer.phase === 'failed'
+                ? transfer.error
+                : transferLabel(transfer.phase, transfer.percent)}
           </span>
         </span>
       </button>
 
-      <div className="absolute right-3 top-3 z-10 flex gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={selected}
+        aria-label={`${selected ? 'Deselect' : 'Select'} ${tile.name}`}
+        disabled={busy || inert}
+        onClick={onToggle}
+        className={`absolute left-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-md border shadow-card transition focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 ${
+          selected
+            ? 'border-brand-500 bg-brand-500 text-white'
+            : 'border-line-strong bg-surface/90 text-transparent hover:border-brand-400'
+        } ${selecting || selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+      >
+        <CheckIcon className="h-3.5 w-3.5 shrink-0" />
+      </button>
+
+      <div
+        hidden={selecting || running}
+        className={`absolute right-1 top-1 z-10 flex gap-1 transition ${
+          failed ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+        }`}
+      >
         {tile.openable && (
           <button
             type="button"
             aria-label={`Download ${tile.name}`}
             disabled={busy}
             onClick={onOpen}
-            className="flex h-6 w-6 items-center justify-center rounded-md border border-line-strong bg-surface/90 text-ink-soft shadow-card transition hover:text-brand-700 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+            className="flex h-5 w-5 items-center justify-center rounded-md border border-line-strong bg-surface/90 text-ink-soft shadow-card transition hover:text-brand-700 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
           >
-            <DownloadIcon className="h-3.5 w-3.5 shrink-0" />
+            <DownloadIcon className="h-3 w-3 shrink-0" />
           </button>
         )}
-        <button
-          type="button"
-          aria-label={`Delete ${tile.name}`}
-          disabled={busy}
-          onClick={onDelete}
-          className="flex h-6 w-6 items-center justify-center rounded-md border border-line-strong bg-surface/90 text-ink-soft shadow-card transition hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
-        >
-          <TrashIcon className="h-3.5 w-3.5 shrink-0" />
-        </button>
+        {tile.resume !== undefined && (
+          <button
+            type="button"
+            aria-label={`Finish uploading ${tile.name}`}
+            title={resumeHint(tile.name, tile.remembered)}
+            disabled={busy}
+            onClick={onResume}
+            className="flex h-5 w-5 items-center justify-center rounded-md border border-line-strong bg-surface/90 text-ink-soft shadow-card transition hover:text-brand-700 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+          >
+            <UploadIcon className="h-3 w-3 shrink-0" />
+          </button>
+        )}
+        {tile.placeholder !== true && (
+          <button
+            type="button"
+            aria-label={
+              tile.resume === undefined ? `Delete ${tile.name}` : `Discard ${tile.name}`
+            }
+            title={
+              tile.resume === undefined
+                ? undefined
+                : 'Discard this unfinished upload and free the space it is holding'
+            }
+            disabled={busy}
+            onClick={onDelete}
+            className="flex h-5 w-5 items-center justify-center rounded-md border border-line-strong bg-surface/90 text-ink-soft shadow-card transition hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+          >
+            <TrashIcon className="h-3 w-3 shrink-0" />
+          </button>
+        )}
+        {failed && onDismiss !== undefined && (
+          <button
+            type="button"
+            aria-label={`Dismiss ${tile.name}`}
+            onClick={onDismiss}
+            className="flex h-5 w-5 items-center justify-center rounded-md border border-line-strong bg-surface/90 text-ink-soft shadow-card transition hover:text-ink focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+          >
+            <CloseIcon className="h-3 w-3 shrink-0" />
+          </button>
+        )}
       </div>
     </li>
   );
 }
 
-function KindGlyph({ kind, readable }: { kind: FileKind; readable: boolean }) {
-  if (!readable) {
-    return <DocumentsIcon className="h-8 w-8 text-ink-faint" />;
+function withThumbnails(chosen: readonly DriveTile[]): string[] {
+  const ids: string[] = [];
+  for (const tile of chosen) {
+    ids.push(tile.id);
+    if (tile.thumbnailId !== undefined) {
+      ids.push(tile.thumbnailId);
+    }
   }
 
-  return (
-    <span className="flex flex-col items-center gap-1.5 text-ink-faint">
-      <DriveIcon className="h-8 w-8" />
-      <span className="text-caption tracking-widest">{kind}</span>
-    </span>
-  );
+  return ids;
+}
+
+function placeholderTile(transfer: Transfer): DriveTile {
+  return {
+    id: transfer.fileId,
+    name: fileName(transfer.name),
+    mime: transfer.mime,
+    kind: fileKind(transfer.mime),
+    storedBytes: transfer.bytes,
+    trueBytes: transfer.bytes,
+    status: '',
+    openable: false,
+    readable: true,
+    updatedAt: '',
+    remembered: false,
+    placeholder: true,
+  };
 }
 
 async function toTile(
   context: Parameters<typeof wrapper>[0],
   record: FileRecord,
+  remembered: boolean,
 ): Promise<DriveTile> {
   const base = {
     id: record.id,
@@ -401,6 +838,15 @@ async function toTile(
     status: replicationLabel(record),
     openable: isOpenable(record),
     updatedAt: record.updated_at,
+    remembered: remembered && isResumable(record),
+    resume: isResumable(record)
+      ? {
+          id: record.id,
+          ciphertext: record.ciphertext,
+          wrapped_dek: record.wrapped_dek,
+          size_bytes: record.size_bytes,
+        }
+      : undefined,
   };
 
   try {
@@ -414,6 +860,7 @@ async function toTile(
       kind: fileKind(manifest.mime),
       trueBytes: manifest.size,
       readable: true,
+      thumbnailId: manifest.thumbnail_id,
     };
   } catch {
     return {
