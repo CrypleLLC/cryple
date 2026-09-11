@@ -55,26 +55,26 @@ describe('payload construction', () => {
   });
 
   it('builds the colon-joined action payload', () => {
-    expect(buildActionPayload(CHALLENGE, TIMESTAMP, 'pin-reset-vote', ['req-1'])).toBe(
-      `${CHALLENGE}:${TIMESTAMP}:pin-reset-vote:req-1`,
+    expect(buildActionPayload(CHALLENGE, TIMESTAMP, 'secret-delete', ['req-1'])).toBe(
+      `${CHALLENGE}:${TIMESTAMP}:secret-delete:req-1`,
     );
   });
 
   it('appends multiple arguments in the documented order', () => {
     expect(
-      buildActionPayload(CHALLENGE, TIMESTAMP, 'share-assign', ['ben-1', 'item-2']),
-    ).toBe(`${CHALLENGE}:${TIMESTAMP}:share-assign:ben-1:item-2`);
+      buildActionPayload(CHALLENGE, TIMESTAMP, 'rotate-second-factor', ['tok-2']),
+    ).toBe(`${CHALLENGE}:${TIMESTAMP}:rotate-second-factor:tok-2`);
   });
 
   it('rejects arguments containing the field separator', () => {
-    expect(() => buildActionPayload(CHALLENGE, TIMESTAMP, 'share-delete', ['a:b'])).toThrow(
+    expect(() => buildActionPayload(CHALLENGE, TIMESTAMP, 'note-delete', ['a:b'])).toThrow(
       /must not contain/,
     );
   });
 
   it('rejects the wrong argument count', () => {
-    expect(() => buildActionPayload(CHALLENGE, TIMESTAMP, 'share-assign', ['only-one'])).toThrow(
-      /expected 2 argument/,
+    expect(() => buildActionPayload(CHALLENGE, TIMESTAMP, 'rotate-second-factor', ['a', 'b'])).toThrow(
+      /expected 1 argument/,
     );
   });
 });
@@ -101,7 +101,7 @@ describe('signature format', () => {
 });
 
 describe('the signature is bound to everything in its payload', () => {
-  const payload = buildActionPayload(CHALLENGE, TIMESTAMP, 'pin-reset-vote', ['request-1']);
+  const payload = buildActionPayload(CHALLENGE, TIMESTAMP, 'secret-delete', ['request-1']);
   const signature = signPayload(payload, privateKey);
 
   it('verifies against its own payload', () => {
@@ -109,22 +109,22 @@ describe('the signature is bound to everything in its payload', () => {
   });
 
   it('is bound to the challenge', () => {
-    const other = buildActionPayload('b'.repeat(64), TIMESTAMP, 'pin-reset-vote', ['request-1']);
+    const other = buildActionPayload('b'.repeat(64), TIMESTAMP, 'secret-delete', ['request-1']);
     expect(verifyPayload(other, signature, publicKey)).toBe(false);
   });
 
   it('is bound to the timestamp', () => {
-    const other = buildActionPayload(CHALLENGE, TIMESTAMP + 1, 'pin-reset-vote', ['request-1']);
+    const other = buildActionPayload(CHALLENGE, TIMESTAMP + 1, 'secret-delete', ['request-1']);
     expect(verifyPayload(other, signature, publicKey)).toBe(false);
   });
 
   it('is bound to the action label', () => {
-    const other = buildActionPayload(CHALLENGE, TIMESTAMP, 'pin-reset-revoke', ['request-1']);
+    const other = buildActionPayload(CHALLENGE, TIMESTAMP, 'note-delete', ['request-1']);
     expect(verifyPayload(other, signature, publicKey)).toBe(false);
   });
 
   it('is bound to the arguments', () => {
-    const other = buildActionPayload(CHALLENGE, TIMESTAMP, 'pin-reset-vote', ['request-2']);
+    const other = buildActionPayload(CHALLENGE, TIMESTAMP, 'secret-delete', ['request-2']);
     expect(verifyPayload(other, signature, publicKey)).toBe(false);
   });
 });
@@ -152,7 +152,7 @@ describe('a sign-in signature can never be used as an action signature', () => {
   });
 });
 
-describe('secret-delete is the one batchable action', () => {
+describe('the four batchable delete actions', () => {
   it('sorts ids ascending before signing', () => {
     expect(normalizeActionArgs('secret-delete', ['c', 'a', 'b'])).toEqual(['a', 'b', 'c']);
   });
@@ -185,8 +185,32 @@ describe('secret-delete is the one batchable action', () => {
 });
 
 describe('the action table matches the authoritative spec', () => {
-  it('covers all 19 actions', () => {
-    expect(Object.keys(ACTIONS)).toHaveLength(19);
+  it('covers all 7 actions', () => {
+    expect(Object.keys(ACTIONS)).toHaveLength(7);
+  });
+
+  it('makes file-delete batchable, since the drive gained DELETE /files', () => {
+    expect(ACTIONS['file-delete']).toMatchObject({
+      args: ['file_id'],
+      secondFactor: true,
+      signer: 'owner',
+      variadic: true,
+    });
+  });
+
+  it('treats DELETE /files/{id} as the one-element case of the same label', () => {
+    const id = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
+
+    expect(buildActionPayload(CHALLENGE, TIMESTAMP, 'file-delete', [id])).toBe(
+      `${CHALLENGE}:${TIMESTAMP}:file-delete:${id}`,
+    );
+  });
+
+  it('sorts and de-duplicates a file selection before signing', () => {
+    const first = '0c892e57-93cf-423a-a9e9-fee5a9f87681';
+    const second = 'ba7816bf-8f01-4fea-9411-2b4c3f5a1e77';
+
+    expect(normalizeActionArgs('file-delete', [second, first, second])).toEqual([first, second]);
   });
 
   it('makes document-delete batchable, like secret-delete and note-delete', () => {
@@ -216,30 +240,20 @@ describe('the action table matches the authoritative spec', () => {
     expect(() => normalizeActionArgs('note-delete', [])).toThrow(/at least one/);
   });
 
-  it('encodes the three structural second-factor carve-outs', () => {
+  it('encodes the one structural second-factor carve-out', () => {
     expect(ACTIONS['enable-second-factor'].secondFactor).toBe(false);
-    expect(ACTIONS['pin-reset-request'].secondFactor).toBe(false);
-    expect(ACTIONS['pin-reset-revoke'].secondFactor).toBe(false);
-    expect(ACTIONS['pin-reset-confirm'].secondFactor).toBe(false);
   });
 
   it('demands the second factor everywhere else', () => {
-    const exempt = new Set([
-      'enable-second-factor',
-      'pin-reset-request',
-      'pin-reset-revoke',
-      'pin-reset-confirm',
-    ]);
     for (const [action, spec] of Object.entries(ACTIONS)) {
-      expect(spec.secondFactor).toBe(!exempt.has(action));
+      expect(spec.secondFactor).toBe(action !== 'enable-second-factor');
     }
   });
 
-  it('records who signs, so a guardian action demands the guardian second factor', () => {
-    expect(ACTIONS['pin-reset-vote'].signer).toBe('guardian');
-    expect(ACTIONS['recovery-share-submit'].signer).toBe('guardian');
-    expect(ACTIONS['guardian-accept'].signer).toBe('invitee');
-    expect(ACTIONS['account-delete'].signer).toBe('owner');
+  it('records who signs; every action today is the account owner acting on itself', () => {
+    for (const spec of Object.values(ACTIONS)) {
+      expect(spec.signer).toBe('owner');
+    }
   });
 });
 
@@ -261,11 +275,7 @@ describe('second factor attachment', () => {
   });
 
   it('omits password for the carve-outs even on a Paranoid account', () => {
-    for (const action of [
-      'pin-reset-request',
-      'pin-reset-revoke',
-      'enable-second-factor',
-    ] as const) {
+    for (const action of ['enable-second-factor'] as const) {
       const args = ACTIONS[action].args.map((name) => `${name}-value`);
       expect(signActionEnvelope(action, args, identity, { paranoid: true }).password).toBeUndefined();
     }
@@ -281,21 +291,21 @@ describe('second factor attachment', () => {
 
 describe('envelopes are fresh per call', () => {
   it('never reuses a challenge across two signings of the same action', () => {
-    const first = signActionEnvelope('share-delete', ['id-1'], identity, { paranoid: false });
-    const second = signActionEnvelope('share-delete', ['id-1'], identity, { paranoid: false });
+    const first = signActionEnvelope('note-delete', ['id-1'], identity, { paranoid: false });
+    const second = signActionEnvelope('note-delete', ['id-1'], identity, { paranoid: false });
     expect(first.challenge).not.toBe(second.challenge);
     expect(first.signature).not.toBe(second.signature);
   });
 
   it('produces an envelope whose signature verifies over its own rebuilt payload', () => {
-    const envelope = signActionEnvelope('guardian-revoke', ['guardian-9'], identity, {
+    const envelope = signActionEnvelope('account-delete', ['a-user-address'], identity, {
       paranoid: true,
     });
     const payload = buildActionPayload(
       envelope.challenge,
       envelope.timestamp,
-      'guardian-revoke',
-      ['guardian-9'],
+      'account-delete',
+      ['a-user-address'],
     );
     expect(verifyPayload(payload, envelope.signature, publicKey)).toBe(true);
   });

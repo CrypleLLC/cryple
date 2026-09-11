@@ -11,51 +11,61 @@ import type {
 } from 'react';
 import {
   FOCUSABLE_SELECTOR,
+  iconScale,
   isBackdropDismissal,
+  isLargestIconSize,
+  isSmallestIconSize,
+  largerIconSize,
   scrollLockTransition,
+  smallerIconSize,
   trapAction,
+  type IconSize,
 } from '@/lib/app';
-import { CheckIcon, ClipboardIcon, CloseIcon } from './icons';
+import { CheckIcon, ClipboardIcon, CloseIcon, MinusIcon, PlusIcon } from './icons';
 
 export function PanelGrid({ children }: { children: ReactNode }) {
-  return <div className="grid gap-6 md:grid-cols-2">{children}</div>;
+  return <div className="grid gap-5 md:grid-cols-2">{children}</div>;
 }
 
 export function Card({
   title,
   subtitle,
+  actions,
   flush = false,
   children,
 }: {
   title?: string;
   subtitle?: string;
+  actions?: ReactNode;
   flush?: boolean;
   children: ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-      {title || subtitle ? (
-        <header className="border-b border-slate-200 px-5 py-4 dark:border-slate-800">
-          {title ? (
-            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
-          ) : null}
-          {subtitle ? (
-            <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
-          ) : null}
+    <section className="flex flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
+      {title || subtitle || actions ? (
+        <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
+          <div className="min-w-0">
+            {title ? <h2 className="text-title text-ink">{title}</h2> : null}
+            {subtitle ? <p className="mt-1 text-compact text-ink-muted">{subtitle}</p> : null}
+          </div>
+          {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
         </header>
       ) : null}
-      <div className={flush ? '' : 'p-5'}>{children}</div>
+      <div className={flush ? 'min-w-0 flex-1' : 'min-w-0 flex-1 p-5'}>{children}</div>
     </section>
   );
 }
 
 const BUTTON_VARIANTS = {
   primary:
-    'bg-brand-500 text-white shadow-sm hover:bg-brand-600 active:bg-brand-700 disabled:bg-brand-300 dark:disabled:bg-brand-900 dark:disabled:text-slate-500',
+    'bg-brand-600 text-white shadow-card hover:bg-brand-700 active:bg-brand-800 disabled:bg-brand-300 disabled:shadow-none',
+  accent:
+    'brand-gradient text-white shadow-raised hover:opacity-95 hover:shadow-lift disabled:opacity-50 disabled:shadow-card',
   secondary:
-    'border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-slate-100',
+    'border border-line bg-surface text-ink-soft shadow-card hover:border-line-strong hover:bg-raised hover:text-ink disabled:opacity-50',
+  ghost: 'text-ink-muted hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50',
   danger:
-    'border border-red-200 bg-white text-red-600 shadow-sm hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-red-950',
+    'border border-danger-line bg-surface text-danger shadow-card hover:bg-danger-bg disabled:opacity-50',
 } as const;
 
 export type ButtonVariant = keyof typeof BUTTON_VARIANTS;
@@ -67,9 +77,28 @@ export function Button({
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
   return (
     <button
-      className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 focus-visible:ring-offset-1 disabled:cursor-not-allowed ${BUTTON_VARIANTS[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-compact font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-ground active:scale-[0.99] disabled:pointer-events-none disabled:cursor-not-allowed ${BUTTON_VARIANTS[variant]} ${className}`}
       {...props}
     />
+  );
+}
+
+export function IconButton({
+  label,
+  className = '',
+  children,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-brand-50 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 disabled:pointer-events-none disabled:opacity-50 ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -92,12 +121,13 @@ export function CopyButton({
   useEffect(() => () => clearTimeout(timer.current), []);
 
   return (
-    <button
+    <Button
       type="button"
+      variant="secondary"
       disabled={disabled}
       title={label}
       aria-label={copied ? copiedLabel : label}
-      className={`inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 ${className}`}
+      className={className}
       onClick={() => {
         void navigator.clipboard?.writeText(value);
         setCopied(true);
@@ -105,18 +135,18 @@ export function CopyButton({
         timer.current = setTimeout(() => setCopied(false), 2000);
       }}
     >
-      {copied ? <CheckIcon className="h-4 w-4 text-emerald-600" /> : <ClipboardIcon />}
+      {copied ? <CheckIcon className="h-4 w-4 shrink-0 text-success" /> : <ClipboardIcon />}
       <span>{copied ? copiedLabel : label}</span>
-    </button>
+    </Button>
   );
 }
 
 const INPUT_CLASS =
-  'mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-500';
+  'mt-1.5 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none transition-all placeholder:text-ink-faint focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:bg-raised disabled:text-ink-muted';
 
-const LABEL_CLASS = 'text-sm font-medium text-slate-700 dark:text-slate-300';
+const LABEL_CLASS = 'text-compact font-semibold text-ink-soft';
 
-const HINT_CLASS = 'mt-1.5 block text-xs text-slate-500 dark:text-slate-400';
+const HINT_CLASS = 'mt-1.5 block text-compact text-ink-muted';
 
 export function Field({
   label,
@@ -178,54 +208,63 @@ export function Select({
   );
 }
 
+const BADGE_TONES = {
+  neutral: 'border-line bg-raised text-ink-muted',
+  brand: 'border-brand-100 bg-brand-50 text-brand-700',
+  success: 'border-success-line bg-success-bg text-success',
+  warning: 'border-warning-line bg-warning-bg text-warning',
+  danger: 'border-danger-line bg-danger-bg text-danger',
+} as const;
+
+export type BadgeTone = keyof typeof BADGE_TONES;
+
 export function Badge({
   tone = 'neutral',
   children,
 }: {
-  tone?: 'neutral' | 'brand';
+  tone?: BadgeTone;
   children: ReactNode;
 }) {
-  const styles = {
-    neutral:
-      'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-    brand:
-      'bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300',
-  }[tone];
-
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${styles}`}
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-caption uppercase ${BADGE_TONES[tone]}`}
     >
       {children}
     </span>
   );
 }
 
+const NOTICE_TONES = {
+  info: 'border-brand-100 bg-brand-50 text-brand-800',
+  warning: 'border-warning-line bg-warning-bg text-warning',
+  danger: 'border-danger-line bg-danger-bg text-danger',
+  success: 'border-success-line bg-success-bg text-success',
+} as const;
+
 export function Notice({
   tone = 'info',
   children,
 }: {
-  tone?: 'info' | 'warning' | 'danger' | 'success';
+  tone?: keyof typeof NOTICE_TONES;
   children: ReactNode;
 }) {
-  const styles = {
-    info: 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300',
-    warning:
-      'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200',
-    danger:
-      'border-red-200 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950 dark:text-red-200',
-    success:
-      'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200',
-  }[tone];
-
-  return <div className={`rounded-lg border px-4 py-3 text-sm ${styles}`}>{children}</div>;
+  return (
+    <div className={`rounded-xl border px-4 py-3 text-compact ${NOTICE_TONES[tone]}`}>
+      {children}
+    </div>
+  );
 }
 
-export function Empty({ children }: { children: ReactNode }) {
+export function Empty({ icon, children }: { icon?: ReactNode; children: ReactNode }) {
   return (
-    <p className="px-5 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
-      {children}
-    </p>
+    <div className="flex flex-col items-center gap-3 px-5 py-14 text-center">
+      {icon ? (
+        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-500">
+          {icon}
+        </span>
+      ) : null}
+      <p className="max-w-sm text-compact text-ink-muted">{children}</p>
+    </div>
   );
 }
 
@@ -293,7 +332,7 @@ export function Modal({
   return (
     <div
       role="presentation"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm"
       onMouseDown={(event) => {
         pressedOnBackdrop.current = event.target === event.currentTarget;
       }}
@@ -310,36 +349,24 @@ export function Modal({
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl outline-none dark:border-slate-800 dark:bg-slate-950"
+        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-lift outline-none"
       >
-        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-slate-800">
+        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div>
-            <h2
-              id={titleId}
-              className="text-base font-semibold text-slate-900 dark:text-slate-100"
-            >
+            <h2 id={titleId} className="text-headline text-ink">
               {title}
             </h2>
-            {subtitle ? (
-              <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
-            ) : null}
+            {subtitle ? <p className="mt-1 text-compact text-ink-muted">{subtitle}</p> : null}
           </div>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            className="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-          >
+          <IconButton label="Close" onClick={onClose}>
             <CloseIcon />
-          </button>
+          </IconButton>
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
 
         {footer ? (
-          <footer className="shrink-0 border-t border-slate-200 px-5 py-4 dark:border-slate-800">
-            {footer}
-          </footer>
+          <footer className="shrink-0 border-t border-line bg-raised px-5 py-4">{footer}</footer>
         ) : null}
       </div>
     </div>
@@ -354,8 +381,60 @@ function tabbables(root: HTMLElement | null): HTMLElement[] {
 
 export function Spinner() {
   return (
-    <div className="flex justify-center py-10">
-      <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-brand-500 dark:border-slate-700 dark:border-t-brand-400" />
+    <div className="flex justify-center py-12">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-100 border-t-brand-500" />
+    </div>
+  );
+}
+
+const STEP_CLASS =
+  'flex h-7 w-7 items-center justify-center rounded-md text-ink-muted transition hover:bg-brand-50 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 disabled:pointer-events-none disabled:opacity-40';
+
+export function SizeStepper({
+  size,
+  onChange,
+  smallerLabel,
+  largerLabel,
+  groupLabel,
+}: {
+  size: IconSize;
+  onChange: (size: IconSize) => void;
+  smallerLabel: string;
+  largerLabel: string;
+  groupLabel: string;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={groupLabel}
+      className="flex items-center gap-0.5 rounded-lg border border-line bg-surface p-0.5 shadow-card"
+    >
+      <button
+        type="button"
+        aria-label={smallerLabel}
+        title={smallerLabel}
+        disabled={isSmallestIconSize(size)}
+        onClick={() => onChange(smallerIconSize(size))}
+        className={STEP_CLASS}
+      >
+        <MinusIcon className="h-4 w-4 shrink-0" />
+      </button>
+      <span
+        aria-live="polite"
+        className="w-20 text-center text-caption normal-case tracking-normal text-ink-muted"
+      >
+        {iconScale(size).label}
+      </span>
+      <button
+        type="button"
+        aria-label={largerLabel}
+        title={largerLabel}
+        disabled={isLargestIconSize(size)}
+        onClick={() => onChange(largerIconSize(size))}
+        className={STEP_CLASS}
+      >
+        <PlusIcon className="h-4 w-4 shrink-0" />
+      </button>
     </div>
   );
 }

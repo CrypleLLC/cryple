@@ -4,30 +4,35 @@ import { useEffect, useState, type ComponentType } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import { hasSeedVault } from '@/lib/pin';
-import { sessionExits, type SessionExit, type SessionExitId } from '@/lib/app';
+import {
+  accountInitial,
+  sessionExits,
+  type SessionExit,
+  type SessionExitId,
+} from '@/lib/app';
 import { useCryple } from './CrypleProvider';
-import GuardiansScreen from './GuardiansScreen';
 import NotesScreen from './NotesScreen';
-import InheritanceScreen from './InheritanceScreen';
 import SecurityScreen from './SecurityScreen';
-import SuccessionScreen from './SuccessionScreen';
 import VaultScreen from './VaultScreen';
 import { VaultRevealAction, VaultRevealProvider } from './VaultReveal';
 import {
   DocumentsIcon,
-  GuardiansIcon,
+  DriveIcon,
   LockSessionIcon,
   LogOutIcon,
   NotesIcon,
-  InheritanceIcon,
   SecurityIcon,
-  SuccessionIcon,
   VaultIcon,
   type IconProps,
 } from './icons';
+import StorageMeter from './StorageMeter';
 import { Badge, Button, Notice, Spinner } from './ui';
 
 const DocumentsScreen = dynamic(() => import('./DocumentsScreen'), {
+  loading: () => <Spinner />,
+});
+
+const DriveScreen = dynamic(() => import('./DriveScreen'), {
   loading: () => <Spinner />,
 });
 
@@ -64,25 +69,11 @@ const NAV_ITEMS = [
     screen: DocumentsScreen,
   },
   {
-    id: 'guardians',
-    label: 'Guardians',
-    description: 'The people who can help you recover this account.',
-    icon: GuardiansIcon,
-    screen: GuardiansScreen,
-  },
-  {
-    id: 'succession',
-    label: 'Succession',
-    description: 'What happens to your vault when you are gone.',
-    icon: SuccessionIcon,
-    screen: SuccessionScreen,
-  },
-  {
-    id: 'inheritance',
-    label: 'Inheritance',
-    description: 'What has been left to you, checked against the blockchain before it opens.',
-    icon: InheritanceIcon,
-    screen: InheritanceScreen,
+    id: 'drive',
+    label: 'Drive',
+    description: 'Files, encrypted on this device before they are stored.',
+    icon: DriveIcon,
+    screen: DriveScreen,
   },
   {
     id: 'security',
@@ -128,8 +119,8 @@ export default function AppShell() {
 
   return (
     <VaultRevealProvider>
-      <div className="flex min-h-screen">
-        <aside className="sticky top-[var(--staging-banner-h)] hidden h-[calc(100vh-var(--staging-banner-h))] w-64 shrink-0 flex-col border-r border-slate-200 bg-white px-3 py-5 md:flex dark:border-slate-800 dark:bg-slate-950">
+      <div className="flex min-h-screen bg-ground">
+        <aside className="sticky top-[var(--staging-banner-h)] hidden h-[calc(100vh-var(--staging-banner-h))] w-64 shrink-0 flex-col border-r border-line bg-surface px-3 py-5 md:flex">
           <BrandMark />
           <nav className="mt-8 flex flex-1 flex-col gap-1">
             {NAV_ITEMS.map((item) => (
@@ -141,11 +132,11 @@ export default function AppShell() {
               />
             ))}
           </nav>
-          <AccountSummary username={account?.username} paranoid={paranoid} />
+          <StorageMeter />
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-[var(--staging-banner-h)] z-10 border-b border-slate-200 bg-white/85 backdrop-blur md:hidden dark:border-slate-800 dark:bg-slate-950/85">
+          <header className="sticky top-[var(--staging-banner-h)] z-10 border-b border-line bg-surface/90 backdrop-blur md:hidden">
             <div className="flex items-center justify-between gap-2 px-4 py-3">
               <BrandMark />
               <div className="flex shrink-0 items-center gap-2">
@@ -166,22 +157,19 @@ export default function AppShell() {
             </nav>
           </header>
 
-          <header className="sticky top-[var(--staging-banner-h)] z-10 hidden items-center justify-between gap-4 border-b border-slate-200 bg-white/85 px-6 py-4 backdrop-blur md:flex dark:border-slate-800 dark:bg-slate-950/85">
+          <header className="sticky top-[var(--staging-banner-h)] z-10 hidden items-center justify-between gap-4 border-b border-line bg-surface/90 px-6 py-4 backdrop-blur md:flex">
             <div className="min-w-0">
-              <h1 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-                {current.label}
-              </h1>
-              <p className="truncate text-sm text-slate-500 dark:text-slate-400">
-                {current.description}
-              </p>
+              <h1 className="text-headline-lg text-ink">{current.label}</h1>
+              <p className="mt-0.5 truncate text-compact text-ink-muted">{current.description}</p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {ScreenActions ? <ScreenActions /> : null}
+              <AccountSummary username={account?.username} paranoid={paranoid} />
               <ExitButtons exits={exits} onRun={run} />
             </div>
           </header>
 
-          <main className="w-full flex-1 space-y-6 p-4 md:p-6">
+          <main className="w-full flex-1 space-y-5 p-4 md:p-6">
             {confirming?.confirm !== undefined ? (
               <Notice tone="warning">
                 <p>{confirming.confirm}</p>
@@ -207,9 +195,10 @@ export default function AppShell() {
 function BrandMark() {
   return (
     <div className="flex items-center gap-2.5 px-2">
-      <Image src="/cryple-logo.png" alt="Cryple" width={28} height={28} priority />
-      <span className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-        Cryple
+      <Image src="/cryple-logo.png" alt="Cryple" width={30} height={30} priority />
+      <span className="flex flex-col leading-none">
+        <span className="text-headline text-ink">Cryple</span>
+        <span className="mt-1 text-caption text-ink-faint uppercase">Zero-knowledge</span>
       </span>
     </div>
   );
@@ -232,15 +221,15 @@ function NavButton({
     <button
       onClick={onSelect}
       aria-current={active ? 'page' : undefined}
-      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 ${
+      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-compact font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 ${
         compact ? 'shrink-0' : 'w-full'
       } ${
         active
-          ? 'bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300'
-          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100'
+          ? 'bg-brand-50 text-brand-700'
+          : 'text-ink-soft hover:bg-raised hover:text-ink'
       }`}
     >
-      <ItemIcon className={active ? 'h-5 w-5 shrink-0 text-brand-500 dark:text-brand-400' : 'h-5 w-5 shrink-0'} />
+      <ItemIcon className={`h-5 w-5 shrink-0 ${active ? 'text-brand-500' : 'text-ink-muted'}`} />
       <span>{item.label}</span>
     </button>
   );
@@ -254,20 +243,14 @@ function AccountSummary({
   paranoid: boolean;
 }) {
   return (
-    <div className="border-t border-slate-200 px-2 pt-4 dark:border-slate-800">
-      <div className="flex items-center gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-500 text-sm font-semibold text-white">
-          {(username ?? '?').charAt(0).toUpperCase()}
-        </span>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
-            {username}
-          </p>
-          <Badge tone={paranoid ? 'brand' : 'neutral'}>
-            {paranoid ? 'Paranoid mode' : 'Standard mode'}
-          </Badge>
-        </div>
+    <div className="flex min-w-0 items-center gap-2.5 rounded-xl border border-line bg-raised py-1.5 pl-1.5 pr-3">
+      <span className="brand-gradient flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-caption font-semibold text-white">
+        {accountInitial(username)}
+      </span>
+      <div className="hidden min-w-0 lg:block">
+        <p className="truncate text-compact font-semibold text-ink">{username}</p>
       </div>
+      <Badge tone={paranoid ? 'brand' : 'neutral'}>{paranoid ? 'Paranoid' : 'Standard'}</Badge>
     </div>
   );
 }

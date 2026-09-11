@@ -202,7 +202,7 @@ describe('PUT /notes/{id}', () => {
     expect(await openNote(context, reSealed)).toBe('second draft');
   });
 
-  it('keeps the heir path intact: the old wrapped_dek still opens the new ciphertext', async () => {
+  it('reuses the DEK across edits: the old wrapped_dek still opens the new ciphertext', async () => {
     const created = mockFetch({ status: 201, body: { data: storedNote } });
     const context = await newContext();
 

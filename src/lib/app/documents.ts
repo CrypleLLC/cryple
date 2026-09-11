@@ -3,8 +3,10 @@ import type { SyncStatus } from '@/lib/documents';
 
 export const UNTITLED_DOCUMENT = 'Untitled document';
 export const UNREADABLE_DOCUMENT_TITLE = 'Unreadable document';
+export const UNTITLED_HEADING = 'Untitled heading';
 export const DOCUMENT_TITLE_MAX_CHARACTERS = 80;
 export const DOCUMENT_PREVIEW_MAX_CHARACTERS = 180;
+export const DOCUMENT_THUMBNAIL_MAX_CHARACTERS = 1200;
 
 const ELLIPSIS = '…';
 
@@ -25,6 +27,11 @@ export function documentTitle(title: string): string {
 export function documentPreview(preview: string): string {
   const collapsed = preview.replace(/\s+/g, ' ').trim();
   return truncate(collapsed, DOCUMENT_PREVIEW_MAX_CHARACTERS);
+}
+
+export function documentThumbnail(body: string): string {
+  const collapsed = body.replace(/\n{3,}/g, '\n\n').trim();
+  return truncate(collapsed, DOCUMENT_THUMBNAIL_MAX_CHARACTERS);
 }
 
 export const SAVE_STATUS_LABELS: Record<SyncStatus, string> = {
@@ -78,6 +85,7 @@ export interface DocumentTile {
   id: string;
   title: string;
   preview: string;
+  thumbnail: string;
   edited: string;
   updatedAt: string;
   readable: boolean;
@@ -94,6 +102,7 @@ export function buildDocumentTiles(
       id: summary.id,
       title: summary.readable ? documentTitle(summary.title) : UNREADABLE_DOCUMENT_TITLE,
       preview: summary.readable ? documentPreview(summary.preview) : '',
+      thumbnail: summary.readable ? documentThumbnail(summary.preview) : '',
       edited: editedLabel(summary.updatedAt, now),
       updatedAt: summary.updatedAt,
       readable: summary.readable,
@@ -110,9 +119,16 @@ export function documentCountLabel(count: number): string {
 export function documentDeleteConfirmation(count: number): string {
   const documents = count === 1 ? 'this document' : `these ${count} documents`;
   const them = count === 1 ? 'it' : 'them';
-  return `Deleting ${documents} is permanent, and it also removes ${them} from anyone who was set to inherit ${them}.`;
+  return `Deleting ${documents} is permanent. Only this account holds the keys, so nobody — including Cryple — can restore ${them}.`;
 }
 
 export function documentHref(id: string): string {
   return `/docs/${id}`;
+}
+
+export function documentCountsLabel(words: number, characters: number, pages: number): string {
+  const sheets = Math.max(1, Math.round(pages));
+  return `${words.toLocaleString()} ${words === 1 ? 'word' : 'words'} · ${characters.toLocaleString()} ${
+    characters === 1 ? 'character' : 'characters'
+  } · ${sheets} ${sheets === 1 ? 'page' : 'pages'}`;
 }

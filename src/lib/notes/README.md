@@ -18,10 +18,9 @@ is the entire reason the domain exists.
 
 This is the sharpest edge in the domain, and the server cannot defend against it.
 
-When an heir is assigned a note, `inheritance_shares.pq_hybrid_encrypted_item_key` holds that
-note's DEK wrapped to the heir's public keys. Generating a **fresh** DEK on edit leaves that
+Anything holding a copy of a note's DEK expects it to keep working. Generating a **fresh** DEK on edit leaves that
 stored value unwrapping to the *old* DEK, which no longer opens the new ciphertext. Both fields
-are opaque, so nothing server-side notices — the inheritance is broken and stays silent until a
+are opaque, so nothing server-side notices — the breakage stays silent until a
 release, the one moment the owner is not around to fix it.
 
 `updateNote` therefore takes the **stored `NoteRecord`**, not just an id:
@@ -35,7 +34,7 @@ unwrapDek(note.wrapped_dek) → re-seal the new plaintext under that same DEK
 and that the pre-edit `wrapped_dek` still opens the post-edit ciphertext.
 
 If a note's DEK ever genuinely needs rotating, every affected share must be re-assigned via
-`POST /succession/shares` in the same operation. Nothing here does that, so nothing here rotates.
+a deliberate, coordinated act. Nothing here does that, so nothing here rotates.
 
 ## Two different limits, and only one of them is real
 
@@ -93,7 +92,7 @@ Two things it exists to get right, both invisible in the happy path:
 **The id is the caller's, generated once when the blank editor opens.** Not per save. `POST
 /notes` without an `id` is *not* idempotent — every call makes a new note with a server-generated
 UUID — so an autosave that timed out and retried would leave two notes, each separately
-assignable to heirs, with nothing to dedupe them.
+indistinguishable to anyone but you, with nothing to dedupe them.
 
 **A `200` from the create is followed by a `PUT`.** This is the non-obvious half. `POST /notes`
 is create-or-return, not upsert: replaying an id with *different* `ciphertext` keeps the stored
@@ -171,7 +170,7 @@ exported separately for any caller that only needs the index.
 
 - **Always send a client-generated `id`.** The insert is `ON CONFLICT DO NOTHING … RETURNING`, so
   replaying an identical body yields one note and `created === false`. Omit the `id` and a
-  retried timeout leaves **two** notes, each separately assignable to heirs.
+  retried timeout leaves **two** notes with nothing to tell them apart.
 - **`POST` is create-or-return, not upsert.** Replaying an id with a different `ciphertext`
   changes nothing and returns the stored row. Editing goes through `PUT`.
 - **`PUT` to an unknown id is `404` and creates nothing** — resurrecting a note whose
@@ -181,17 +180,6 @@ exported separately for any caller that only needs the index.
   the server verifies.
 - A note rejected for being oversized is **indistinguishable on the wire** from one rejected for
   a missing field: both are `400 {"code":"BAD_REQUEST"}`.
-
-## Assigning a note to an heir
-
-Built in [`lib/succession`](../succession/README.md), not here: `inheritableNote(note)` turns a
-`NoteRecord` into the `{ type, id, wrappedDek }` shape `assignShare` takes, and the note's
-`wrapped_dek` is unwrapped and re-wrapped to the heir's PQXDH keys like any other item.
-
-The consequence for this module is the **DEK-reuse contract on edit**: editing a note keeps its
-id and its DEK, so a share assigned to an heir stays valid across every edit. Rotating a note's
-DEK would silently invalidate it — which is why `updateNote` sends back the same `wrapped_dek`
-it was given, and why the tests pin that in both directions.
 
 ## Tests
 

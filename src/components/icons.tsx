@@ -1,4 +1,5 @@
 import type { ReactNode, SVGProps } from 'react';
+import type { FileKind } from '@/lib/app';
 
 export type IconProps = SVGProps<SVGSVGElement>;
 
@@ -29,36 +30,6 @@ export function VaultIcon(props: IconProps) {
       <path d="M12 16.8v-1.3" />
       <path d="M15.5 12h1.3" />
       <path d="M7.2 12h1.3" />
-    </Icon>
-  );
-}
-
-export function GuardiansIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M12 3.5 5 6.2v4.9c0 4.2 2.9 7.5 7 9.4 4.1-1.9 7-5.2 7-9.4V6.2L12 3.5Z" />
-      <path d="m9.2 11.8 2 2 3.6-3.8" />
-    </Icon>
-  );
-}
-
-export function SuccessionIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <circle cx="9" cy="8" r="3.2" />
-      <path d="M3.8 19.5c.6-3 2.7-4.7 5.2-4.7s4.6 1.7 5.2 4.7" />
-      <circle cx="17" cy="10.2" r="2.4" />
-      <path d="M15.6 14.9c2.4.2 4.1 1.6 4.6 4" />
-    </Icon>
-  );
-}
-
-export function InheritanceIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M4 10.5 12 4l8 6.5" />
-      <path d="M6 10v9.5h12V10" />
-      <path d="M9.5 19.5v-5h5v5" />
     </Icon>
   );
 }
@@ -152,10 +123,49 @@ export function DocumentsIcon(props: IconProps) {
   );
 }
 
+export function DriveIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3.5 13.5 6 5.5a2 2 0 0 1 1.9-1.4h8.2A2 2 0 0 1 18 5.5l2.5 8" />
+      <path d="M3.5 13.5h17v4a2.5 2.5 0 0 1-2.5 2.5H6a2.5 2.5 0 0 1-2.5-2.5v-4Z" />
+      <path d="M7 16.75h.01" />
+      <path d="M10.5 16.75h.01" />
+    </Icon>
+  );
+}
+
+export function DownloadIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3.5v11" />
+      <path d="m7.5 10.5 4.5 4.5 4.5-4.5" />
+      <path d="M4.5 18.5h15" />
+    </Icon>
+  );
+}
+
+export function UploadIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 20.5v-11" />
+      <path d="m7.5 13.5 4.5-4.5 4.5 4.5" />
+      <path d="M4.5 5.5h15" />
+    </Icon>
+  );
+}
+
 export function PlusIcon(props: IconProps) {
   return (
     <Icon {...props}>
       <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </Icon>
+  );
+}
+
+export function MinusIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
       <path d="M5 12h14" />
     </Icon>
   );
@@ -222,5 +232,142 @@ export function TrashIcon(props: IconProps) {
       <path d="M6 7h12l-.8 12.1a1 1 0 0 1-1 .9H7.8a1 1 0 0 1-1-.9L6 7Z" />
       <path d="M9.5 7V5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v2" />
     </Icon>
+  );
+}
+
+
+
+const FILE_BAND: Record<FileKind, string> = {
+  image: 'fill-success',
+  video: 'fill-accent-600',
+  audio: 'fill-brand-500',
+  pdf: 'fill-danger',
+  archive: 'fill-warning',
+  document: 'fill-brand-600',
+  sheet: 'fill-success',
+  slides: 'fill-warning',
+  code: 'fill-accent-500',
+  text: 'fill-ink-muted',
+  other: 'fill-ink-faint',
+};
+
+const FILE_MARKS: Record<FileKind, ReactNode> = {
+  image: (
+    <>
+      <rect x="16" y="10.5" width="16" height="12" rx="1.6" />
+      <circle cx="20.5" cy="14.5" r="1.5" />
+      <path d="m17 20.5 4.5-4.5 3 2.8 3-3.2 3.5 4.9" />
+    </>
+  ),
+  video: (
+    <>
+      <rect x="16" y="10.5" width="16" height="12" rx="1.6" />
+      <path d="m22 14 6 2.5-6 2.5z" className="fill-ink-faint" />
+    </>
+  ),
+  audio: (
+    <>
+      <path d="M21 21V12l9-2v9" />
+      <circle cx="18.6" cy="21" r="2.4" />
+      <circle cx="27.6" cy="19" r="2.4" />
+    </>
+  ),
+  pdf: null,
+  archive: (
+    <>
+      <path d="M23 10.5h2.6" />
+      <path d="M23 14h2.6" />
+      <path d="M23 17.5h2.6" />
+      <rect x="21.2" y="20" width="6.2" height="5" rx="1.4" />
+    </>
+  ),
+  document: (
+    <>
+      <path d="M17 12.5h14" />
+      <path d="M17 16.5h14" />
+      <path d="M17 20.5h9" />
+    </>
+  ),
+  sheet: (
+    <>
+      <rect x="16" y="10.5" width="16" height="12" rx="1.6" />
+      <path d="M16 15h16" />
+      <path d="M16 19h16" />
+      <path d="M24 10.5v12" />
+    </>
+  ),
+  slides: (
+    <>
+      <rect x="16" y="10" width="16" height="11" rx="1.6" />
+      <path d="M24 21v3" />
+      <path d="M20 24h8" />
+    </>
+  ),
+  code: (
+    <>
+      <path d="m21 11.5-5 5 5 5" />
+      <path d="m27 11.5 5 5-5 5" />
+    </>
+  ),
+  text: (
+    <>
+      <path d="M17 11.5h14" />
+      <path d="M17 15h11" />
+      <path d="M17 18.5h14" />
+      <path d="M17 22h8" />
+    </>
+  ),
+  other: null,
+};
+
+export function FileTypeIcon({
+  kind,
+  extension,
+  labelled = true,
+  ...props
+}: IconProps & { kind: FileKind; extension?: string; labelled?: boolean }) {
+  const label = labelled && extension !== undefined && extension !== '' ? extension : undefined;
+
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 48 48"
+      fill="none"
+      className="h-full w-full"
+      {...props}
+    >
+      <path
+        d="M12.5 4h15.9L38 13.6V41.5a2.5 2.5 0 0 1-2.5 2.5h-23A2.5 2.5 0 0 1 10 41.5v-35A2.5 2.5 0 0 1 12.5 4Z"
+        className="fill-surface stroke-line-strong"
+        strokeWidth={1.4}
+      />
+      <path
+        d="M28.4 4 38 13.6h-7.1a2.5 2.5 0 0 1-2.5-2.5Z"
+        className="fill-raised stroke-line-strong"
+        strokeWidth={1.4}
+      />
+      <g
+        className="stroke-ink-faint"
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {FILE_MARKS[kind]}
+      </g>
+      <rect x="7" y="27.5" width="27" height="11" rx="2.6" className={FILE_BAND[kind]} />
+      {label !== undefined && (
+        <text
+          x="20.5"
+          y="35.4"
+          textAnchor="middle"
+          className="fill-white"
+          fontSize={label.length > 3 ? 7 : 8.4}
+          fontWeight={700}
+          letterSpacing={0.2}
+        >
+          {label}
+        </text>
+      )}
+    </svg>
   );
 }

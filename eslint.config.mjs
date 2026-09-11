@@ -45,17 +45,24 @@ const config = [
     },
   },
 
+  // The third exemption, added 2026-09-11: src/lib/app/icon-size.ts persists one
+  // of four literal words naming how large the drive's icons are drawn. It is a
+  // view preference with no bearing on secrets, and losing it on every reload is
+  // the kind of small wrongness a user notices on every visit.
   {
-    files: ['src/lib/pin/**', 'src/lib/app/mode-hint.ts'],
+    files: ['src/lib/pin/**', 'src/lib/app/mode-hint.ts', 'src/lib/app/icon-size.ts'],
     rules: {
       'no-restricted-globals': 'off',
     },
   },
 
+  // next/image optimises by fetching the source on the server. A drive thumbnail
+  // is a blob: URL of bytes decrypted in this tab, which no server can fetch and
+  // none may see, so <img> is the only option here rather than the lazy one.
   {
-    files: ['scripts/**'],
+    files: ['src/components/DriveScreen.tsx'],
     rules: {
-      'no-console': 'off',
+      '@next/next/no-img-element': 'off',
     },
   },
 

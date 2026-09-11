@@ -9,18 +9,11 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | `onboarding.ts` | The onboarding state machine, PIN/mnemonic validation copy, backup verification |
 | `boot.ts` | Sign-in when the mode is not known yet, and account enrolment |
 | `mode-hint.ts` | The locally remembered Standard/Paranoid hint |
-| `inbox.ts` | Merging the two guardian queues into one list |
 | `vault.ts` | The vault index view model, received-ciphertext integrity check, and the local secret name/value format |
 | `notes.ts` | The notes file-grid view model — title, thumbnail, selection, character budget and autosave state |
-| `succession-view.ts` | Release status, vote audit and heir view models |
-| `heartbeat.ts` | What the switch card says, and how urgent it is |
-| `switch-periods.ts` | The inactivity/contest period options, and which the deployed contract accepts |
-| `recovery-kit.ts` | The printable share-0 Recovery Kit |
-| `label.ts` | Sealing and reading the owner's private note about an heir |
-| `inheritance.ts` | The selectable list behind "Set inheritance", and the additive save |
+| `icon-size.ts` | The four-step size scale shared by all three grids, the columns each draws, and the remembered choice per screen |
 | `modal.ts` | A modal's keyboard contract, backdrop dismissal and scroll-lock counting |
-| `anchoring.ts` | The Merkle tree over the inheritance, and what the owner is told about it |
-| `claim.ts` | The heir's side: verify against the chain, then decrypt |
+| `shell.ts` | `accountInitial`, the sidebar avatar's letter |
 
 ## Onboarding
 
@@ -116,48 +109,12 @@ and `sessionExits(deviceRemembersPhrase)` is that choice as data:
 - **Only the erasing log-out confirms.** Wiping the device copy is worth a second look; ending a
   session that stored nothing is not, and a confirmation there would train the reflex that makes
   the real one useless.
-- The confirmation says the vault, guardians and heirs are **untouched**, because "log out and
+- The confirmation says the vault itself is **untouched**, because "log out and
   erase this device" reads like account deletion and is not. Losing the local copy costs one
   re-entry of the phrase.
 - Both exits run through the provider's `lock` / `logOut`; `logOut` is also what the `Unlock`
   screen's "Log out of this device" and post-wipe "Start over" buttons call — one concept, three
   entry points, no second implementation.
-
-## The guardian inbox
-
-All three guardian queues — **pending guardianship invitations**, pending recovery sessions and
-pending PIN resets — are one list, because to a guardian they are one job: somebody is asking for
-something. `buildInbox` sorts **actionable first, then newest**, so the thing needing a response is
-never below a completed one, and `INBOX_ACTION_LABELS` keeps the three verbs (`Accept`, `Approve`,
-`Send my share`) distinct so a row's button says what it does.
-
-- **Invitations come from `GET /recovery/guardianships`, not from a queue endpoint** — there is no
-  `…/pending` route for them. Only `pending_invite` rows become items; `active` and `revoked` rows
-  are not requests and are filtered out by the recovery domain's `pendingInvitations`.
-- The item's `id` is the **invitation id**, which is what `guardian-accept` signs and what the
-  `PATCH /recovery/guardians/{id}/accept` path takes — not the owner's id or username.
-- **Accepting is a signed action, not a formality** — the JWT alone is not enough
-  (`front-end-endpoints.md` § PATCH …/accept, changed 2026-07-29). It reveals the owner's
-  `user_address` to the guardian and raises the owner's effective quorum, so a bearer token must
-  not be able to forge the second leg of the handshake. The second factor demanded is the
-  **guardian's own**, which `context.paranoid` already supplies.
-- **There is no decline endpoint.** A guardian accepts or leaves it; only the owner can revoke.
-  `GUARDIAN_INVITE_DETAIL` says so on the row rather than offering a button that cannot exist.
-- A `contest_period` PIN reset is **informational, never a vote prompt**. Only `pending_quorum`
-  rows accept a vote; the API answers `409` otherwise. `canVoteOn` from the recovery domain is the
-  single source of that rule.
-- An already-submitted recovery share stays visible, marked done, rather than vanishing. An
-  accepted invitation does **not** — it stops being a request, so the row goes and a success notice
-  takes its place.
-- Recovery sessions carry a 30-minute `expires_at` and `hasExpired` gates the action. PIN resets
-  and invitations have no expiry here — a reset's clock is the 48h contest period, and an
-  invitation does not lapse.
-- The poll interval is the recovery domain's `GUARDIAN_INBOX_POLL_INTERVAL_MS` (60s), not a new
-  constant. There are no webhooks; polling faster buys nothing.
-
-Not built: a standing "accounts you guard for" list. `GET /recovery/guardianships` carries the
-`active` rows to render it, but it is a reference view rather than an inbox, and the inbox is what
-Task 30 was about.
 
 ## The vault index
 
@@ -184,7 +141,7 @@ than showing a crash. Both were removed once the seam stopped throwing; see
 
 The wire contract has no `name` field on a secret — only opaque `ciphertext`. `SecretPayload`
 (`{ name, value }`) is a **client-local convention** encoded as JSON before the plaintext ever
-reaches `createSecret`, the same discipline as the Recovery Kit's `CRK1-` encoding: it never
+reaches `createSecret`: it never
 reaches the server and no other party parses it.
 
 `decodeSecretPayload` rejects anything that isn't `{ name: string, value: string }` with
@@ -252,6 +209,63 @@ would be telling them to redo something that cannot succeed and does not need to
 `batchDeleteConfirmation` carries the consequence the server performs but never reports: that
 deleting a note also removes it from anyone set to inherit it.
 
+## Uploads outlive the screen that started them
+
+`transfers.ts` is a tiny subscribable store: the drive's in-flight uploads, keyed by their file id,
+read through `useSyncExternalStore`.
+
+**It is not there for tidiness.** `AppShell` renders only the active section, so opening Notes
+unmounts the drive. When this state lived in the component, the upload carried on — the promise does
+not care that its caller is gone — but its progress died with the component, and returning to the
+drive showed a file with no sign that anything was happening. The bug that made this necessary was
+reported that way exactly: *"I go to notes and go back to drive, the animation doesn't show up
+anymore."*
+
+Three things it has to get right, and each has a test:
+
+- **The snapshot is a stable reference** until something actually changes. `useSyncExternalStore`
+  compares snapshots by identity and will loop forever on a getter that builds a fresh array.
+- **A dropped transfer cannot be resurrected.** A late `advanceTransfer` or `failTransfer` for a key
+  that is gone does nothing, so a progress callback that lands after a dismissal does not put the
+  notice back on screen.
+- **A failure stays in the list.** Only `dropTransfer` removes anything, and for a failure that is
+  the user's dismissal — the one report nobody else will repeat.
+
+Nothing here knows about React, and nothing about it is drive-specific except its use: it holds what
+a screen must not own, which is any work that continues after the screen is gone.
+
+## The storage reading, and why two numbers
+
+`usage.ts` holds the account's last `GET /files/usage`, shared the same way transfers are: the
+sidebar's meter and the drive both read it, and whoever fetches a reading publishes it. It skips the
+notification when a reading says exactly what the last one did, so a poll that finds nothing new
+does not repaint anything.
+
+`storageBar` in `files.ts` turns it into what a bar draws, and the whole reason it is worth testing
+is that **the endpoint returns two sums and only one of them belongs in the fill**:
+
+- `stored_bytes` is `r2_state = 'ok'` — files that exist. This is `percent`, the solid part.
+- `used_bytes` also counts `pending` rows, because that is what the quota is checked against before
+  any upload URL is signed. The difference is `reservedPercent`, drawn behind the fill, and named by
+  `uploadingSummary`.
+
+Filling the bar with `used_bytes` would show space consumed by a file the user cannot open — an
+upload that died at its first part looks identical to a stored one. Filling it with `stored_bytes`
+and hiding the rest is the opposite failure: the account gets refused an upload while the bar shows
+room. **`nearlyFull` keys on `used_bytes`**, because that is the number that will do the refusing.
+
+## Previews outlive the grid that fetched them
+
+`previews.ts` maps a thumbnail's file id to an object URL of its decrypted bytes. Each one costs a
+`GET /files/{id}` plus an R2 fetch plus a decrypt, so the store exists to make that happen **once a
+session** rather than once per visit to the drive — leaving and returning is a tab switch, and the
+grid re-mounts every time.
+
+It refuses to replace a url it already holds, which is what keeps two racing fetches from leaking
+one of them, and it is the reason `forgetPreviews` revokes every url it hands back. Nothing calls
+that yet; the urls live for the session, bounded by the number of images in the drive. A cache that
+survives a reload is [109.8](../../../tasks/tasks.md#task-109-8), and it belongs on disk, encrypted.
+
 ### The save gate
 
 **There is no Save button.** The editor autosaves `NOTE_AUTOSAVE_DELAY_MS` (2s) after the user
@@ -290,307 +304,75 @@ exactly the one autosave is allowed to write in.
 `noteCharactersLeft` deliberately **goes negative rather than clamping**, so the editor can say
 how far over the limit a paste landed instead of just refusing.
 
-## The Recovery Kit
-
-Share 0 — the user's own copy of the Shamir share — needs a durable, retypeable form.
-`encodeRecoveryKitShare` produces `CRK1-` followed by grouped uppercase hex with a 2-byte SHA-256
-checksum; `decodeRecoveryKitShare` is tolerant of case, spaces and dashes and **rejects a
-mistyped character instead of returning a wrong share**. A silently wrong share fails at
-reconstruction, months later, which is exactly the failure mode the checksum removes.
-
-> This encoding is a **local presentation format, not a protocol constant.** It never reaches the
-> server, no other party parses it, and the share bytes inside it are the SSS library's own format
-> (which *is* durable). The `CRK1` prefix is there so a future change is detectable rather than
-> silently misparsed — the same discipline as the versioned blob layouts, applied to paper.
-
-`renderRecoveryKit` states the k-of-n scheme, the guardians it was split among, and that Cryple
-cannot reissue it.
-
-**Sequencing note:** share 0 only exists once recovery setup runs, and setup needs guardians, so
-the kit is surfaced from the Guardians screen rather than during first-run onboarding. Onboarding
-covers phrase, PIN and mode; there is nothing to put in a kit before a guardian exists.
-
-## Guardian-assisted seed recovery
-
-`seed-recovery.ts` is the state machine behind the **I lost my recovery phrase** entry point on
-the login page. Four steps: `request` → `waiting` → `reconstructing` → `recovered`, after which
-the phrase rejoins the ordinary import path (`choose-origin: import`, then `mnemonic-ready`), so
-the PIN step and `enrol` are the same code a normal sign-in runs.
-
-### The session cannot survive a reload, so nothing is persisted
-
-`POST /recovery/request` mints an **ephemeral hybrid key pair that exists only in page memory**,
-and every guardian wraps their share to it. A reload loses the private halves, and the shares
-already submitted become permanently unopenable — a stored `session.id` would resume a session
-whose replies can no longer be read. So the id is held in component state, the keys in a ref,
-and both are disposed on unmount. The screen says to keep the tab open because that is literally
-the constraint, not a nicety.
-
-This is also why the request is made exactly once: it is unsigned and **not retry-safe**, so a
-second call strands the first session with its own 30-minute TTL and its own collected shares.
-`restart` disposes the old keys before asking for anything new.
-
-### The Recovery Kit is one of the `k`
-
-Share 0 is the owner's Recovery Kit copy. It is never submitted to a session — the server-stored
-copy is wrapped to the owner's own encryption keys, which a recovering device does not have — so
-a session collects at most `n - 1` shares and the server can never see the whole quorum.
-**Counting the threshold is this module's job**, because only the screen knows whether the user
-pasted their Kit.
-
-Every function here therefore takes `hasOwnShare` and adds it to what guardians have sent:
-
-| Function | Answers |
-| --- | --- |
-| `reachableShares` | how many pieces this session could ever assemble |
-| `thresholdIsReachable` | whether that can meet `k` at all — drives the dead-end notice |
-| `guardiansStillNeeded` | how many guardians are outstanding right now |
-| `describeProgress` | the same, as a sentence, naming the Kit when it is counted |
-
-So the recommended 2-of-3 needs **one** guardian from a user who has their Kit and **two** from
-one who does not, and a vault configured `k = n` completes only with the Kit. The dead-end notice
-fires when even every guardian plus whatever the device holds cannot reach `k` — the screen says
-so on arrival rather than letting a 30-minute timer run out on something that was never going to
-complete, and it points at the Kit field, since pasting the Kit is often what makes it reachable.
-
-`SeedRecovery.tsx` holds `hasOwnShare` in state rather than reading the `ownShare` ref, because
-the ref does not re-render the progress panel. The decoded share itself stays in the ref — it is
-key material and never belongs in React state.
-
-### What the user has to supply
-
-The **username**, which is on the Recovery Kit and is neither the email nor the account address.
-`GET /recovery/vault` and `POST /recovery/request` are both keyed by it, and neither has any
-other lookup. A user with neither phrase nor Kit has no way in, and the screen should keep
-saying so rather than letting them discover it one field at a time.
-
-## The succession dashboard reads one status, and it is the chain's
-
-`GET /succession/status` answers with `chain` alone, and `buildReleaseView`
-derives its headline from `chain.status` — the contract's own state, and the only
-place a release exists.
-
-It used to answer with two. The off-chain half was the guardian countdown and
-could only ever read `monitoring` or `counting_down`, so a released vault was
-headlined "monitoring normally" one panel away from "your vault has been
-released". [Task 91](../../../../api-general/.docs/tasks/tasks.md#task-91)
-removed the guardian release vote and the column with it, which is why there is
-now one status and no way for the two to disagree.
-
-**Every timestamp inside `chain` is unix seconds; everything outside it is
-RFC 3339.** The `chain` values are block timestamps the API copies rather than
-reformats, so feeding one to a date parser expecting ISO 8601 yields
-`Invalid Date`. `fromUnixSeconds` is the single conversion point, so no caller
-picks the wrong parser.
-
-**`chain.status: 'unknown'` is not a contract state.** It means the API could
-not read its chain mirror — an infrastructure fault, not a fact about the
-switch. It surfaces as `ReleaseView.chainUnavailable` so a screen can say
-"retry" instead of "not set up", and it must never be treated as permission for
-anything. `indexed` is `false` for both `unknown` and `unconfigured`, so branch
-on `chain.status` when the difference matters.
-
-`lastCheckIn` is therefore optional and has three renderings: a date, "not
-configured on-chain" when the smart account has never been configured, and
-"unavailable" during an outage.
-
-## Choosing the switch periods
-
-`switch-periods.ts` is the model behind the two selects on `HeartbeatCard`: how long silence has
-to last before heirs can start a release, and how long the owner then has to stop it with
-**I'm alive**. It is pure — the chain access lives in
-[`lib/chain`](../chain/README.md#the-periods-and-the-floors-the-deployment-fixes).
-
-`PERIOD_OPTIONS` is the fixed list: **1, 3, 5, 10, 30 minutes and 24 hours**. These are testing
-durations, deliberately — they exist so a release and its cancel can be exercised inside one
-sitting rather than one month.
-
-### The list is offered in full; the chain decides what is selectable
-
-`DeadManSwitch.minInactivityPeriod` / `minContestPeriod` are **immutable**, so the deployed
-contract's floors are a fact the client discovers rather than a rule it sets. `selectablePeriods`
-marks each option `allowed` against a floor read live by `fetchSwitchLimits`, and the select
-renders the rejected ones **disabled with the reason**, not hidden. Hiding them would make a
-redeployment look like a UI change; greying them out says the option exists and this contract
-refuses it.
-
-Against the current Sepolia deployment (300 / 120) that means **1 and 3 minutes are unselectable
-for inactivity, and 1 minute for the contest period**. Both open up on their own if the switch is
-redeployed with lower floors — no client change is involved.
-
-`nearestAllowedPeriod` raises a below-floor choice to the smallest option that clears it, so a
-stored default of 10 minutes never arrives at the contract as a value it will revert on.
-
-### Saving periods is a check-in, and the copy says so
-
-`configure()` resets `lastCheckIn`, so saving new periods restarts the clock. `periodsChanged`
-gates the **Save these periods** button on the selects actually differing from what the chain
-holds, so the button is inert until there is something to save and a user cannot spend gas
-re-writing the values already there.
-
-`formatMoment` renders timestamps with the **time**, not just the date. At 24-hour periods a date
-was enough; at one-minute periods "last checked in Aug 24, 2026 · next due Aug 24, 2026" tells the
-user nothing, which is the whole point of the short options.
-
-## Choosing what an heir inherits
-
-`inheritance.ts` is the model behind the "Set inheritance" modal. It is pure apart from one
-loader, so the rules below are unit-tested rather than only reachable through a component.
-
-### The list has to decrypt, because no title is on the wire
-
-A vault item's title is not a field. A secret's name lives inside the `SecretPayload` JSON
-([§ The secret name/value format](#the-secret-namevalue-format)), a note's title is the first
-non-empty line of its plaintext ([§ A note has no title field](#a-note-has-no-title-field-and-does-not-need-one)),
-and a document's title lives inside the CRDT. So building this list opens every item, exactly as
-the Vault, Notes and Documents screens already do — `loadInheritanceCandidates` composes their
-loaders rather than adding a fourth fetch path.
-
-**An item that fails to open is listed and not selectable.** It keeps its place with an
-"Unreadable …" title rather than vanishing, because a silently shorter list is how an owner
-believes they left an heir something they did not. Assigning it would be worse still: the wrapped
-DEK would be re-wrapped without ever being verified as openable, producing a share no heir can
-use. `assignable: false` is the same fact under both readings.
-
-A candidate carries its `wrappedDek`, which the field list in the task did not ask for. The load
-already had it in hand, so the alternative is a second fetch per item at save time — and carrying
-it makes the save a local computation, so a partial failure in Task 38 is only ever a failed
-request, never a failed re-read.
-
-### Sorted by type, then title — the same order the tree uses
-
-Type order is `document, note, secret`, taken from `lib/succession`'s `ITEM_TYPES`, which is
-`lib/vaultmerkle`'s leaf order. The list a person reads and the leaves that get hashed are then
-in the same sequence, which is one fewer thing to hold in your head when reading an anchor pass
-beside a modal. Titles compare case-insensitively and ties break on id, so the order is stable
-across reloads.
-
-### Nothing here unassigns
-
-`itemsToAssign(candidates, selected, current)` returns **only** the checked items the heir does
-not already hold. Three exclusions, and each has a reason worth keeping:
-
-- **already held** — the wire upserts on `(beneficiary_id, item_id)`, so re-assigning is harmless
-  but burns a PQXDH encapsulation to rewrite a share that is already correct;
-- **not assignable** — see above, even when its key is passed in;
-- **not checked** — an unchecked box means "not chosen in this pass", **never "revoke"**.
-
-That last one is the load-bearing rule. The modal opens with every box clear (Task 38), so if an
-unchecked box meant removal, the first save would strip an heir of everything they had been left.
-Removal is a deliberate single-item action in the heir's tab, and there is deliberately no
-function here that produces one.
-
-### An heir's own list is a join, not a listing
-
-`buildAssignedItems` pairs an heir's shares with the vault, because **a share carries no title**:
-`item_id` and `item_type` are all the server has, and the only place a name exists is inside the
-ciphertext this device just opened. Rows sort the same way the picker does, so the two lists agree.
-
-A share with no matching item keeps its row (`present: false`). It should be unreachable — deleting
-an item deletes its shares in the same transaction — and that is the reason not to hide it: a
-silent filter would turn an impossible state into a quiet one.
-
-`buildHeirTabs` and `nextActiveTab` are the strip. The active tab survives a re-read so a refresh
-does not move the owner mid-task, and falls back to the first tab rather than to none, because a
-blank panel after removing an heir reads as though everything is gone.
-
-### Saving is one request per item, and it keeps going
-
-`assignSelection` walks the chosen items and does not stop at the first failure. There is no batch
-endpoint and no transaction across them, so a run can genuinely end up half-applied — stopping
-early leaves the same half-applied state while reporting less about it, and every share that did
-land is real.
-
-It is **sequential rather than parallel** on purpose: each assignment signs an action, and every
-signature needs its own fresh challenge.
-
-`describeSaveOutcome` names both numbers on a partial run — "2 of 3 saved" rather than "something
-went wrong". The vague version tells an owner to retry all three, and the two that landed are
-exactly the ones they would then believe had not.
-
-## Claiming an inheritance
-
-`claim.ts` is the heir's side, and it is the one place in this client where the API is treated as
-an adversary rather than a source.
-
-### Two checks, and both must hold
-
-`verifyInherited` rebuilds the root from the retained leaf set and compares it to the root read
-**from the chain**, then looks for this item's own leaf inside that set. Either check alone is
-worthless:
-
-- a matching root over a set you are not in says nothing about you;
-- a set containing your leaf that rebuilds to nothing on-chain is a list Cryple made up.
-
-With the whole ordered leaf set in hand a Merkle *proof* is redundant — membership plus a matching
-root proves exactly what a proof would, and needs nothing the API withholds. That is why
-`rootFromLeaves` exists in [`lib/vaultmerkle`](../vaultmerkle/README.md) beside `vaultRoot`: an
-heir has hashes, never the other items.
-
-**No response is ever consulted for a verdict.** There is no `verified` field on the wire and there
-must never be a code path that behaves as though there were.
-
-### Decryption cannot happen without verification
-
-`openInherited` takes the verdict as a **required argument** and throws `NotVerifiedError` on a
-failed one — before unwrapping the item key, which a test pins. "Verify, then decrypt" is only a
-rule if the code cannot do the second without the first; showing an heir content that failed, even
-behind a warning, is the exact failure this mechanism exists to prevent.
-
-### The epoch is chosen by the release, not by recency
-
-`anchorForRelease` takes the newest anchor **at or before** `released_at`. A past epoch is frozen
-on-chain, so that root describes the vault as it stood while the owner was alive; anything anchored
-afterwards is either irrelevant or something an heir has no reason to trust.
-
-### A document is not a bigger secret
-
-The anchored leaf covers the **snapshot alone**. `anchorableBlob` returns `snapshot_ciphertext` for
-a document and `ciphertext` for everything else — conflating them hashes the wrong bytes and fails
-verification for a document that is perfectly intact.
-
-The deltas after the snapshot are fetched and merged anyway, because a document without them is
-stale, and `openInherited` reports **how many** were applied. Every one is content the heir has and
-cannot prove, so the count drives its own notice rather than disappearing into a single
-"verified ✓" over the merged result.
-
-## Protection covers the inheritance, not the vault
-
-`anchoring.ts` builds the Merkle tree that goes on-chain. **It covers exactly the items someone
-inherits**, and `collectVault` takes that set as a required argument rather than an option — an
-item nobody inherits never needs a proof, because no heir will ever verify it, and making the
-scope optional would make "hash everything" the accident you get by forgetting.
-
-Unassigned items are never fetched, never hashed and never in the tree, and the same scope governs
-compaction: an uninherited document with pending deltas is left alone, because compaction exists to
-make a document verifiable and that one has no reader.
-
-**"Your vault is empty" and "you have not chosen what anyone inherits" are different errors.**
-`NothingToAnchorError` and `NothingAssignedError` say so separately — only the second is
-actionable, and telling an owner with a full vault that it is empty is how a feature acquires a
-reputation for being broken.
-
-### The root decides, not the epoch
-
-`vaultAnchorState` used to compare the anchored epoch with today's and report `stale` whenever they
-differed — so the morning after a successful anchor, the card asked for another one with the root
-byte-identical. That is daily re-hashing for nothing, and it was the complaint this whole milestone
-started from.
-
-A past epoch is frozen on-chain and its leaf set is retained beside it, so the proof it carries is
-exactly as good as today's. Now the **root** decides: same root, still protected, whatever epoch
-holds it. `current: false` reports that it was anchored earlier so the card can say when, without
-turning it into a chore.
-
-### The upload comes before the userOp
-
-An heir holds only their own items, so they rebuild the tree from the retained leaf set — every
-other sibling hash belongs to something they will never see. `orderedLeafHashesHex` produces that
-set in tree order and `saveAnchorLeaves` stores it **before** the operation is submitted.
-
-The asymmetry is why the order is fixed: leaves with no root are harmless and correctable — upload
-the new set at the same epoch and it replaces the old one — but a root with no leaves is permanent,
-because the epoch freezes on-chain.
+## How large the three grids draw themselves
+
+`icon-size.ts` is the whole zoom control as data. One vocabulary of four steps — `small`, `medium`,
+`large`, `huge` — serves the drive, notes and documents, because they are three views of the same
+idea and a user who has learned the control on one should not meet a different one on the next.
+
+The steps carry **two geometries**, because the screens are not drawing the same kind of thing:
+
+| | Drive | Notes and documents |
+| --- | --- | --- |
+| What is drawn | a square icon, `glyphPixels` | a page miniature filling the column |
+| What the step sets | `tilePixels`, the column the icon sits in | `pagePixels`, the column, which *is* the page width |
+| Sizes | 48 / 64 / 96 / 128 glyphs | 136 / 160 / 200 / 264 columns |
+
+**A drive file has no page to draw, and a note is nothing but one.** That is the whole reason for
+the split. The drive's glyph sizes are the ones a desktop file manager uses, and for its reason:
+they are the sizes an SVG of a sheet of paper stays legible at. A note's miniature is its *content*,
+so shrinking it to 48px would be showing the user nothing at all — the page grid starts at 136px,
+where a title is still readable and the body is at least a texture.
+
+- **The drive tile is always wider than the glyph it holds.** The name wraps under the icon over up
+  to two lines, so a tile sized to the glyph would break every filename after four characters. A
+  test pins the inequality rather than the two numbers. A page grid needs no such gap: the miniature
+  *is* the column.
+- **Every grid is `auto-fill`, not a column count.** Choosing a size chooses how big a thing is, and
+  the row fits however many of them fit — a fixed `grid-cols-5` would make the small step draw five
+  enormous gaps instead of twenty small tiles, which is the opposite of what was asked for.
+- **`labelsTheGlyph` is false only at `small`.** The drive's extension badge is drawn inside a
+  48-unit viewBox, so at 48px it renders around 6px tall — present, unreadable, and noise. The
+  coloured band it sits on stays: the colour is the type signal at that size, exactly as it is on a
+  desktop.
+- **Stepping holds at the ends rather than wrapping**, because a `+` that jumps from the largest
+  back to the smallest is a control nobody can aim.
+
+### A miniature is a scale drawing, so its text scales too
+
+The document miniature already expressed its margins as percentages — `12%` / `8.5%` is the 25.4mm
+margin as a fraction of the page — so that it is a scale drawing of a sheet rather than a box with
+arbitrary inset. Sizing the page broke the half of that which was still in fixed pixels: a 9px body
+is right on a 200px page and absurd on a 264px one.
+
+`miniatureTextPixels(size, share)` closes it. The shares are constants beside it —
+`NOTE_MINIATURE_TEXT_SHARE`, `DOCUMENT_MINIATURE_TEXT_SHARE`, `DOCUMENT_MINIATURE_TITLE_SHARE` —
+chosen so the `large` step reproduces exactly what shipped before the control existed: 9px note
+body, 8px document body, 10px document title. Everything else follows from the ratio.
+
+`MINIATURE_TEXT_FLOOR_PIXELS` stops the small step rounding text away to nothing. A test pins that
+the document title stays larger than its body at **every** step, including the one where the floor
+bites — that is the assertion that caught the small page being 120px, where both landed on 6.
+
+### Remembered per screen, not once
+
+Each grid has its own key — `cryple_drive_icon_size`, `cryple_notes_icon_size`,
+`cryple_documents_icon_size` — and its own default: the drive opens at `medium`, the two page grids
+at `large`, which is the size they were fixed at before. They are separate because the shapes are:
+wanting dense file icons says nothing about wanting unreadable note previews, and one shared value
+would make each screen's control quietly reach into the other two.
+
+That needs the third exemption to the `no-restricted-globals` ban
+([`AGENTS.md` § Commands](../../../AGENTS.md)), and the reason is narrow: the stored value is one of
+four literal words naming how large a grid draws itself, read back through a guard that treats
+anything unrecognised as no preference at all, and an unreadable or absent value costs nothing. It
+is not key material and it is not content. Holding it in memory instead was the alternative —
+`AppShell` renders one section at a time, so a module-level store would survive a tab switch — but
+not a reload, and a size that resets every visit is the kind of small wrongness a user meets every
+single time.
+
+Reading it during render would desynchronise the server-rendered HTML from the first client paint,
+so each screen starts at `defaultIconSize(grid)` and reads the stored value in an effect.
 
 ## A modal, minus the DOM
 
@@ -612,28 +394,15 @@ past its edge, let go, and the dialog closes mid-selection.
 **`scrollLockTransition` is reference-counted**, so a nested dialog closing cannot hand the page
 back its scrollbar while an outer one is still open.
 
-## The heir label
 
-`registerBeneficiary` needs a non-empty `encrypted_label` — the owner's private note about an
-heir, which the zero-knowledge rule says must be sealed on this device.
+## The shell's account chrome
 
-**The key is the fifth leaf of the frozen tree**, `Cryple-Key-v1|heir-label`, specified in
-`crypto/ECDSA.md` § Step 6. `heirLabelSealer(session.heirLabelKey)` seals through the standard
-sealed-blob envelope; `keys.test.ts` pins the leaf against the fixture and asserts the two
-symmetric leaves differ.
+`shell.ts` holds `accountInitial`, the letter in the sidebar avatar. It falls back to `?` for an
+absent or blank username so the circle is never empty.
 
-**It is deliberately not the vault KEK**, and that distinction is the whole reason this was open
-for two weeks. Decision A's `Cryple-Key-v1|vault-kek` landed 2026-08-08, and § Step 5 scopes it to
-wrapping *other keys* — the per-item DEK in [`lib/secrets`](../secrets/README.md) — stating it
-"never encrypts application data directly." A label is application data. Reusing the vault KEK here
-would have been the same invention `storage-plan.md` §3.1.1 forbids, just with a real key instead
-of a borrowed one, so the seam threw until a construction was named for this field specifically.
-
-**Plaintext is UTF-8 with no normalization.** Seal the bytes the user typed — applying NFC or NFKD
-produces a blob the owner's *other* devices decrypt to a different string, and nothing surfaces the
-divergence until they compare two devices. The vector's plaintext is non-ASCII precisely so a
-client that normalizes fails the fixture, and a test seals an NFD string and gets it back unchanged.
-
-**`readLabel` returns a placeholder instead of throwing.** A label is a convenience, not a key: one
-that will not open must not stop an heir from being listed, removed, or assigned anything. None of
-those depend on it — they need the key snapshot and the username, neither of which is in here.
+It once also held `ENCRYPTION_SUMMARY` and `sessionFingerprint`, for a banner above every screen
+that restated the encryption guarantee and showed a shortened `user_address`. **The banner was
+removed on 2026-09-09 as noise** — it said the same thing on every screen, next to screens whose
+own copy already says it. Both helpers went with it rather than being left as dead exports; the
+fingerprint's one non-obvious rule, if anything ever needs it again, was that it is **not**
+prefixed `0x` — Cryple derives no secp256k1 key and has no EOA.

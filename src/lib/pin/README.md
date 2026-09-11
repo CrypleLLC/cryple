@@ -5,7 +5,7 @@ the single easiest way to lock a user out of their account, so they live in sepa
 modules and never share a salt-building code path.
 
 Implements [auth/two-factor-PIN.md](../../../../api-general/.docs/auth/two-factor-PIN.md) — a
-**FROZEN** spec. Task 5 of [tasks.md](../../../tasks.md).
+**FROZEN** spec. Task 5 of [tasks.md](../../../tasks/tasks.md).
 
 ## The two derivations
 
@@ -95,7 +95,7 @@ different outcomes:
 
 ### The 3-attempt wipe
 
-Product policy from [recovery-flow.md](../../../../api-general/.docs/recovery-flow.md), not a
+Product policy, not a
 suggestion. Three consecutive failed unlocks delete the record. A successful unlock clears
 the counter.
 

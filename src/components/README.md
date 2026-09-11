@@ -18,165 +18,94 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `NoteEditor.tsx` | One note open — autosave, delete, WYSIWYG formatting |
 | `NoteEditorToolbar.tsx` | The editor's formatting controls |
 | `note-surface.ts` | DOM ↔ note document, for the `contentEditable` surface |
-| `DocumentsScreen.tsx` | The documents grid — opens each document in its own tab |
-| `documents/DocumentWorkspace.tsx` | The `/docs/[id]` page: title, toolbar, page canvas, save status |
+| `DocumentsScreen.tsx` | The documents grid of page miniatures — opens each document in its own tab |
+| `DriveScreen.tsx` | The drive: file grid, drag-and-drop upload, progress, download, selection and delete |
+| `StorageMeter.tsx` | The account's storage bar, in the sidebar corner — stored bytes solid, reservations behind them |
+| `documents/DocumentWorkspace.tsx` | The `/docs/[id]` page: title, toolbar, A4 sheet, counts, save status |
 | `documents/DocumentToolbar.tsx` | The TipTap formatting toolbar |
+| `documents/DocumentOutline.tsx` | The heading navigation panel beside the sheet |
+| `documents/pageBreak.ts` | The `pageBreak` node — the one page decision that is content |
+| `documents/pagination.ts` | Measures the sheet and decorates where each page starts |
+| `documents/useOutline.ts` | Debounced heading reads off the editor, and `goToHeading` |
 | `documents/useDocumentSync.ts` | Binds `DocumentSync` to a component's lifetime |
 | `documents/extensions.ts` | The TipTap extension set, bound to the document's `Y.Doc` |
-| `GuardiansScreen.tsx` | Guardians, recovery setup, Recovery Kit |
-| `GuardianInbox.tsx` | The merged guardian queue, 1-minute poll |
-| `SuccessionScreen.tsx` | Release status, vote audit, heirs, protection |
-| `InheritanceScreen.tsx` | The heir's side — verify against the chain, then open |
-| `HeirTabs.tsx` | One tab per heir — what they inherit, and the actions on it |
-| `SetInheritanceModal.tsx` | Choosing which vault items an heir inherits |
-| `RecoveryKitCard.tsx` | The printable share-0 surface |
-| `ui.tsx` | Card / Button / Field / TextArea / Select / Badge / Notice / Modal primitives |
-| `icons.tsx` | The stroke-icon set shared by navigation and primitives |
+| `ui.tsx` | Card / Button / IconButton / Field / TextArea / Select / Badge / Notice / Empty / Modal / SizeStepper primitives |
+| `icons.tsx` | The stroke-icon set shared by navigation and primitives, plus `FileTypeIcon` — the drive's filled, per-type file glyph |
 | `StagingBanner.tsx` | The walking red warning banner, dev-only — see [`app`](../app/README.md#the-staging-banner) |
 
 ## Layout and design system
 
 The shell is a Drive-style dashboard: a fixed left sidebar with the logo, the navigation and the
 account summary, a sticky top bar carrying the current section's title and the session-exit
-buttons, and a constrained content column. Below the `md` breakpoint the sidebar folds into a
+buttons, and a full-width content column. Below the `md` breakpoint the sidebar folds into a
 sticky top header with a horizontally scrolling nav row.
 
 Navigation is one registry, `NAV_ITEMS` in `AppShell.tsx`. Each entry is
-`{ id, label, description, icon, screen, actions? }`; adding a section (a document editor is still
-planned) means adding one entry and its screen component — the sidebar, the mobile nav and the
-top-bar heading all render from the same array. Notes was added exactly that way, as one entry
-between Vault and Guardians. `actions` is the optional slot for a
-component rendered in the top bar beside Lock / Log out, for controls that belong to the whole
-screen rather than to one panel; the Vault's global reveal toggle is the first of them. State
-shared between such a control and its screen lives in a provider wrapping the shell, as
-`VaultReveal.tsx` does, since the header sits outside the screen's tree.
+`{ id, label, description, icon, screen, actions? }`; adding a section means adding one entry and
+its screen component — the sidebar, the mobile nav and the top-bar heading all render from the
+same array. Notes was added exactly that way, as one entry; Guardians was **removed** exactly that
+way on 2026-09-04, by deleting one. `actions` is the optional slot for a component rendered in the
+top bar beside Lock / Log out, for controls that belong to the whole screen rather than to one
+panel; the Vault's global reveal toggle is the first of them. State shared between such a control
+and its screen lives in a provider wrapping the shell, as `VaultReveal.tsx` does, since the header
+sits outside the screen's tree.
 
-Content panels follow the GCP/AWS console idiom rather than floating cards: the page background
-matches the panel background, so a panel is delineated only by its 1px border and its header
-strip, with no shadow and small corner radii. `Card` takes a `flush` prop for table and list
-content, which then runs edge-to-edge inside the panel (rows carry their own horizontal padding),
-the way console tables do. The content column is full-width with a small gutter, not a centered
-column. Panels that do not need the full width sit inside a `PanelGrid` — a two-column grid from
-`md` up, a single stacked column on mobile. Grid items stretch, so neighbours in the same row
-share a height and their borders line up regardless of how much content each holds. A lone panel
-occupies half the content width and two sit side by side. Guardians puts all four of its panels
-in one grid; Succession keeps "Release status"
-outside it at full width and grids the rest; Vault keeps its table full width and grids the form.
-Wide tables and dashboards stay outside a grid.
+### The token layer
 
-The brand color is `#667eea`, defined once as the `brand` scale in
-[`globals.css`](../app/globals.css) via Tailwind's `@theme`. It is used sparingly — primary
-buttons, the active nav item, focus rings, the avatar and the Paranoid-mode badge — over a
-neutral slate surface, in the manner of Drive/Proton. Destructive buttons are outlined rather
-than solid so rows of actions stay calm. Every interactive primitive carries a
-`focus-visible` brand ring. All colors have dark-mode variants keyed off
-`prefers-color-scheme`.
+Every colour, type step and shadow is a Tailwind v4 `@theme` token in
+[`globals.css`](../app/globals.css). Components name tokens (`bg-surface`, `text-ink-muted`,
+`border-line`, `shadow-card`) and never raw palette values, so a palette change is one file.
 
-## The heir's screen
+The palette is the Cryple design system as `cryple.io` uses it, with the three adjustments that
+system itself flags for text-dense surfaces:
 
-`InheritanceScreen.tsx` is a section of the app, not a parallel client — an heir is an ordinary
-signed-in user with their own seed, their own account and probably their own vault.
+- **Brand indigo `#6366f1` is not a text colour on light grounds** (4.47:1). `brand-500` is for
+  fills, the logo and the active nav icon; `brand-600` `#4f46e5` carries filled buttons and
+  `brand-700` `#4338ca` carries links and labels.
+- **Status colours are the accessible pairs, not the decorative ones**: `success` `#047857`,
+  `warning` `#b45309`, `danger` `#b91c1c`, each with its `-bg` and `-line` companion.
+- **Grey is a four-step ink ramp**, `ink` `#1f2937` → `ink-soft` → `ink-muted` → `ink-faint`.
+  `ink-faint` `#9ca3af` is 2.5:1 on white and is decoration only — never body copy.
 
-**Its empty state is the normal one, and it is deliberately uninformative.** An account that named
-you but whose owner is alive is omitted from `GET /succession/inheritances` entirely, so a named
-heir and a stranger see the same empty screen. That is the point: an heir who knows they are named
-can watch the owner's public on-chain check-in cadence. Never add a count, a "pending" row, or a
-"you may be an heir" hint — the API cannot answer it, and the reason it cannot is a decision, not a
-gap.
+Shape follows the same system: `rounded-lg` (8px) for buttons and controls, `rounded-2xl` (16px)
+for cards, panels and modals, `rounded-full` for badges. Depth is three shadows — `shadow-card`
+at rest, `shadow-raised` for a lifted control, `shadow-lift` for a hover lift or a modal.
 
-**The root comes from `fetchRootAt`, not from a response.** Everything else on the page is served
-by Cryple; the value it is checked against is read from `ProofRegistry` using the
-`smart_account_address` the listing carries. A root handed over by the API would prove nothing,
-because the API is what the verification exists to be independent of.
+Type is Inter with JetBrains Mono for data, both from `next/font`, exposed as `font-sans` /
+`font-mono`. The scale is named rather than numeric: `text-caption` (11px, uppercase, tracked —
+badges and metadata), `text-compact` (13px — the workhorse for body copy, table cells and button
+labels), `text-title` (15px/600 — card headings), `text-headline` (18px/600), `text-headline-lg`
+(22px/600 — the top-bar section title), `text-display` (28px/700).
 
-Verification and decryption are one button, in that order, and
-[`openInherited`](../lib/app/README.md#claiming-an-inheritance) refuses to decrypt an item that
-failed — so a wrong result shows the failure and no content, rather than content with a warning
-over it.
+**The action gradient (`#6366f1` → `#8b5cf6`, the `.brand-gradient` class) is rationed to one
+element per screen** — the notes FAB, the New-document button, the account avatar. That is the
+design system's own rule: gradients work on a hero, and fight the content when they spread across
+a dense UI. Everything else is a flat token.
 
-## Protection lives on Succession, not Vault
+### Panels
 
-`VaultProtectionCard.tsx` moved off the Vault screen. Protection covers **what heirs inherit** and
-the proof exists **for them**, so beside the heir tabs it reads as part of succession; on the Vault
-screen it read as a property of storage, which is what made "protect my vault" sound like it should
-cover the whole vault.
+Content sits in white `rounded-2xl` panels with a 1px `line` border and `shadow-card`, on the
+`ground` `#f9fafb` page. `Card` takes a `flush` prop for table and list content, which then runs
+edge-to-edge inside the panel (rows carry their own horizontal padding), and an `actions` slot for
+controls that belong to the panel's header. Panels that do not need the full width sit inside a
+`PanelGrid` — a two-column grid from `md` up, a single stacked column on mobile. Grid items
+stretch, so neighbours in the same row share a height and their borders line up regardless of how
+much content each holds. Wide tables stay outside a grid.
 
-Anchoring is two writes and the order is not negotiable: `saveAnchorLeaves` first, the userOp
-second. Leaves with no root on-chain are harmless and correctable; a root with no leaves is
-permanent, because the epoch freezes. The `storing` busy label exists so that step is visible
-rather than looking like a stalled signature.
+An empty screen is still a panel: `Empty` renders an icon chip and one sentence, and its callers
+wrap it in a `<Card flush>` so it lands on a surface rather than floating on the page ground. The
+two editors do the same — the note surface and the `/docs/[id]` page are sheets, toolbar and
+character count included, not bare text on the background.
 
-**A secret has no update path.** The API is create-or-return by id, so editing one is
-delete-then-recreate under a **new id** — which silently drops its assignment, and the heir tab's
-count is what surfaces it. Notes and documents keep their id and their DEK across edits, so their
-shares survive. This is a real gap in the product, not in this screen; it is listed under open
-follow-ups.
+Every interactive primitive carries a `focus-visible` brand ring.
 
-## One tab per heir
+### One light theme, on purpose
 
-`HeirTabs.tsx` replaced the flat "Who inherits" list. Each heir is a tab labelled with their
-username and a count; the panel below holds what they inherit, **Set inheritance**, per-item
-removal, and heir removal.
-
-**Release status, the vote audit and the heartbeat card stay outside the tabs.** They describe the
-account's switch, not one heir, and nesting them under a name would suggest a countdown could run
-per heir. It cannot — there is one switch.
-
-`HeartbeatCard.tsx` also owns the two period selects — how long silence lasts before heirs can act,
-and how long the owner then has to stop it. The options and the floor logic live in
-[`lib/app/switch-periods.ts`](../lib/app/README.md#choosing-the-switch-periods); the card holds the
-two selected values in state and the on-chain floors from `fetchSwitchLimits`.
-
-**The card has two actions once the switch is running, and they are not the same call.** *I'm alive*
-sends `checkIn()`. *Save these periods* sends `configure()` again, which also resets the clock, so
-it is a separate button rather than a side effect of checking in — and it stays disabled until
-`periodsChanged` says the selects differ from what the chain holds.
-
-**The vault is opened once for the whole screen, not per tab.** Every title in the panel comes from
-decrypted content — a share carries `item_id` and `item_type` and nothing else, because the server
-never learns a title — so two heirs looking at the same vault must not decrypt it twice.
-
-**A share whose item is missing is shown, not filtered.** Deleting an item deletes its shares in the
-same transaction, so the row should be unreachable; that is exactly why hiding it would be the wrong
-response. An owner seeing a row they cannot explain beats an owner told an heir inherits less than
-the server says.
-
-**Removing an heir is one call.** `DELETE /succession/beneficiaries/{id}` cascades to their wrapped
-keys; deleting the shares first would be a series of signed calls that can half-fail, for a result
-the single call already guarantees. The confirmation names what goes, because the cascade is
-invisible and those keys are the one thing only the owner's client can regenerate.
-
-The open tab follows the list rather than owning it (`nextActiveTab`): it survives a re-read so a
-refresh cannot move the owner mid-task, and falls back to the first tab rather than to none when the
-heir being viewed is removed — a blank panel reads as though everything is gone.
-
-## Setting what an heir inherits
-
-`SetInheritanceModal.tsx` opens from an heir's row on the Succession screen. It is the only place
-an item is assigned, and its two rules are both about not destroying anything by accident.
-
-**Every box opens unchecked, every time.** This is where an owner *chooses what to share*, not
-where they edit a saved selection. So an unticked box means "not chosen in this pass", never
-"revoke" — the footer says so in `UNCHECKED_IS_NOT_REMOVAL`, because a list of empty checkboxes
-otherwise reads as "this heir inherits nothing".
-
-**Items the heir already holds are listed, marked "already shared", and disabled.** Listing them
-is what stops the blank checkboxes from being alarming. Disabling them is a step past what
-[`itemsToAssign`](../lib/app/README.md#nothing-here-unassigns) requires — it filters them anyway —
-but a tick that provably does nothing is a worse affordance than no tick at all, and "Select all"
-skips them for the same reason.
-
-An item this device cannot open is listed, disabled, and says so. Assigning it would re-wrap a DEK
-that was never shown to open.
-
-**A partial save leaves the failures ticked.** After re-reading, the items that landed come back
-marked already shared and the ones that did not are still chosen, so retrying is one click rather
-than hunting through the list again.
-
-The heir's `user_address` comes from their beneficiary record (`recipientFor`), which is the only
-place it exists — `GET /users/lookup` maps address to username and never the reverse. A closed
-account has none, so the modal refuses to open for one even though the screen already hides the
-button.
+There are no `dark:` variants and no `prefers-color-scheme` block; `:root` sets
+`color-scheme: light`. The Cryple design system defines a light palette only, and inventing a dark
+one here is exactly the drift it was written down to stop. Because components name tokens rather
+than colours, adding dark mode later means redefining the token block under a media query — not
+touching a component.
 
 ## The modal primitive
 
@@ -238,62 +167,12 @@ locked, zeroing what was derived.
 The mode step states the one-way door before either button. There is no "disable PIN" control and
 there never will be.
 
-## Recovery setup asks for the PIN again
-
-`SessionKeystore` holds the derived key tree, not the mnemonic — deliberately. Splitting a REK
-needs the seed **phrase**, so the Guardians screen re-opens the local vault with
-`unlockSeedVault(pin)` for that one operation. That is a real re-prompt, and the field says why.
-
-It no longer asks for guardian addresses. PQXDH's `info` string binds the recipient's
-`user_address`, and `GET /recovery/guardians` now returns it on `active` rows, so `recipientFor`
-reads it off the row. The screen used to make the owner type each 64-hex address and check it with
-`GET /users/lookup`; wrapping a share to a mistyped address produces a blob the guardian can never
-open and nothing server-side would catch it, so removing the field removed the failure.
-
-Quorum is shown as `min(configured, active)` alongside the guardian count, with an explicit
-warning when the configured threshold exceeds the number of guardians who can actually answer.
-The k=1 sole-guardian warning is rendered verbatim from the spec.
-
-## Getting back in without the phrase
-
-`SeedRecovery.tsx` sits behind an **I lost my recovery phrase** link on the sign-in tab, not
-behind a third tab — it is a rare path, and a tab implies parity with signing up and signing in.
-On success it hands the phrase to `Onboarding`, which dispatches the ordinary `import` origin, so
-the PIN step and `enrol` are shared code rather than a parallel flow.
-
-The ephemeral hybrid key pair lives in a `useRef` and is disposed on unmount, on restart and on
-completion. It is never persisted, because it cannot usefully be: a reload loses the private
-halves and every share already submitted becomes unopenable. That is why the screen keeps saying
-to leave the tab open, and why the request is issued exactly once — it is unsigned and not
-retry-safe.
-
-Polling runs in an effect with an `AbortController`, so closing the screen stops it. A
-`SessionExpiredError` is rendered as its own copy rather than through `reportError`, because the
-remedy — start again, guardians must re-send — is specific and an API code cannot express it.
-
-The reducer and every derived number live in [`src/lib/app/seed-recovery.ts`](../lib/app/seed-recovery.ts)
-so they are testable without a DOM, which is where the "guardians alone must meet the threshold"
-rule is enforced and explained.
-
 ## Product boundaries this shell respects
 
 Taken from [AGENTS.md § Product boundaries](../../AGENTS.md); each of these is an absence, so it is
 recorded here rather than being visible in the code:
 
-- **No heir-facing screens.** Nothing lets a named heir discover, accept, decline or claim an
-  inheritance. Before release that is permanent by design; after release the routes do not exist.
 - **No session list or "sign out all devices".**
-- **No key-rotation flow.** `keys_rotated: true` renders "this heir closed their account — remove
-  them and choose another", never a re-wrap prompt.
-- **No off-chain release status to render.** `GET /succession/status` carries `chain` alone since
-  [Task 91](../../../api-general/.docs/tasks/tasks.md#task-91), so the dashboard's headline comes
-  from `chain.status` — the only place a release state exists. There is no vote-audit card either:
-  guardians no longer vote on a release.
-- **Last check-in has three renderings, not one.** A date when the chain has one, "Not configured
-  on-chain" when the smart account has never been configured, and "Unavailable" when the API could
-  not read its mirror. The third is an outage on our side and must never read as the second.
-- **No check-in or dead-man's-switch configuration.** Both are on-chain owner actions; the screen
-  says so instead of offering controls that would silently do nothing.
 
 ## Nothing here is blocked any more
 
@@ -301,8 +180,6 @@ Two screens used to surface an unresolved backend spec gap rather than hide or f
 are now closed:
 
 - **Vault items** (`KekNotSpecifiedError`) — Decision A landed 2026-08-08, wired in 2026-08-10.
-- **Naming an heir** (`LabelKeyNotSpecifiedError`) — `Cryple-Key-v1|heir-label` landed 2026-08-20,
-  wired the same day. See [`src/lib/app`](../lib/app/README.md#the-heir-label).
 
 **Both were built as though they already worked**, against the real calls rather than as disabled
 placeholders, so in each case the seam ceasing to throw was the entire change — no UI edit. That
@@ -329,19 +206,23 @@ of failing the whole list, since one blob written by another client must not bla
 `buildVaultRows` in [`lib/app`](../lib/app/README.md) does that classification, so it is tested
 without a DOM.
 
-## Notes is the one screen with no panel
+## Notes is the one populated screen with no panel
 
-`NotesScreen` is a section like Vault or Guardians — same `NAV_ITEMS` entry, same top bar — but
-it deliberately **does not use `Card`**. The files render straight into the content column with
-no panel border around them, because the console panel idiom exists to group controls, and a
-file browser's content *is* the grouping. A border there would read as a second, redundant frame
+`NotesScreen` is a section like Vault or Documents — same `NAV_ITEMS` entry, same top bar — but
+once it has files it deliberately **does not wrap them in `Card`**. The tiles render straight into
+the content column with no panel border around them, because a panel exists to group controls, and
+a file browser's content *is* the grouping. A border there would read as a second, redundant frame
 around a grid that already has visible objects in it.
 
+The empty state is the exception, and takes a `<Card flush>`: with no objects on the page there is
+nothing for the eye to land on, so the message needs a surface of its own. Documents does the same.
+
 The tiles themselves are not borderless. Each is a page-shaped thumbnail (`aspect-[3/4]`) with a
-shadow and a hairline ring, carrying the note's real first ~420 characters at 9px under a
-bottom fade, with the title and date beneath it as a filename. That reads as a stack of paper
-rather than as a list of rows — the ring belongs to the object, not to the section. A note that
-will not decrypt shows the notes glyph instead of content, keeping its tile.
+`shadow-card` and a hairline ring, carrying the note's real first ~420 characters at 9px under a
+bottom fade, with the title and date beneath it as a filename. Hovering lifts the tile
+(`-translate-y-0.5`, `shadow-lift`) and warms the ring to `brand-200`. That reads as a stack of
+paper rather than as a list of rows — the ring belongs to the object, not to the section. A note
+that will not decrypt shows the notes glyph instead of content, keeping its tile.
 
 ### Selecting files
 
@@ -394,9 +275,10 @@ further out again, in [`lib/note-format`](../lib/note-format/README.md), so the 
 
 ### The editing surface
 
-The writing surface is **WYSIWYG**: a `contentEditable` div with no border or ring, on the page
-background. Bold text is bold, a title is a real heading, a checklist has real tick boxes. The
-user never sees a `#` or a `**` — that spelling is only how the note serializes.
+The writing surface is **WYSIWYG**: a `contentEditable` div with no border or ring of its own,
+inside a white sheet that also holds the formatting toolbar above it and the character count
+below. Bold text is bold, a title is a real heading, a checklist has real tick boxes. The user
+never sees a `#` or a `**` — that spelling is only how the note serializes.
 
 `note-surface.ts` is the DOM half, and it is deliberately the *only* untested file in the
 feature: everything decidable without a DOM lives in
@@ -410,6 +292,23 @@ CSS in [`globals.css`](../app/globals.css). Bullets and tick boxes are `::before
 pseudo-elements rather than nodes, so the caret cannot land inside one and serialization never
 has to skip one. Ticking a box is a single `data-checked` flip — the text and the caret do not
 move.
+
+**But a direct child of the surface is not always one of those divs.** `contentEditable` leaves
+the first thing typed into an empty surface as a bare text node, with no wrapper, until the
+browser has a reason to make one. `readSurface` already expects this and folds such loose text
+into an implicit `text` block. `surfaceBlockAt` therefore **returns `undefined` rather than that
+text node** — its contract is "the line *element* at the caret", and a caller that gets a text
+node back reads `.dataset.line` off `undefined` and throws on every keystroke. That was a real
+bug, fixed 2026-09-09; the `nodeType === Node.ELEMENT_NODE` check on its last line is the whole
+fix and is not redundant.
+
+Every caller already handles `undefined` by doing nothing, which is the right answer for a line
+that has no element to carry `data-line`: the toolbar reports it as `text` (which is what
+`readSurface` calls it too), and Enter, the tick-box click and the line-type buttons pass. **The
+one visible consequence is that the line-type buttons do nothing on the very first line of a
+brand-new note**, until an Enter or a paste gives that line a wrapper. Closing that means
+promoting loose text into a real block on `sync`, which is an editing change rather than a fix,
+so it has not been done.
 
 Five things this depends on, each of which breaks the editor if it is wrong:
 
@@ -497,8 +396,8 @@ Four things this depends on, none of them optional:
    leaving the screen mid-debounce.
 
 The screen holds the returned `NoteRecord`, so every save after the first is a `PUT` that reuses
-that record's DEK — the component never constructs a `wrapped_dek` itself, which is what keeps
-heirs' wrapped keys valid (see
+that record's DEK — the component never constructs a `wrapped_dek` itself, which is what keeps the
+note openable across edits (see
 [`lib/notes`](../lib/notes/README.md#the-dek-must-survive-the-edit)).
 
 Delete is the only notes action needing the seed key, and it is **two-step**: the button reveals
@@ -509,3 +408,412 @@ this one guards a longer piece of writing.
 
 A note that will not decrypt opens read-only, with **saving disabled**, so a re-seal cannot
 overwrite content this device could not read in the first place.
+
+## The drive screen
+
+Everything decidable without a DOM is in [`lib/app/files.ts`](../lib/app/README.md) with tests —
+byte formatting, file kinds, the storage bar, and **every string that makes a durability claim**.
+The component is wiring.
+
+Three rules the copy has to keep, and each has a test asserting it rather than a reviewer
+remembering it:
+
+- **Never claim two providers.** Replication is asynchronous, so for up to a minute a file is real
+  and exists in one place. `replicationLabel` says *"Saved. A second copy is made within a minute"*
+  until `gcs_state` is `ok`, and the test asserts the pending string contains neither "two" nor
+  "provider". A failed replica gets its own line rather than hiding behind the happy one.
+- **A file opens the moment R2 has it.** `isOpenable` keys on `r2_state`, not on the replica —
+  waiting for `gcs_state` would make the product feel a minute slower than it is for no gain.
+- **Deleting does not free space immediately.** The row keeps its bytes until the reconciler removes
+  both copies, so `fileDeleteConfirmation` and `storageFullMessage` both say when the space returns.
+  A user who deletes a file and then hits the ceiling would otherwise think the product is broken.
+- **The bar draws what R2 holds, never what has been reserved.** `GET /files/usage` answers with two
+  sums: `stored_bytes` (`r2_state = 'ok'`) and `used_bytes`, which also counts the `pending` rows the
+  ceiling is checked against. Filling the bar with the second would show space consumed by files
+  that do not exist — an upload that died at its first part would look like a stored file. Showing
+  only the first would be a different lie, because the account can be refused an upload while the
+  bar shows room. So `storageBar` returns both: a solid fill for what is stored and a quieter
+  segment for what is merely held, with `uploadingSummary` naming it. `nearlyFull` keys on
+  `used_bytes`, because that is the number that will refuse the next upload.
+
+Selecting files and deleting them together works exactly as it does in notes — the same checkbox,
+the same toolbar readout, the same rule that a tile click toggles while selecting — and the shared
+reasoning is under [Selecting files](#selecting-files) rather than repeated here. Two things are the
+drive's own:
+
+- **An unfinished upload is selectable even though it cannot be opened.** Its tile is disabled for
+  download and stays live for selection, because a row that holds quota with nothing behind it is
+  precisely the one a user needs to clear.
+- **An unfinished upload can also be finished, usually in one click.** Its tile carries an upload
+  glyph instead of the download one. Where the browser can hand out file handles the app kept one
+  when the upload started, so the click resumes straight away; where it cannot — Firefox, Safari —
+  the same click asks for the file back. The tile's tooltip says which of the two will happen, so
+  the control is never a surprise. Picking or reopening the wrong file is refused by `lib/files`,
+  not by the component, and the refusal lands in the transfer list like any other failed upload.
+- **A transfer is reported on a tile and nowhere else.** A progress line runs along the bottom of
+  the miniature and the status line under the name counts up in place of whatever it said before.
+  There is no separate list above the grid — one upload was otherwise reported in two places, and
+  the tile is the place the user is already looking.
+- **An upload gets a tile before the server has a row.** `send` mints the id up front, so a
+  placeholder tile is drawn from the `File` itself — name, size, kind — and the real row replaces it
+  when the listing reloads. That is why a first upload animates the same way a resume does; before
+  it, the very first upload of a file was the one case with nothing to watch.
+- **The label matters most on a resume**, because the line it replaces reads *"This upload never
+  finished, so the file is not in your vault"*. Leaving that in place while bytes are moving tells
+  the user the opposite of what is happening.
+- **A failure that stored nothing gives its reservation back on the spot.** `POST /files` reserves
+  the declared size before any URL is signed, so an upload that dies at its first part would hold
+  the whole file's worth of quota until a sweep ran a day later. `send` watches `doneBytes`: if no
+  part was ever confirmed it abandons the row, and what stays on screen is a notice with nothing
+  behind it. **A failure that did store parts keeps its row**, because those bytes are what makes
+  resuming worth doing — the user decides, with Resume and Discard on the tile.
+- **A failed transfer keeps its tile** — a red line where the progress was, the reason under the
+  name over up to three lines, and a close control that is always visible rather than waiting for a
+  hover. Dismissing forgets the notice; it does not touch the row on the server. A placeholder whose
+  upload failed before any row existed (too large, over quota) disappears with it.
+- **The trash control means two different things, and says so.** On a stored file it is the signed
+  `file-delete` and the confirmation talks about permanence. On an unfinished upload it is the
+  JWT-only abandon: nothing was stored, so there is nothing to warn about losing, and the
+  confirmation says the space comes back at once instead. Same button, different sentence, because
+  the two actions destroy different things.
+- **A transferring or placeholder tile is inert**: not openable, not selectable, controls hidden.
+  Every one of those actions would race the upload the tile is showing, and a placeholder has no
+  row behind it to act on.
+- **The transfers themselves do not live in this component.** `AppShell` renders only the active
+  section, so opening Notes unmounts the drive and would take every in-flight upload's progress with
+  it — the upload kept running, invisibly, and coming back showed a file that looked stalled. They
+  live in [`lib/app/transfers`](../lib/app/README.md#uploads-outlive-the-screen-that-started-them)
+  and are read with `useSyncExternalStore`, so the screen is a view of them rather than their owner.
+- **The summary line matters more here than in notes, and it is not an error.** The screen's one
+  message slot carries a tone, because *"Deleted 2 of 3 — 1 file was already gone"* rendered in the
+  danger colour reads as a failure and contradicts the copy's whole point. A shortfall is `info`; a
+  thrown request is `danger`. `fileBatchDeleteSummary` stays silent on a clean run, since the tiles
+  are visibly gone. The storage bar reloads with the grid, so the reclaimed space lands in the same
+  paint.
+
+**An image tile shows the image.** The preview is a thumbnail file of its own, fetched and decrypted
+like any other download and held as an object URL in `lib/app/previews` so a return trip to the
+drive does not fetch it again — and, since 2026-09-11, kept as sealed bytes in OPFS
+([`lib/files/cache`](../lib/files/README.md#the-cache-holds-ciphertext-and-that-is-the-whole-design))
+so a *reload* does not fetch it either. It is drawn with a plain `<img>`, and `next/image` is disabled for
+this file in the lint config rather than worked around: the optimiser fetches the source
+server-side, and this source is a `blob:` of bytes that only exist decrypted in this tab. A file
+with no preview — not an image, an undecodable type, a browser without `OffscreenCanvas`, a
+thumbnail upload that failed — falls back to the type glyph, so nothing waits on a preview that is
+never coming.
+
+### The drive tile is an icon, not a page
+
+Notes and documents are **pages**, so their tile is an A4 miniature of the page: the content is the
+thumbnail. A drive holds a `.zip`, a `.docx`, a 4 GiB video — things with no page to draw — and
+until 2026-09-11 they were drawn at that same A4 size anyway, five to a row, each one a huge sheet
+of paper with a small glyph floating in the middle of it. A `.zip` is not a document, and sizing it
+like one wastes most of the screen on empty paper.
+
+So the drive alone uses the **desktop file-manager shape**: a square icon, the name centred under
+it over up to two lines, one line of caption under that.
+
+- **A file with a thumbnail shows it at its own aspect ratio.** The image is `object-contain` inside
+  a square of the glyph size, so a portrait photo stays portrait and a landscape one stays
+  landscape — the box is a ceiling on the longest edge, not a shape imposed on the picture.
+  `object-cover` was the previous behaviour and it centre-cropped every photo to A4.
+- **Everything else gets a type icon.** `FileTypeIcon` in [`icons.tsx`](./icons.tsx) draws one sheet
+  with a folded corner, a mark saying what kind of thing it is, and a coloured band carrying the
+  extension — the shape a desktop uses, for the reason a desktop uses it: the extension is the
+  fastest identifier a user has, and the colour is what makes a wall of them scannable. The kind
+  comes from the MIME type via `fileKind`, which now separates the office families (`document`,
+  `sheet`, `slides`) and `code` rather than dropping all of them into `other`, because those are
+  exactly the files a drive is full of and an icon that cannot tell a `.docx` from a `.zip` is not
+  doing its job. The band's label comes from the **name**, not the type — `fileExtension` is what a
+  file manager shows, and it stays empty rather than guessing when the suffix is missing, long, or
+  not plain alphanumeric.
+- **A glyph the browser could not decrypt is the generic sheet** — grey band, no mark — which is
+  precisely what an OS shows for a type it does not know. The caption already says the file is
+  unreadable; the icon does not need to say it twice.
+- **The icons on the miniature are the ones that had to shrink.** The checkbox and the hover actions
+  moved to the tile's corners at `h-5 w-5`, because at the smallest step the whole tile is 96px and
+  the old 24px controls at `inset-3` did not fit inside it.
+- **Icons bottom-align within their box.** A landscape thumbnail is shorter than a portrait one, and
+  aligning them on their tops would leave a ragged row of names.
+
+### The size control
+
+`SizeStepper` in `ui.tsx` — a `−` and a `+` either side of the current step's
+name — sits in the toolbar immediately before Select / Cancel / Delete and Upload, the same place a
+file manager puts it and next to the other things a user does to a whole grid. **All three grids
+use it**: the drive, notes and documents. Everything it decides is data in
+[`lib/app/icon-size`](../lib/app/README.md#how-large-the-three-grids-draw-themselves), including the
+`grid-template-columns` the grid is given; the component only holds which step is current and writes
+it back.
+
+Its labels are props rather than fixed strings, because *"Smaller icons"* is wrong on a screen full
+of note previews — notes say *"Smaller notes"*, documents *"Smaller documents"*. The four step names
+underneath are shared, since they are the same four steps.
+
+The control is hidden when the grid is empty — there is nothing to resize, and the empty state is
+already carrying the instructions.
+
+### What moved off the miniature
+
+The size used to be a pill floating over the bottom of the A4 sheet. At 48px it would cover the
+thumbnail it sits on, so it moved to the caption line, and `fileCaption` decides what that line
+says: the size, **unless the status still has a durability claim to make**. `REPLICATION_DONE` is
+the one state with nothing left to say — the file is stored, twice, and a grid of forty tiles each
+repeating *"Saved, with a second copy"* is noise. Every other state keeps the line: pending
+replication, a failed replica, a file being repaired, an unfinished upload. The full status stays
+in the tile's `title` in all cases, so nothing is lost, only unsaid. A test pins both halves.
+
+**The bar is not part of this screen.** It lives in the sidebar's bottom corner, drawn by
+`StorageMeter` from a shared `lib/app/usage` store: it is an account-level fact, not a drive-screen
+fact, and a user who is about to upload something is often looking at another section. The drive
+publishes each reading it takes; the meter fetches one itself if it mounts before the drive is ever
+opened. The account chip moved the other way, from that corner to the top bar next to Lock and Log
+out, where the rest of the identity chrome already is.
+
+`FILES_ENABLE` is off by default, so `/files` answers `404` on a deployment without R2. That is not
+an error worth showing a user: `ApiError.isDriveDisabled` turns it into "the drive is not switched
+on for this deployment".
+
+## Document and note tiles
+
+Both grids render a **file**, not a card: a paper miniature of the content, then the title and a
+date underneath, with a selection checkbox that appears on hover. `NoteFile` and `DocumentFile` are
+deliberately the same shape, because the two screens sit next to each other in the same navigation
+and a reader should not have to learn two layouts.
+
+**Both grids resize**, with the same `SizeStepper` the drive uses and the reasoning in
+[`lib/app/icon-size`](../lib/app/README.md#how-large-the-three-grids-draw-themselves). The step sets
+the column width, which for a page grid *is* the page width — the miniature is `w-full` inside it
+and its aspect ratio does the rest. Everything inside the page is expressed as a share of the page,
+so scaling one scales all of it: the margins already were (`12%` / `8.5%`), and the body text, the
+inner title, the bottom fade and the undecryptable-page glyph now are too. A miniature that kept
+9px text on a 264px page would stop being a scale drawing and start being a box with small writing
+in it.
+
+The document miniature differs from the note's in the three places where a document is not a note:
+
+- **A4, not 3:4.** `aspect-[210/297]` is the real page ratio, and the padding is `12%` / `8.5%` —
+  the 25.4mm margin expressed as a fraction of the page, so the miniature is a scale drawing of the
+  sheet rather than a box with arbitrary inset.
+- **The title is rendered inside the page** when there is one. A note has no title of its own — its
+  first line is its title, so drawing it twice would be a lie about the content. A document's title
+  lives in `meta.title`, separate from the body, so the miniature shows it exactly where the real
+  first page does. `UNTITLED_DOCUMENT` is skipped, because a placeholder is not content.
+- **A bigger text budget.** `DOCUMENT_THUMBNAIL_MAX_CHARACTERS` is 1200 against the note's 420: the
+  page is taller, and long-form writing is the point, so a miniature that stops a third of the way
+  down reads as an empty document rather than a full one. Overshooting is safe — the overflow is
+  clipped and the bottom gradient covers the cut.
+
+The date line keeps the documents' own `edited` label ("Edited 2 hours ago") rather than the note's
+raw `toLocaleDateString`, since it already existed and says more.
+
+## The document editor
+
+The `/docs/[id]` surface is TipTap bound straight to the document's `Y.Doc`, so the editor holds no
+content of its own: no `content` option, no `setContent`, no controlled value. Everything the
+chrome displays — the outline, the word and page counts, which toolbar buttons are lit — is derived
+from `editor.state.doc` on the fly, never written back. A stored attribute would be a sealed delta
+appended on every device that opens the document, for a value the editor can recompute for free.
+[`lib/documents`](../lib/documents/README.md) explains why that cost never goes away.
+
+### `useEditorState` must not read the editor out of its own snapshot
+
+This is the trap that made the toolbar render blank on load, and it will bite again.
+
+`useEditor` **does not re-render on transactions** unless `shouldRerenderOnTransaction: true` is
+passed, so `editor.isActive('bold')` read during render is frozen at whatever it was when the
+component last rendered for some other reason. Reading it that way gives a toolbar that never
+lights up and undo/redo buttons that never enable. `useEditorState` is the supported fix: it
+subscribes to transactions and re-renders only when the selected value actually changes, which is
+also what keeps typing from re-rendering the whole workspace.
+
+Its selector receives `{ editor, transactionNumber }`, and **that `editor` is not reliable**.
+`EditorStateManager` caches its snapshot at construction and only rebuilds it when
+`transactionNumber` moves; the workspace sets `immediatelyRender: false`, so the cached editor is
+`null`, and no transaction fires until the user types. A selector branching on that argument
+therefore returns its editor-is-null result forever on an untouched document.
+
+Read the editor from the component's own props instead and let the snapshot serve only as the
+invalidation signal:
+
+```ts
+const state = useEditorState({
+  editor,
+  selector: () => (editor === null ? undefined : { bold: editor.isActive('bold') }),
+});
+```
+
+A re-render replaces the selector closure, so the value is recomputed as soon as `editor` stops
+being null; a transaction bumps `transactionNumber` and recomputes it again. Equality is
+`deepEqual` by default, so returning a fresh object of flags each time is correct and cheap.
+
+### The sheet
+
+`.cryple-page-stack` in [`globals.css`](../app/globals.css) is A4 written in millimetres —
+`--page-width: 210mm`, `--page-height: 297mm`, `--page-margin: 25.4mm` — because CSS defines
+`1in = 96px = 25.4mm` exactly, so physical units are deterministic here and a pixel width is only a
+paper size in disguise. The previous `max-w-[816px]` was US Letter. The margin collapses below `30rem` so the text column survives on a phone.
+
+The document renders as **discrete sheets, not one continuous page**. That is two layers: an
+`aria-hidden` absolute layer painting one `.cryple-sheet` per page, and the text flowing above it
+in a single `.cryple-page` whose `min-height` is `--page-count` pages plus the gaps between them.
+The text never moves between containers — splitting it into per-page containers is what would
+force a document mutation — so the flow stays one uninterrupted ProseMirror document and only the
+background knows about pages.
+
+`.cryple-page` → `.cryple-page-body` → `.ProseMirror` is a three-link flex chain so the editable
+element fills the sheet. Without it the lower two-thirds of the page belongs to the sheet rather
+than to ProseMirror, and clicking there does nothing. With it, ProseMirror's own hit-testing places
+the caret — do not add a click handler calling `focus('end')`, which puts the caret in the wrong
+place whenever the user clicked beside a paragraph rather than below the last one.
+
+The header is sticky and its height changes when the toolbar wraps, so a `ResizeObserver` writes
+the measured height to `--doc-chrome-h` and headings carry a matching `scroll-margin-top`. That is
+what keeps an outline click from landing its target underneath the chrome, and it is one
+declaration rather than offset arithmetic at each call site.
+
+Printing is the export path: `@media print` hides everything marked `cryple-no-print` (header,
+toolbar, outline), drops the sheet's border, shadow and radius, and sets `@page { size: A4;
+margin: 0 }` so the printed margins are the sheet's own padding — the same declaration as on
+screen. Browser-added headers and footers are the user's print-dialog setting and cannot be
+suppressed from CSS.
+
+The page count in the header comes from the pagination plugin, so it is the real number of sheets
+rather than a words-per-page guess that would disagree with what prints.
+
+### Pagination
+
+The plugin measures each top-level block, hands the heights to
+[`paginate`](../lib/documents/pagination.ts), and turns the answer into `Decoration.node` entries
+that insert a fixed-height spacer before the first block of each page — filling the rest of the
+previous sheet and the gutter between sheets. **No document transaction is ever dispatched**; the only transaction
+carries `setMeta` and no steps, so nothing reaches the CRDT. Read the reasoning in
+[`lib/documents`](../lib/documents/README.md#pagination-is-measured-never-written) before changing
+any of it.
+
+Four details are load-bearing:
+
+- **Widget decorations, not node decorations.** A node decoration is dropped the moment its node
+  stops being exactly one node — pressing Enter inside the first block of a page splits it, the
+  decoration disappears, and the page collapses upward so the text renders in the gutter between
+  sheets. A widget is a single position, which maps through a split intact. It also keeps the
+  measurement honest: block heights are read straight off the element, with no injected padding to
+  subtract back out.
+- **`.cryple-prose` spacing is `margin-top` only**, and `:first-child` gets none. Blocks with a
+  `margin-bottom` would collapse against the next block's `margin-top` and the measured heights
+  would no longer sum to the rendered flow. The first-child rule matters because `.ProseMirror` is
+  a flex item and therefore a BFC root: the first block's margin does *not* escape it, so without
+  the rule page one starts lower than every other page and the arithmetic drifts by that margin.
+- **Measure in a microtask, never on a timer or `requestAnimationFrame`.** This is what decides
+  whether the feature reads as *"the next line is on the next page"* or as *"the next line is in
+  the gutter and something will move it shortly"*. Microtasks drain before the browser paints, so
+  the corrected geometry is in place for the first frame that shows the edit and the intermediate
+  state is never rendered. A timer defers past the paint — the text visibly lands in the gutter and
+  jumps. rAF is worse still: it runs after layout, and it does not fire at all in a background tab,
+  so a document opened in a tab that is not in front would never paginate until you looked at it.
+  The layout reads force their own reflow, which is all the frame callback was ever wanted for.
+- **The skip check compares block indices *and* the decorations' live anchor positions.** Skipping
+  a rebuild is what keeps typing cheap, but it is only safe when the spacers already on screen are
+  where this pass would have put them. Indices alone are not enough: a decoration is anchored to a
+  document position, so after an edit that inserts or removes a block, "the break is at index 202"
+  can be true of both the old and the new pagination while the spacer is anchored to what is now
+  block 203. That renders as text spilling into the gutter and it never recovers, because every
+  later pass agrees nothing changed. `sameAnchors` compares each live decoration's `from` against
+  the position this pass computed for it, so the rebuild is skipped only when the spacers are
+  genuinely already correct. See also
+  [`samePagination`](../lib/documents/README.md#pagination-is-measured-never-written).
+
+`MAX_PASSES` caps the settle loop so a pathological document cannot spin the microtask queue.
+
+### Keeping it cheap on a long document
+
+Measuring on every transaction is what buys the pre-paint correctness, so the measurement itself
+has to be cheap. Three things make it so, and all three were found by profiling a 2 000-block,
+116-page document rather than by guessing:
+
+| | before | after |
+| --- | --- | --- |
+| Measurement pass | 70.7 ms | 0.9 ms |
+| Whole keystroke | 44.3 ms | 21.7 ms |
+
+- **Never call `view.nodeDOM` per block.** It resolves a position by walking siblings, so calling
+  it once per top-level node is quadratic — 33.6 ms of the original 70.7 on its own. The elements
+  are read from `view.dom.children` in one linear pass instead, skipping the spacer widgets and the
+  gap cursor. `elementsByPosition` stays as a fallback for the case where that count disagrees with
+  `doc.childCount`, which keeps correctness independent of assumptions about what ProseMirror
+  renders.
+- **Cache each block's measurement against its ProseMirror node.** Nodes are immutable and shared
+  between states, so a node that is `===` the one measured last time cannot have changed height.
+  A keystroke re-measures exactly the block it touched. The cache is a `WeakMap`, so it needs no
+  eviction, and it is dropped whole when the editor's width changes or a web font finishes loading
+  — the two things that change every height at once. Index 0 is never cached, because
+  `:first-child` zeroes its margin and that would be wrong for the node anywhere else.
+- **Do not dispatch when the pagination did not change.** Most keystrokes do not move a page break,
+  and a dispatch is not free: it re-runs every `useEditorState` selector and re-renders the chrome.
+
+The counts in the header are debounced for the same reason. `characterCount.words()` walks the
+whole document — 9.3 ms on the 2 000-block document — and through `useEditorState` it ran on every
+transaction, twice per keystroke once the pagination dispatch is counted. It is display-only, so it
+now reads on a 400 ms trailing debounce like the outline does.
+
+`paginate` uses a prefix-sum array so each page's extent is O(1) and the whole pass is O(n);
+`pagination.test.ts` pins that with a 20 000-block case. It was never the bottleneck — 0.45 ms at
+10 000 blocks even in the naive form — which is precisely why measuring first was worth it.
+
+The residual page-to-sheet misalignment is bounded at ~1.5 px across 115 page breaks. Rounding the
+spacer height is what makes it accumulate, because the sheets sit at exact multiples of the page
+height while the spacers stack up rounding error; the height is therefore left fractional.
+
+Print agrees with the screen **by construction** rather than by luck: the spacer is hidden and
+`.cryple-page-gap + *` becomes `break-before: page`, so the browser breaks at exactly the blocks
+the plugin chose. `@page { margin: 25.4mm }` with `.cryple-page` padding removed is what gives
+pages two and onward their margins — box padding only applies at the start of the box, so the
+sheet's own padding cannot serve a multi-page print.
+
+`pageBreak` is an atom node of zero height: it marks the spot without consuming any of the page, so
+the page simply ends where the user put it. It is the only pagination fact stored in the document,
+and it is stored because it is the user's intent rather than a measurement. `Mod-Enter` inserts
+one.
+
+### The outline panel
+
+`readOutline` walks only top-level blocks — returning `false` from the `descendants` callback stops
+the descent — so a heading inside a table cell or a blockquote is not a section. Entries carry a
+ProseMirror **position**, which is valid only for the state it was read from, so the outline is
+re-read on every change rather than cached across transactions.
+
+Nesting is a stack that pops while the top is at or below the incoming level, which handles a
+document whose headings skip a level or never start at `h1`. Rows indent by **tree depth, not
+heading level**, or a document written entirely in `h2` renders permanently indented.
+`outlineTree` and `activeHeadingPos` are pure and live in
+[`lib/documents/outline.ts`](../lib/documents/outline.ts) with tests; only the DOM scroll stays here.
+
+The active row follows the **caret**, not the scroll position: the caret is what a writer tracks,
+and it is already state. An `IntersectionObserver` would need tearing down and re-attaching on
+every transaction, because ProseMirror replaces heading elements as the document changes.
+
+The panel is `sticky` on the flex **item**, not on the `<nav>` inside it — a sticky element can
+only travel within its parent's box, and with `items-start` that wrapper is only as tall as the
+nav, so sticking the nav does nothing at all.
+
+### Toolbar
+
+Buttons reflect state (`aria-pressed`, `disabled` from `can()`), every command chains through
+`.focus()`, and each control's `onMouseDown` is prevented so clicking it does not blur the editor.
+The `Selection` extension is enabled for the same reason from the other side: the `<select>`s and
+the link popover do take focus, and without it the user's selection visibly disappears while they
+choose a font.
+
+Link editing is an in-toolbar popover rather than `window.prompt`, which blocks the page, cannot be
+styled, and had no way to edit an existing href. `extendMarkRange('link')` is what lets it work
+from a bare caret inside a link. URL validation belongs to the Link extension's `isAllowedUri`
+allowlist, not here.
+
+The paragraph-style control calls `setHeading`, not `toggleHeading`: from a `<select>`, choosing
+the level that is already active must be a no-op, and toggle turns it back into a paragraph while
+the select still reads "Heading 2".
+
+`FONT_FAMILIES` names `var(--font-sans)` and `var(--font-mono)` — the properties this app actually
+defines in `globals.css`. They previously named `--font-geist-*`, which exist in the Next.js
+starter template and not here, so two of the three font options silently did nothing. Any export
+has to map these tokens to real family names explicitly.

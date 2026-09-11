@@ -5,30 +5,40 @@ already holds** (as opposed to wrapping *for someone else*, which is
 [`lib/pqxdh`](../pqxdh/README.md)).
 
 ```
-sealed(key, plaintext) = base64( 0x01 ‖ iv(12) ‖ AES-256-GCM(key, iv, plaintext) ‖ tag(16) )
+sealed(key, plaintext) =         0x01 ‖ iv(12) ‖ AES-256-GCM(key, iv, plaintext) ‖ tag(16)
+                        base64( … ) for anything that goes in a TEXT column
 ```
 
-| Consumer | Key | Plaintext |
-| --- | --- | --- |
-| `ciphertext` — [`lib/secrets`](../secrets/README.md) | that item's DEK | the item payload |
-| `encrypted_seed` — [`lib/recovery`](../recovery/README.md) | the REK | the seed phrase |
-| `wrapped_dek` — *pending* | the vault KEK | the item DEK |
+| Consumer | Key | Plaintext | Encoding |
+| --- | --- | --- | --- |
+| `ciphertext` — [`lib/secrets`](../secrets/README.md) | that item's DEK | the item payload | base64 |
+| `wrapped_dek` — [`lib/secrets`](../secrets/README.md) | the vault KEK | the item DEK | base64 |
+| the note and document payloads | that item's DEK | the item payload | base64 |
+| a drive chunk — [`lib/files`](../files/README.md) | that file's DEK | `u32be(index) ‖ u32be(count) ‖ payload` | **raw** |
 
-## ⚠️ This layout is provisional
+## Base64 is an encoding, not part of the envelope
 
-**It is not specified anywhere.** The API takes these fields as opaque base64 strings, and the
-backend docs name the algorithm without fixing the byte layout:
+`sealBytes` / `openBytes` are the envelope. `sealBlob` / `openBlob` are the same thing base64-encoded
+and delegate to them, and `sealText` / `openText` add a UTF-8 step on top of that.
 
-- `front-end-endpoints.md` — `ciphertext` is *"base64 AES-256-GCM blob produced client-side"*
-- `recovery-flow.md:477` — `encrypted_seed` is *"AES-GCM encrypted seed phrase"*
+**The base64 exists for `TEXT` columns and for nothing else.** Every field this client sends the API
+is one, which is why it was the only form here until the drive arrived — an R2 object is not a text
+column, and base64-ing a multi-gigabyte file would inflate it by a third for no reason. The raw pair
+was added in 2026-09-09 for [`lib/files`](../files/README.md); the layout is identical either way,
+and there is one implementation of it.
 
-Neither says where the 12-byte IV sits. Both blobs are **cross-client**: an heir parses the
-item ciphertext after a PQXDH `succession-dek` unwrap, and `encrypted_seed` is written by one
-device and read by a different one during recovery.
+## The layout is ratified
 
-A drafted proposal to ratify this is in
-[proposals/opaque-blob-layouts.md](../../../proposals/opaque-blob-layouts.md). Until it lands,
-treat the layout as unratified and **do not** rely on it interoperating with another client.
+**Ratified 2026-08-08** as
+[`crypto/ECDSA.md` § Sealed Blob Format](../../../../api-general/.docs/crypto/ECDSA.md)
+(Decision B), byte-for-byte as written above, and pinned by the `sealed_blob` vector in
+`test-vectors.json`. An earlier revision of this file called the layout provisional and pointed
+at a proposal document; that proposal landed.
+
+It stayed a cross-client contract even though this is the only client today: the API takes these
+fields as opaque base64, so a divergent choice fails **silently, per item, forever**. A third
+row used to sit in that table — `encrypted_seed`, sealed under the recovery key — and it left
+with guardian recovery on 2026-09-04.
 
 ## Why it exists as one module
 
@@ -61,6 +71,6 @@ is already single-purpose. A fresh random IV per call; never reuse one with the 
 
 ## Tests
 
-Exercised through its consumers — `secrets.test.ts` and `recovery.test.ts` both cover the
+Exercised through its consumers — `secrets.test.ts` and the fixture test cover the
 round-trip, the fresh IV per encryption, rejection of an unknown version byte, rejection of a
 blob too short to hold an IV and tag, and failure under the wrong key.

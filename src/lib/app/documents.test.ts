@@ -5,7 +5,11 @@ import {
   UNTITLED_DOCUMENT,
   buildDocumentTiles,
   documentCountLabel,
+  documentCountsLabel,
+  DOCUMENT_THUMBNAIL_MAX_CHARACTERS,
+  documentDeleteConfirmation,
   documentHref,
+  documentThumbnail,
   documentPreview,
   documentTitle,
   editedLabel,
@@ -118,5 +122,70 @@ describe('links and counts', () => {
   it('pluralizes the count', () => {
     expect(documentCountLabel(1)).toBe('1 document');
     expect(documentCountLabel(4)).toBe('4 documents');
+  });
+});
+
+describe('document counts', () => {
+  it('pluralizes words, characters and pages', () => {
+    expect(documentCountsLabel(1, 1, 1)).toBe('1 word · 1 character · 1 page');
+    expect(documentCountsLabel(2, 9, 3)).toBe('2 words · 9 characters · 3 pages');
+  });
+
+  it('reports at least one page for an empty document', () => {
+    expect(documentCountsLabel(0, 0, 0)).toBe('0 words · 0 characters · 1 page');
+  });
+
+  it('groups thousands so a long document stays readable', () => {
+    expect(documentCountsLabel(12000, 65000, 24)).toContain('24 pages');
+  });
+});
+
+describe('delete confirmation', () => {
+  it('warns that the keys are held only by this account', () => {
+    expect(documentDeleteConfirmation(1)).toContain('permanent');
+    expect(documentDeleteConfirmation(1)).toContain('nobody');
+  });
+
+  it('does not promise anything about inheritance, which left the product', () => {
+    expect(documentDeleteConfirmation(3)).not.toContain('inherit');
+  });
+});
+
+describe('document thumbnails', () => {
+  const now = new Date('2026-08-11T12:00:00Z');
+
+  it('keeps the line structure so the miniature reads like a page', () => {
+    expect(documentThumbnail('Title\nFirst line\nSecond line')).toBe(
+      'Title\nFirst line\nSecond line',
+    );
+  });
+
+  it('collapses runs of blank lines rather than wasting the miniature on them', () => {
+    expect(documentThumbnail('One\n\n\n\n\nTwo')).toBe('One\n\nTwo');
+  });
+
+  it('trims the surrounding whitespace', () => {
+    expect(documentThumbnail('\n\n  Body  \n\n')).toBe('Body');
+  });
+
+  it('truncates past the thumbnail budget', () => {
+    const thumbnail = documentThumbnail('y'.repeat(DOCUMENT_THUMBNAIL_MAX_CHARACTERS + 50));
+
+    expect(Array.from(thumbnail)).toHaveLength(DOCUMENT_THUMBNAIL_MAX_CHARACTERS + 1);
+    expect(thumbnail.endsWith('…')).toBe(true);
+  });
+
+  it('is empty for a document that could not be decrypted', () => {
+    const [tile] = buildDocumentTiles([summary({ readable: false, preview: 'x' })], now);
+
+    expect(tile.thumbnail).toBe('');
+  });
+
+  it('carries far more of the body than the one-line preview does', () => {
+    const body = Array.from({ length: 40 }, (_, line) => `Line ${line} of the document`).join('\n');
+    const [tile] = buildDocumentTiles([summary({ preview: body })], now);
+
+    expect(tile.thumbnail.length).toBeGreaterThan(tile.preview.length);
+    expect(tile.thumbnail).toContain('\n');
   });
 });

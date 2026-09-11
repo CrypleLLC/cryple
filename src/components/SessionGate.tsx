@@ -9,12 +9,15 @@ import { Spinner } from './ui';
 
 export function WelcomeLayout({ width, children }: { width: string; children: ReactNode }) {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-brand-50 via-slate-50 to-slate-50 px-4 py-12 dark:from-brand-950 dark:via-slate-950 dark:to-slate-950">
+    <main className="min-h-screen bg-gradient-to-b from-brand-50 via-ground to-ground px-4 py-12">
       <div className={`mx-auto ${width} space-y-8`}>
-        <div className="flex items-center justify-center gap-3">
-          <Image src="/cryple-logo.png" alt="Cryple" width={40} height={40} priority />
-          <span className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-            Cryple
+        <div className="flex flex-col items-center gap-3">
+          <div className="flex items-center gap-3">
+            <Image src="/cryple-logo.png" alt="Cryple" width={40} height={40} priority />
+            <span className="text-display text-ink">Cryple</span>
+          </div>
+          <span className="text-caption text-ink-faint uppercase">
+            Zero-knowledge by construction
           </span>
         </div>
         {children}
@@ -28,7 +31,7 @@ export default function SessionGate({ children }: { children: ReactNode }) {
 
   if (phase === 'loading') {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
+      <main className="flex min-h-screen items-center justify-center bg-ground">
         <Spinner />
       </main>
     );

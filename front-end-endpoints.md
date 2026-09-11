@@ -6,7 +6,14 @@ This describes the API **as implemented**, not as specified. Where the implement
 
 **Read [front-end-guide.md](./front-end-guide.md) first.** It carries what you need before any call here will work: the base URL, CORS and transport limits, how to build the challenge and action signatures that most of these endpoints require in their request body, JWT usage, and the client caveats. This file assumes all of it. Paths below are served exactly as written — the API has no version prefix.
 
-Section numbers are **not contiguous** — they are the original numbering from before this file was split out of the guide, kept so that every `§N` reference in `.docs/` and the module READMEs still resolves. §1, §2, §5 and §14 live in the guide. §15 (Notes) and §16 (Documents) were added after the split and take the next free numbers rather than topical ones, for the same reason: renumbering would break every existing reference.
+Section numbers are **not contiguous** — they are the original numbering from before this file was split out of the guide, kept so that every `§N` reference in `.docs/` and the module READMEs still resolves. §1, §2, §5 and §14 live in the guide. §12 (Notes) and §16 (Documents) were added after the split and took free numbers rather than topical ones, for the same reason: renumbering would break every existing reference. §10 and §11 held recovery and PIN reset, and are kept as a single removal notice rather than reused.
+
+> **This file is a synced copy.** The authoritative original is
+> `front-end-endpoints.md` in the `api-general` repository, which is where the API is
+> implemented. The only differences between the two copies are relative link prefixes —
+> a path that reads `.docs/…` there reads `../api-general/.docs/…` here. Re-sync by
+> copying the file across and rewriting those prefixes. **Check them by hand** — the script
+> that used to catch a prefix that did not get rewritten was removed on 2026-09-06.
 
 ---
 
@@ -20,12 +27,10 @@ Section numbers are **not contiguous** — they are the original numbering from 
 - [7. Auth Endpoints](#7-auth-endpoints)
 - [8. Users Endpoints](#8-users-endpoints)
 - [9. Secrets Endpoints](#9-secrets-endpoints)
-- [10. Recovery Endpoints](#10-recovery-endpoints)
-- [11. PIN Reset Endpoints](#11-pin-reset-endpoints)
-- [12. Succession Endpoints](#12-succession-endpoints)
-- [13. Enumerations](#13-enumerations)
-- [15. Notes Endpoints](#15-notes-endpoints)
+- [10–11. Recovery and PIN Reset Endpoints — removed](#1011-recovery-and-pin-reset-endpoints-removed-2026-09-04)
+- [12. Notes Endpoints](#12-notes-endpoints)
 - [16. Documents Endpoints](#16-documents-endpoints)
+- [17. Files Endpoints](#17-files-endpoints)
 
 ---
 
@@ -54,10 +59,10 @@ Eight list endpoints are paginated. They accept two optional query parameters
 and add a `page` object to the envelope:
 
 ```
-GET /succession/beneficiaries?limit=25&cursor=bzoyNQ
+GET /notes?limit=25&cursor=bzoyNQ
 
 {
-  "message": "Beneficiaries retrieved successfully",
+  "message": "Notes retrieved successfully",
   "data": [ /* up to `limit` rows */ ],
   "page": { "next_cursor": "bzo1MA", "has_more": true }
 }
@@ -68,13 +73,7 @@ GET /succession/beneficiaries?limit=25&cursor=bzoyNQ
 | `limit`   | `50`    | Integer `1`–`200`. Zero, negative, non-numeric or over `200` is `400 INVALID_PARAM`.                     |
 | `cursor`  | none    | **Opaque.** Send back a `next_cursor` this API gave you, verbatim. Anything else is `400 INVALID_PARAM`. |
 
-Paginated: `GET /succession/beneficiaries` ·
-`GET /succession/beneficiaries/{id}/shares` · `GET /succession/shares` ·
-`GET /succession/anchors` · `GET /succession/inheritances/{owner}/anchors` ·
-`GET /succession/inheritances/{owner}/items/{id}/updates` ·
-`GET /recovery/guardians` · `GET /recovery/guardianships` ·
-`GET /recovery/sessions/pending` · `GET /recovery/pin-reset/pending` ·
-`GET /auth/pin-reset/{id}/votes`.
+Paginated: `GET /notes`.
 
 Rules worth building to:
 
@@ -86,9 +85,8 @@ Rules worth building to:
   happen without notice, and it is only safe because the token is opaque.
 - **On the two vote reports, `page` describes `data.votes`**, not `data` — those
   responses are an object wrapping a `votes` array, and the array is what pages.
-- **`GET /secrets` is not paginated in either form** and never will be without a
-  companion change — a client recomputes the vault Merkle root over every blob,
-  so a truncated vault listing would break verification. Use
+- **`GET /secrets` is not paginated in either form.** The client is expected to
+  need every item at once. Use
   [`?fields=meta`](#get-secretsfieldsmeta) to render the index cheaply.
 - A rejected `limit` or `cursor` is refused before anything is read, so a `400`
   here never means a partial result.
@@ -106,7 +104,7 @@ with a `Z` suffix**:
 These are **instants, not local times**. The server does not know your user's
 timezone and never asks for it. Render in the device's zone at display time and
 the value is correct everywhere — including for a user who travels between zones
-and for an heir in a different country than the owner:
+and for a user reading their vault from a different country:
 
 ```js
 new Date(secret.created_at).toLocaleString(); // renders in the device's zone
@@ -118,14 +116,6 @@ turn a correct instant into one that is wrong by the device's offset.
 Timestamps your client **sends** are the opposite format: **unix seconds** as a
 JSON integer (`"timestamp": 1785000000`), never a formatted string
 ([§5.2](./front-end-guide.md#52-challenge-signature-sign-up--sign-in)).
-
-**One group of returned timestamps is also unix seconds: everything inside the
-`chain` object** on [`GET /succession/status`](#get-successionstatus) —
-`last_check_in`, `triggerable_at`, `triggered_at`, `releasable_at`,
-`released_at`. Those are block timestamps copied from the contract, and
-reformatting them would make this API disagree with the chain in a way nobody
-could see. They are numbers, not strings, so a client that types them as
-`string` fails at compile time rather than rendering `Invalid Date`.
 
 ### Error
 
@@ -141,7 +131,7 @@ client bug you will hit on the first request and never again, so it is left as
 the router's default rather than dressed up as JSON. A **wrong verb on a real
 path** is not in that category — see `405` below — and does return the envelope.
 
-> ⚠️ **There is no `message` or `error` field on error responses, and this is deliberate.** The server builds a machine-readable `code` and drops the human-readable message. Service-level validation text (e.g. `"guardian \"alice\" has not accepted an invitation"`) exists in the backend but **never reaches the client** — it is logged server-side only, because account creation is free and unrestricted, so any detail sent to "an authenticated user" is detail sent to an attacker.
+> ⚠️ **There is no `message` or `error` field on error responses, and this is deliberate.** The server builds a machine-readable `code` and drops the human-readable message. Service-level validation text (e.g. `"expected 3 shares, got 2"`) exists in the backend but **never reaches the client** — it is logged server-side only, because account creation is free and unrestricted, so any detail sent to "an authenticated user" is detail sent to an attacker.
 >
 > Two consequences for the client:
 >
@@ -163,9 +153,11 @@ path** is not in that category — see `405` below — and does return the envel
 | 401  | `INVALID_CREDENTIALS` | Second factor (`password`) wrong, an action signature failed to verify, **or the JWT is valid but its account no longer exists**.                                                                                                                                                  |
 | 404  | `NOT_FOUND`           | Resource does not exist, is not yours, **or** authentication failed on an auth endpoint.                                                                                                                                                                                           |
 | 405  | `METHOD_NOT_ALLOWED`  | The path exists but does not accept this verb.                                                                                                                                                                                                                                     |
-| 409  | `CONFLICT`            | The resource is not in a state that accepts the request (expired session, closed PIN reset, already-released succession).                                                                                                                                                          |
+| 409  | `CONFLICT`            | The resource is not in a state that accepts the request.                                                                                                                                                                                                                                                                                                                               |
+| 413  | `BAD_REQUEST`         | `POST /files` only ([§17](#17-files-endpoints)): the declared object exceeds `FILES_MAX_OBJECT_BYTES`. **Note the code is `BAD_REQUEST`, not a code of its own** — branch on the status, not the code, to tell this from an ordinary field rejection.                                                                                                                                    |
 | 500  | `INTERNAL_ERROR`      | Unexpected server/database failure. Safe to retry once.                                                                                                                                                                                                                            |
 | 503  | `NOT_READY`           | `GET /ready` only ([§6](#6-service-endpoints)): a dependency did not answer. Never returned by any other endpoint.                                                                                                                                                                 |
+| 507  | `QUOTA_EXCEEDED`      | `POST /files` only ([§17](#17-files-endpoints)): the account has no storage left for this upload. The only `5xx` in this file that is **not** a server fault and must not be retried unchanged.                                                                                     |
 
 Codes defined but not currently emitted by any handler: `DATABASE_ERROR`, `EMPTY_BODY`, `FORBIDDEN`.
 
@@ -188,7 +180,7 @@ Content-Type: application/json; charset=utf-8
 {"code":"METHOD_NOT_ALLOWED"}
 ```
 
-Two things to know about it. It is decided **before** the token is checked, so a wrong verb returns `405` even with no `Authorization` header — do not read that as "this route is public". And `Allow` describes the routing table, not intent: `POST /auth/pin-reset/confirm` reports `Allow: GET, PATCH` because `GET /auth/pin-reset/{id}` genuinely matches `confirm` as an `{id}`. Treat it as a debugging aid, not as a route description.
+Two things to know about it. It is decided **before** the token is checked, so a wrong verb returns `405` even with no `Authorization` header — do not read that as "this route is public". And `Allow` describes the routing table, not intent: a literal path segment that also matches a sibling `{id}` pattern is reported under both, so the header can name a verb you did not expect. Treat it as a debugging aid, not as a route description.
 
 ---
 
@@ -251,7 +243,7 @@ Creates an account. **If the `user_address` already exists, this behaves exactly
 | ------------------------------ | -------- | ------------------------------------------------------------------ |
 | `user_address`                 | ✅       | 64 lowercase hex.                                                  |
 | `public_key`                   | ✅       | base64 DER SPKI, P-256. Must be the key that produced `signature`. |
-| `encryption_public_key_x25519` | ✅       | Stored as-is for heirs/guardians to fetch.                         |
+| `encryption_public_key_x25519` | ✅       | Stored as-is, for other accounts to fetch and encrypt to.          |
 | `encryption_public_key_mlkem`  | ✅       | Stored as-is.                                                      |
 | `challenge`                    | ✅       | 64 lowercase hex, single use.                                      |
 | `timestamp`                    | ✅       | Unix seconds, within ±300s.                                        |
@@ -336,7 +328,7 @@ Your own account, as the API sees it. Takes no parameters: the account is the on
 | Field          | Notes                                                                                                            |
 | -------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `user_address` | The `SHA-256` of the seed you authenticated with. Useful to confirm the client derived the account you expected. |
-| `username`     | The auto-assigned username ([§8](#8-users-endpoints)); this is what guardian and beneficiary invitations take.   |
+| `username`     | The auto-assigned username ([§8](#8-users-endpoints)); this is how one account addresses another. |
 | `uuid`         | Your public identifier — feed it to `GET /users/{uuid}/public-keys`.                                             |
 | `has_password` | **`true` = Paranoid Mode**, `false` = Standard Mode. Always present, never omitted.                              |
 | `created_at`   | Account creation.                                                                                                |
@@ -345,13 +337,13 @@ Your own account, as the API sees it. Takes no parameters: the account is the on
 
 It is also how you confirm a `POST /users/second-factor` that timed out actually landed: that call's retry is ambiguous by design, and this is the read-back it was missing.
 
-**Deliberately not here:** whether you have guardians or beneficiaries. Those have their own endpoints, their own scoping and their own empty states — `GET /recovery/guardians` and `GET /succession/beneficiaries`. This endpoint answers "who am I", not "what have I configured".
+**Deliberately not here:** anything the account has configured. This endpoint answers "who am I", not "what have I set up".
 
 **Errors:** `401 UNAUTHORIZED` (missing or invalid token) · `404 NOT_FOUND` (the token is valid but the account no longer exists — it was deleted; treat it as signed out) · `500 INTERNAL_ERROR`.
 
 ### `GET /users/lookup?address={user_address}` — public
 
-Resolves an address to its auto-assigned username. Needed before inviting someone as a guardian or beneficiary, since those endpoints take usernames.
+Resolves an address to its auto-assigned username.
 
 | Param     | In    | Required | Notes                        |
 | --------- | ----- | -------- | ---------------------------- |
@@ -370,7 +362,11 @@ Resolves an address to its auto-assigned username. Needed before inviting someon
 
 ### `GET /users/{uuid}/public-keys` — 🔒 protected
 
-Fetches a user's hybrid encryption keys so the client can wrap a DEK or a Shamir share for them. `{uuid}` is the `user_uuid` returned by the succession endpoints.
+Fetches a user's hybrid encryption keys so the client can PQXDH-wrap a DEK for them.
+
+**No client calls this today.** Its two callers — heir DEK wrapping and guardian share wrapping — left with inheritance and with recovery. It is the endpoint private sharing (Task 102) is built on, and the reason `user_keys` is still written at sign-up.
+
+**Before sharing ships, note the gap:** these keys come from the server, and a client has no way today to distinguish an account's real keys from keys the server substituted. Task 104 owes at least a comparable fingerprint.
 
 **`200 OK`**
 
@@ -416,7 +412,7 @@ The signature must cover the exact token you are installing. That is what stops 
 | 401    | `INVALID_CREDENTIALS` | Signature failed/stale/replayed, `new_password` is not valid 64-hex, **or the account already has a second factor**. |
 | 500    | `INTERNAL_ERROR`      | Database failure.                                                                                                    |
 
-> The "already has a second factor" case returns the same `401` as a bad signature, so this endpoint is never an oracle for which mode an account is in. If you need to change an existing PIN, use `PUT /users/password` (you know the current token) or the PIN-reset flow (you don't).
+> The "already has a second factor" case returns the same `401` as a bad signature, so this endpoint is never an oracle for which mode an account is in. Changing an existing PIN needs `PUT /users/password` and the current token. **If you do not have the current token there is no path at all** — see §10–11.
 
 ### `PUT /users/password` — 🔒 protected
 
@@ -452,7 +448,7 @@ Signing `new_password` is the point, not ceremony: without it, anything between 
 
 ### `DELETE /users` — 🔒 protected
 
-Deletes the account and, by cascade, its secrets, guardians, beneficiaries and shares. **Irreversible.**
+Deletes the account and, by cascade, its secrets, notes and documents. **Irreversible.**
 
 **Request** — the body is **required**; it carries the `account-delete` signature over your own `user_address`. Standard Mode omits `password` but still sends the three signature fields.
 
@@ -477,7 +473,7 @@ Deletes the account and, by cascade, its secrets, guardians, beneficiaries and s
 
 🔒 All protected. A "secret" is one encrypted legacy item. The server stores three opaque strings and never decrypts anything.
 
-> **Storing a note rather than a secret?** Notes are a separate resource with the same shape plus an edit route — see [§15](#15-notes-endpoints). Use `/notes` for anything the user types and later revises; use `/secrets` for material written once, like a seed phrase.
+> **Storing a note rather than a secret?** Notes are a separate resource with the same shape plus an edit route — see [§12](#12-notes-endpoints). Use `/notes` for anything the user types and later revises; use `/secrets` for material written once, like a seed phrase.
 
 ### `POST /secrets`
 
@@ -527,7 +523,7 @@ that was already stored. Same body either way:
 > scoped to your account**, so a UUID another user already holds is never a
 > conflict for you. And **without `id` there is no idempotency to fall back on**:
 > every call creates an item, and a retried timeout leaves you two, each separately
-> assignable to heirs — a duplicate quietly widens what an heir inherits.
+> indistinguishable from the original, because only you can read either.
 
 **Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (`id` is not a canonical UUID) · `400 BAD_REQUEST` (`ciphertext is required` / `wrapped_dek is required` / unsupported `version`) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
 
@@ -555,7 +551,7 @@ Returns every secret owned by the caller. **Always an array** — an empty vault
 
 **Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
 
-There is no pagination here and no `limit`/`cursor` — see [§3.1](#31-pagination). Every item arrives with its full `ciphertext`, so on a large vault this is the heaviest response the API produces. Render your index from `?fields=meta` below and call this one only when you actually need the payloads (recomputing the vault Merkle root, or bulk export).
+There is no pagination here and no `limit`/`cursor` — see [§3.1](#31-pagination). Every item arrives with its full `ciphertext`, so on a large vault this is the heaviest response the API produces. Render your index from `?fields=meta` below and call this one only when you actually need the payloads (bulk export).
 
 ### `GET /secrets?fields=meta`
 
@@ -583,7 +579,7 @@ The same listing with the payloads stripped: no `ciphertext`, no `wrapped_dek`. 
 
 `ciphertext_sha256` is `SHA-256` over the ciphertext exactly as `GET /secrets` serves it, and `ciphertext_bytes` is that string's length — enough to show a size, detect that an item changed, or diff your local cache against the server without transferring anything.
 
-> ⚠️ **Do not treat `ciphertext_sha256` as verification.** It is the server's description of bytes the server holds. Anchoring a vault root, or checking a blob against one, must hash the ciphertext **you** received. This field is for indexing and change detection only.
+> ⚠️ **Do not treat `ciphertext_sha256` as verification.** It is the server's description of bytes the server holds. Anything that needs a trustworthy hash must hash the ciphertext **you** received. This field is for indexing and change detection only.
 
 Like the full listing, this one is **not paginated** — it deliberately returns every item so the complete set of leaf hashes is available in one call.
 
@@ -643,1039 +639,39 @@ One `secret-delete` signature covering a whole set, so a multi-select delete cos
 
 **Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (any id is not a canonical UUID — nothing is deleted) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (empty id set) · `500 INTERNAL_ERROR`.
 
-> **Both delete routes also delete what heirs inherited of the item.** Every wrapped key assigned to that item is removed in the same transaction, so deleting one legacy item silently shrinks the inheritance of every heir it was assigned to. Nothing else is affected — each heir keeps every other item assigned to them. Two consequences for the UI: warn before deleting an item that is assigned to someone (`GET /succession/beneficiaries/{id}/shares` tells you which), and treat any cached `share_count` from [§12](#12-succession-endpoints) as stale after a delete. The response does not report how many assignments went with it — re-read the beneficiary list if you display the count.
-
 ---
 
 ---
 
-## 10. Recovery Endpoints
-
-Guardian-assisted seed recovery. The seed is split client-side with Shamir's Secret Sharing into `n` shares with threshold `k`; **share 0 is the owner's own Recovery Kit share** and each remaining share is encrypted to one guardian's hybrid public keys. The server stores ciphertext and orchestrates collection — it can never reassemble the seed.
-
-### `PUT /recovery/setup` — 🔒 protected
-
-Signed with `recovery-setup` over a digest of the whole payload — see [§5.3](./front-end-guide.md#53-action-signature-everything-destructive) for the exact canonicalization. Signing the payload rather than the intent is what stops anything between you and the server substituting its own shares on a validly-authorized call.
-
-> ⚠️ **This changed on 2026-07-29 and is breaking.** Setup deletes every existing guardian share and overwrites the vault in one transaction, so it now needs the seed key, not just the token.
-
-Stores (or replaces) the recovery vault and the guardian share set.
-
-**Request**
-
-```json
-{
-  "encrypted_seed": "opaque blob, seed encrypted under the owner's own key",
-  "n_shares": 3,
-  "k_threshold": 2,
-  "version": "v1",
-  "shares": [
-    { "share_index": 0, "pq_hybrid_encrypted_share": "opaque…" },
-    {
-      "share_index": 1,
-      "guardian_username": "alice1234abcd",
-      "pq_hybrid_encrypted_share": "opaque…"
-    },
-    {
-      "share_index": 2,
-      "guardian_username": "bob5678efgh",
-      "pq_hybrid_encrypted_share": "opaque…"
-    }
-  ],
-  "challenge": "64 lowercase hex characters",
-  "timestamp": 1737676800,
-  "signature": "base64 P1363 signature over the setup digest",
-  "password": "64-hex token, Paranoid Mode only"
-}
-```
-
-Rules enforced server-side (all violations ⇒ `400 BAD_REQUEST`):
-
-- `1 ≤ k_threshold ≤ n_shares`, both ≥ 1.
-- `shares.length` must equal `n_shares` exactly.
-- `share_index` values must be unique and inside `0..n_shares-1`.
-- **Index 0 is required** and must carry **no** `guardian_username` (it is the owner's Recovery Kit share).
-- Every index ≥ 1 requires a `guardian_username` that exists **and has already accepted** its invitation (`status = active`).
-- No guardian may hold more than one share.
-- `pq_hybrid_encrypted_share` must be non-empty on every entry.
-- `version` omitted/`""` ⇒ `"v1"`; anything else rejected.
-
-**`200 OK`**
-
-```json
-{
-  "message": "Recovery setup stored successfully",
-  "data": {
-    "n_shares": 3,
-    "k_threshold": 2,
-    "version": "v1",
-    "share_count": 3,
-    "updated_at": "2026-07-26T12:00:00Z"
-  }
-}
-```
-
-**Errors:** `400 INVALID_BODY` · `400 BAD_REQUEST` (any rule above) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` (JWT address no longer resolves to a user) · `500 INTERNAL_ERROR`.
-
-### `POST /recovery/guardians/invite` — 🔒 protected
-
-Requires a JWT **and** a `guardian-invite` [action signature](./front-end-guide.md#53-action-signature-everything-destructive) over the username being invited — the payload is `${challenge}:${timestamp}:guardian-invite:${guardian_username}`, signed with the owner's P-256 key.
-
-**Request**
-
-```json
-{
-  "guardian_username": "alice1234abcd",
-  "challenge": "64-char lowercase hex",
-  "timestamp": 1710000000,
-  "signature": "base64 IEEE P1363 signature",
-  "password": "64-hex token, Paranoid Mode only"
-}
-```
-
-The username is a **signed argument**, so it cannot be swapped after the fact: a signature produced for one username is refused for any other. Like every action signature it is single-use — invite two guardians and you sign twice, and a retry after a timeout needs a fresh challenge.
-
-**`201 Created`**
-
-```json
-{
-  "message": "Guardian invited successfully",
-  "data": {
-    "id": "9c1e…-uuid",
-    "username": "alice1234abcd",
-    "status": "pending_invite",
-    "has_share": false,
-    "created_at": "2026-07-26T12:00:00Z"
-  }
-}
-```
-
-Re-inviting an existing guardian is idempotent; a previously `revoked` guardian returns to `pending_invite`.
-
-**Errors:** `400 INVALID_BODY` · `400 BAD_REQUEST` (unknown username, or inviting yourself) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` (missing, malformed, replayed, stale or wrong-username signature) · `500 INTERNAL_ERROR`.
-
-> The signature is checked **before** the username is looked up, so a caller who cannot sign gets `401` whether or not the username exists. Do not use this endpoint to test whether a username is registered — that is what [`GET /users/lookup`](#get-userslookupaddressuser_address--public) is for.
-
-### `PATCH /recovery/guardians/{id}/accept` — 🔒 protected
-
-Called by the **invited guardian** (their own JWT), with the invitation `id` from `GET /recovery/guardianships`. Signed with `guardian-accept` over that `{id}`.
-
-> ⚠️ **This changed on 2026-07-29 and is breaking — it used to take no body and no signature.** Accepting is not a formality: it is the moment the owner's `user_address` becomes visible to you, and the moment you start counting toward their recovery quorum. A token alone could previously make someone a guardian who never saw the invitation, which silently raises the owner's quorum bar without adding anyone who will actually respond.
-
-**Request** — the body is **required**. All four signature fields below are required; `password` only on Paranoid Mode accounts. See [§5.3](./front-end-guide.md#53-action-signature-everything-destructive).
-
-```json
-{
-  "challenge": "64 lowercase hex characters",
-  "timestamp": 1737676800,
-  "signature": "base64 P1363 signature",
-  "password": "64-hex token, Paranoid Mode only"
-}
-```
-
-**`204 No Content`** — no body.
-
-**Errors:** `400 INVALID_PARAM` (not a canonical UUID) · `400 INVALID_BODY` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` (bad signature or second-factor mismatch) · `404 NOT_FOUND` (no such invitation, not addressed to you, or not in `pending_invite`) · `500 INTERNAL_ERROR`.
-
-### `GET /recovery/guardians` — 🔒 protected
-
-_Paginated — `?limit=` / `?cursor=`, `page` in the envelope ([§3.1](#31-pagination))._
-
-Guardians **the caller has appointed**.
-
-**`200 OK`**
-
-```json
-{
-  "message": "Guardians retrieved successfully",
-  "data": [
-    {
-      "id": "9c1e…",
-      "username": "alice1234abcd",
-      "user_address": "2b7f…",
-      "status": "active",
-      "encryption_public_key_x25519": "base64…",
-      "encryption_public_key_mlkem": "base64…",
-      "has_share": true,
-      "created_at": "2026-07-26T12:00:00Z"
-    }
-  ]
-}
-```
-
-Use the returned keys to encrypt that guardian's Shamir share before `PUT /recovery/setup`.
-
-`user_address` is **present only on `active` rows** — omitted entirely while `pending_invite` or `revoked`, never sent as `""`, exactly like `encryption_public_key_*` and like `owner_user_address` on the mirrored [`GET /recovery/guardianships`](#get-recoveryguardianships--protected). It is the **recipient half of the PQXDH `info` string** for `usage = recovery-share`, and this endpoint is the only place it is supplied: [`GET /users/lookup`](#get-userslookupaddressuser_address--public) resolves address → username and never the reverse. Do not ask the owner to type it. A share wrapped under the wrong address is accepted by every party and fails only at reconstruction, years later.
-
-**Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
-
-### `DELETE /recovery/guardians/{id}` — 🔒 protected
-
-Removes a guardian you appointed. `{id}` is the `id` from `GET /recovery/guardians`.
-
-**Request** — the body is **required** and carries an [action signature](./front-end-guide.md#53-action-signature-everything-destructive) over `challenge:timestamp:guardian-revoke:{id}`, signed with the **account owner's** key. A JWT on its own is not accepted here.
-
-```json
-{
-  "challenge": "7f3b…",
-  "timestamp": 1785000000,
-  "signature": "base64…",
-  "password": "64-hex token, Paranoid Mode only"
-}
-```
-
-**`200 OK`**
-
-```json
-{
-  "message": "Guardian revoked successfully",
-  "data": {
-    "id": "9c1e…",
-    "username": "alice1234abcd",
-    "status": "revoked",
-    "share_removed": true,
-    "votes_withdrawn": 1,
-    "active_guardians": 2,
-    "recovery_setup_stale": true
-  }
-}
-```
-
-The call is idempotent — repeating it succeeds with `share_removed: false` and `votes_withdrawn: 0`, so a retry after a timeout is safe (use a fresh challenge; action signatures are single-use).
-
-> ⚠️ **`recovery_setup_stale: true` means you must re-run `PUT /recovery/setup`.** Two separate reasons, and the client should not treat either as optional:
->
-> - The vault still claims `n_shares` holders but one is gone, so the k-of-n configuration no longer describes reality.
-> - **More importantly, revocation is not cryptographic revocation.** The revoked guardian downloaded their share when you assigned it. Deleting the row stops the server serving it; it does not take it back. Until you re-split with a **fresh REK** and re-encrypt the seed, `k` holders including the ex-guardian can still reconstruct it. Surface this as a required next step, not a notice.
->
-> `recovery_setup_stale` is `false` when the guardian never held a share (revoked before setup, or invited and never included) — nothing to redo in that case.
-
-Effects, all in one transaction: status becomes `revoked`; their Shamir share row is deleted; their pending release and PIN-reset votes are withdrawn. They immediately fail every active-guardian check, so `GET /recovery/sessions/pending` and `GET /recovery/pin-reset/pending` go empty for them and their votes stop counting toward any quorum. They can be re-invited later, which returns them to `pending_invite`.
-
-The ex-guardian still sees the relationship in their own `GET /recovery/guardianships`, now with `status: "revoked"` and `owner_user_address` omitted again.
-
-**Errors:** `400 INVALID_PARAM` (not a canonical UUID) · `400 INVALID_BODY` (absent or unparseable body) · `401 UNAUTHORIZED` (bad/missing JWT) · `401 INVALID_CREDENTIALS` (signature failed, stale, or replayed) · `404 NOT_FOUND` (no such guardian, or not yours — indistinguishable by design) · `500 INTERNAL_ERROR`.
-
-### `GET /recovery/guardianships` — 🔒 protected
-
-_Paginated — `?limit=` / `?cursor=`, `page` in the envelope ([§3.1](#31-pagination))._
-
-Accounts **the caller guards for others** — the inbox for accepting invitations.
-
-**`200 OK`**
-
-```json
-{
-  "message": "Guardianships retrieved successfully",
-  "data": [
-    {
-      "id": "9c1e…",
-      "owner_username": "3f1c8a2b9d4e",
-      "status": "pending_invite",
-      "created_at": "2026-07-26T12:00:00Z"
-    },
-    {
-      "id": "7b3d…",
-      "owner_username": "a92f4c1d8e0b",
-      "owner_user_address": "a92f4c1d8e0b…64 hex chars…",
-      "status": "active",
-      "created_at": "2026-07-26T12:00:00Z"
-    }
-  ]
-}
-```
-
-`owner_user_address` is **present only on `active` rows** — the key is omitted entirely while `pending_invite`, not sent as `""`. It is what a guardian needs to build the PQXDH `info` string when re-wrapping their share into a recovery session, and this endpoint is the **only** place it is supplied. **`owner_release_cycle` is gone** (2026-09-03): it existed solely so a guardian could sign a release vote, and guardians take no part in a release any more ([Task 91](../api-general/.docs/tasks/tasks.md#task-91)).
-
-**Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
-
-### `POST /recovery/request` — public
-
-Started on a **new device with no keys**: the user has lost their seed, so there is no JWT to present. The client mints a **hybrid** ephemeral key pair for this session and guardians re-encrypt their shares to it. PQXDH needs both halves, so both are sent, as two fields:
-
-**Request**
-
-```json
-{
-  "username": "3f1c8a2b9d4e",
-  "ephemeral_x25519_public": "base64 of 32 raw bytes → 44 chars",
-  "ephemeral_mlkem_public": "base64 of 1184 raw bytes → 1580 chars"
-}
-```
-
-> **This changed on 2026-08-08 and is breaking.** It replaces the single `ephemeral_public_key`, which could not express the two keys the construction actually requires (Decision C).
-
-**Both lengths are validated server-side** — that is the point of two fields. Swap them, hex-encode one, or pack both into one string and the call fails here with `400`, rather than succeeding and yielding shares your device silently cannot open an hour later. Keep both private halves in memory only; they die with the session.
-
-The `info` string for `usage = recovery-session` carries the **`session_id` in both address slots**, not `user_address` values — see [`GET /recovery/share/{session_id}`](#get-recoverysharesession_id--protected), where the guardian side of the same contract is spelled out.
-
-**`201 Created`**
-
-```json
-{
-  "message": "Recovery session created successfully",
-  "data": {
-    "id": "4d7a…-uuid",
-    "n_shares": 3,
-    "k_threshold": 2,
-    "status": "pending",
-    "expires_at": "2026-07-26T12:30:00Z",
-    "created_at": "2026-07-26T12:00:00Z"
-  }
-}
-```
-
-Sessions live for `RECOVERY_SESSION_TTL_MINUTES` (**default 30 minutes**). Persist the `id` locally — polling it is the only way back to the session.
-
-**Errors:** `400 INVALID_BODY` · `400 BAD_REQUEST` (either ephemeral key missing, not standard base64, or not decoding to exactly 32 / 1184 bytes — the message names the field and the length it got) · `404 NOT_FOUND` (unknown username, or that account never ran `/recovery/setup`) · `500 INTERNAL_ERROR`.
-
-### `GET /recovery/session/{id}` — public
-
-Polled by the recovering client. **Every share submitted so far is returned**, even below `k` — the server cannot count share 0 (the owner's Recovery Kit copy, never uploaded), so it cannot know whether the threshold is met and does not try. Counting `k` is the client's job. `status` flips to `shares_collected` only once **every** guardian has answered (`n_shares - 1` submissions), which means "nobody else is coming", not "you can start".
-
-**`200 OK`** (below threshold)
-
-```json
-{
-  "message": "Recovery session retrieved successfully",
-  "data": {
-    "id": "4d7a…",
-    "n_shares": 3,
-    "k_threshold": 2,
-    "status": "pending",
-    "expires_at": "…",
-    "created_at": "…"
-  }
-}
-```
-
-**`200 OK`** (threshold reached)
-
-```json
-{
-  "message": "Recovery session retrieved successfully",
-  "data": {
-    "id": "4d7a…",
-    "n_shares": 3,
-    "k_threshold": 2,
-    "status": "shares_collected",
-    "shares": [
-      {
-        "re_encrypted_share": "opaque, decrypt with the ephemeral private key",
-        "submitted_at": "2026-07-26T12:05:00Z"
-      },
-      {
-        "re_encrypted_share": "opaque…",
-        "submitted_at": "2026-07-26T12:07:00Z"
-      }
-    ],
-    "expires_at": "…",
-    "created_at": "…"
-  }
-}
-```
-
-Combine the shares client-side, reconstruct the seed, then fetch `GET /recovery/vault` if you also need the owner's own `encrypted_seed` blob.
-
-**Errors:** `400 INVALID_PARAM` · `404 NOT_FOUND` · `409 CONFLICT` (session expired — a fresh `POST /recovery/request` is required) · `500 INTERNAL_ERROR`.
-
-### `GET /recovery/vault?username={username}` — public
-
-Returns the owner's self-encrypted seed blob and the vault's split parameters.
-
-**`200 OK`**
-
-```json
-{
-  "message": "Encrypted vault retrieved successfully",
-  "data": {
-    "encrypted_seed": "opaque…",
-    "n_shares": 3,
-    "k_threshold": 2,
-    "version": "v1"
-  }
-}
-```
-
-**Errors:** `400 INVALID_PARAM` (missing `username`) · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
-
-### `GET /recovery/sessions/pending` — 🔒 protected
-
-_Paginated — `?limit=` / `?cursor=`, `page` in the envelope ([§3.1](#31-pagination))._
-
-Polled by **guardians**: recovery sessions awaiting their share.
-
-**`200 OK`**
-
-```json
-{
-  "message": "Pending sessions retrieved successfully",
-  "data": [
-    {
-      "session_id": "4d7a…",
-      "owner_username": "3f1c8a2b9d4e",
-      "ephemeral_x25519_public": "base64…",
-      "ephemeral_mlkem_public": "base64…",
-      "submitted": false,
-      "expires_at": "2026-07-26T12:30:00Z",
-      "created_at": "2026-07-26T12:00:00Z"
-    }
-  ]
-}
-```
-
-**Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
-
-### `GET /recovery/share/{session_id}` — 🔒 protected
-
-Called by a guardian to retrieve **their own** stored share ciphertext for that session, so they can decrypt it with their private key and re-encrypt it to the session's ephemeral key pair. This response is where the guardian's device learns both ephemeral keys.
-
-**`200 OK`**
-
-```json
-{
-  "message": "Share retrieved successfully",
-  "data": {
-    "session_id": "4d7a…",
-    "ephemeral_x25519_public": "base64…",
-    "ephemeral_mlkem_public": "base64…",
-    "pq_hybrid_encrypted_share": "opaque…"
-  }
-}
-```
-
-**Re-wrap with `usage = recovery-session`, whose `info` binds the session id in both address slots:**
-
-```
-info = "Cryple-PQXDH-v1|recovery-session|" ‖ session_id ‖ "|" ‖ session_id
-```
-
-Use the canonical lowercase hyphenated UUID exactly as returned above. This is the one usage label that does *not* carry `user_address` values — a device recovering a lost seed has no address it can prove. The server relays the blob and cannot check any of this, so a guardian client that formats `info` differently produces a share that fails only at reconstruction, with nothing to point at. Full rationale: [`.docs/crypto/pqxdh.md` § Exception](.docs/crypto/pqxdh.md#exception-recovery-session-binds-the-session-not-the-parties).
-
-**Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (unknown session, caller is not an active guardian of that owner, or holds no share) · `409 CONFLICT` (session expired) · `500 INTERNAL_ERROR`.
-
-### `POST /recovery/submit` — 🔒 protected
-
-Signed with `recovery-share-submit` over `session_id` and `re_encrypted_share`. Binding the share itself stops a proxy swapping in a corrupt one; binding the session stops a signature being replayed into a different recovery.
-
-> ⚠️ **This changed on 2026-07-29 and is breaking.** This is the call that actually hands over your piece of someone's seed — collect `k` of them and the REK is reconstructable — so it now needs the seed key, not just the token.
-
-Guardian submits the re-encrypted share. When the `k`-th share lands, the session flips to `shares_collected` automatically.
-
-**Request**
-
-```json
-{
-  "session_id": "4d7a…-uuid",
-  "re_encrypted_share": "opaque, PQXDH-wrapped to the session's two ephemeral keys",
-  "challenge": "64 lowercase hex characters",
-  "timestamp": 1737676800,
-  "signature": "base64 P1363 signature",
-  "password": "the GUARDIAN's own 64-hex token, Paranoid Mode only"
-}
-```
-
-**`204 No Content`** — no body.
-
-**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (`session_id` not a canonical UUID) · `400 BAD_REQUEST` (`re_encrypted_share` empty) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` (bad signature or second-factor mismatch) · `404 NOT_FOUND` (not a guardian for that session) · `409 CONFLICT` (session expired) · `500 INTERNAL_ERROR`.
-
----
-
----
-
-## 11. PIN Reset Endpoints
-
-Recovers a **forgotten PIN** while the seed is still available. Flow: owner requests → guardians vote to quorum → a **contest period** (default 48h) during which the owner can revoke → status becomes `authorized` → owner confirms with a new token.
-
-All five endpoints are **public** — the account is locked out and cannot mint a JWT — and are instead authenticated by [action signatures](./front-end-guide.md#53-action-signature-everything-destructive). Every one carries `challenge`, `timestamp` and `signature` inline in the body.
-
-**The owner's three actions are the one place `password` is not required**, and cannot be: the whole flow exists because the owner lost their PIN. `POST /auth/pin-reset/vote` is the exception among the five — it is cast by a **guardian**, who has lost nothing, so that guardian's own second factor applies if _they_ are in Paranoid Mode.
-
-### `POST /auth/pin-reset/request` — public
-
-Signed by the **owner**, action `pin-reset-request`, argument `user_address`.
-
-**Request**
-
-```json
-{
-  "user_address": "3f1c…",
-  "challenge": "7f3b…",
-  "timestamp": 1785000000,
-  "signature": "base64…"
-}
-```
-
-If a reset is already open for the account, the existing one is returned instead
-of creating a second — **and the status code tells you which happened**:
-`201 Created` for a new request, `200 OK` for the pre-existing one. The body is
-the same shape either way, so a client that ignores the distinction still works;
-one that shows "reset requested" should read `votes` before claiming the tally
-starts at zero.
-
-**`201 Created`** (new) / **`200 OK`** (already open)
-
-```json
-{
-  "message": "PIN reset requested successfully",
-  "data": {
-    "id": "b8e2…-uuid",
-    "status": "pending_quorum",
-    "votes": 0,
-    "required_votes": 2,
-    "created_at": "2026-07-26T12:00:00Z"
-  }
-}
-```
-
-**Errors:** `400 INVALID_BODY` · `400 BAD_REQUEST` (account has no active guardians) · `401 INVALID_CREDENTIALS` (unknown address, bad/stale/replayed signature) · `500 INTERNAL_ERROR`.
-
-### `POST /auth/pin-reset/vote` — public
-
-Signed by a **guardian**, action `pin-reset-vote`, argument `request_id`. Reaching quorum starts the contest period.
-
-**Request**
-
-```json
-{
-  "request_id": "b8e2…",
-  "guardian_username": "alice1234abcd",
-  "challenge": "7f3b…",
-  "timestamp": 1785000000,
-  "signature": "base64…",
-  "password": "the GUARDIAN's own 64-hex token, Paranoid Mode only"
-}
-```
-
-**`200 OK`**
-
-```json
-{
-  "message": "Vote recorded successfully",
-  "data": {
-    "id": "b8e2…",
-    "status": "contest_period",
-    "votes": 2,
-    "required_votes": 2,
-    "contest_period_ends_at": "2026-07-28T12:00:00Z",
-    "created_at": "2026-07-26T12:00:00Z"
-  }
-}
-```
-
-**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (`request_id` is not a canonical UUID) · `401 INVALID_CREDENTIALS` (unknown guardian, not an active guardian of that owner, bad signature) · `404 NOT_FOUND` (unknown `request_id`) · `409 CONFLICT` (request no longer in `pending_quorum`) · `500 INTERNAL_ERROR`.
-
-### `PATCH /auth/pin-reset/revoke` — public
-
-Signed by the **owner**, action `pin-reset-revoke`, argument `request_id`. This is the owner's veto against a colluding-guardian takeover.
-
-**Request**
-
-```json
-{
-  "request_id": "b8e2…",
-  "challenge": "7f3b…",
-  "timestamp": 1785000000,
-  "signature": "base64…"
-}
-```
-
-**`204 No Content`** — no body.
-
-**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (`request_id` is not a canonical UUID) · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `409 CONFLICT` (already `revoked` or `completed`) · `500 INTERNAL_ERROR`.
-
-### `PATCH /auth/pin-reset/confirm` — public
-
-Signed by the **owner**, action `pin-reset-confirm`, arguments `request_id` **and** `new_password` (the new token is part of the signed payload). Only accepted once the request has reached `authorized` — i.e. the contest period elapsed.
-
-**Request**
-
-```json
-{
-  "request_id": "b8e2…",
-  "new_password": "new 64-hex Server_Auth_Token",
-  "challenge": "7f3b…",
-  "timestamp": 1785000000,
-  "signature": "base64…"
-}
-```
-
-**`204 No Content`** — no body.
-
-**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (`request_id` is not a canonical UUID) · `400 BAD_REQUEST` (`new_password` is not a valid 64-hex token) · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `409 CONFLICT` (not yet `authorized`, or already spent) · `500 INTERNAL_ERROR`.
-
-### `GET /auth/pin-reset/{id}` — public
-
-Polled by the owner. **Reading it also settles the contest period**: if the deadline has passed, the status transitions `contest_period → authorized` on this call.
-
-**`200 OK`**
-
-```json
-{
-  "message": "PIN reset status retrieved successfully",
-  "data": {
-    "id": "b8e2…",
-    "status": "authorized",
-    "votes": 2,
-    "required_votes": 2,
-    "contest_period_ends_at": "2026-07-28T12:00:00Z",
-    "created_at": "2026-07-26T12:00:00Z"
-  }
-}
-```
-
-**Errors:** `400 INVALID_PARAM` · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
-
-### `GET /auth/pin-reset/{id}/votes` — 🔒 protected
-
-_Paginated — `?limit=` / `?cursor=`; `page` describes the nested `data.votes` array ([§3.1](#31-pagination))._
-
-The evidence behind a request's vote count, readable only by the account the request belongs to — another account's request returns an empty list rather than an error.
-
-Note this one **is** protected while the rest of the PIN-reset flow is public. The public endpoints have to be: an owner who lost their PIN cannot sign in. This one carries guardian usernames and public keys, so leaving it open would turn a request id into a guardian-set disclosure. Read it after the reset completes, once you can authenticate again.
-
-**`200 OK`**
-
-```json
-{
-  "message": "PIN reset votes retrieved successfully",
-  "data": {
-    "action": "pin-reset-vote",
-    "request_id": "b8e2…",
-    "votes": [
-      {
-        "guardian_username": "5bdf04be3bc6",
-        "guardian_public_key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE…",
-        "signature": "base64…",
-        "challenge": "2318ddae…",
-        "timestamp": 1785345646,
-        "voted_at": "2026-07-29T17:20:46Z"
-      }
-    ]
-  }
-}
-```
-
-Rebuild `challenge : timestamp : "pin-reset-vote" : request_id` and verify against `guardian_public_key`. The response deliberately hands over no ready-made payload string: verifying against the server's own rendering of what was signed proves nothing.
-
-**Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
-
-### `GET /recovery/pin-reset/pending` — 🔒 protected
-
-_Paginated — `?limit=` / `?cursor=`, `page` in the envelope ([§3.1](#31-pagination))._
-
-The guardian's inbox of **open** PIN resets on the accounts they guard.
-
-**`200 OK`**
-
-```json
-{
-  "message": "Pending PIN resets retrieved successfully",
-  "data": [
-    {
-      "request_id": "b8e2…",
-      "owner_username": "3f1c8a2b9d4e",
-      "status": "pending_quorum",
-      "voted": false,
-      "created_at": "2026-07-26T12:00:00Z"
-    },
-    {
-      "request_id": "9c4f…",
-      "owner_username": "7a2d5e1b8c3f",
-      "status": "contest_period",
-      "voted": true,
-      "created_at": "2026-07-25T08:00:00Z"
-    }
-  ]
-}
-```
-
-> ⚠️ **This is not only "awaiting your vote".** `status` is `pending_quorum` **or** `contest_period` — the list keeps a request visible after quorum is reached, so the guardian can see the outcome of their own vote. **Only `pending_quorum` rows accept a vote**; calling `POST /auth/pin-reset/vote` on a `contest_period` row returns `409 CONFLICT`. Gate the "vote" affordance on `status === "pending_quorum" && !voted`, and render `contest_period` rows as informational. `voted` tells you whether _you_ already voted, which is independent of `status`.
-
-**Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
-
----
-
----
-
-## 12. Succession Endpoints
-
-🔒 All protected. Beneficiaries (heirs) are registered by username; each inherited item's key is wrapped to the beneficiary's hybrid public keys client-side. The server stores only ciphertext and an **encrypted label** — it never learns who inherits what, only that a relationship exists.
-
-> **Most routes below are owner-scoped; the two vote routes are guardian-scoped; and the `/succession/inheritances/…` group is the heir's.** Read this before designing any part of the heir experience — the timing is the whole design.
->
-> **Before a release, an heir gets nothing, and that will not change.** An heir is named **unilaterally**: there is no invite, no acceptance, no notification, and **no decline or opt-out endpoint**. An heir holds nothing and does nothing at setup time, so there is nothing for them to accept — and telling them would publish a relationship the owner chose to keep private. Do not render an "accept" or "decline" affordance for heirs, and do not build an "inheritances I am named in" inbox for the unreleased case: `GET /succession/inheritances` **omits an unreleased inheritance entirely**, so an empty array is what a named heir and a stranger both receive. This is the deliberate asymmetry with guardians, who _do_ accept ([§10](#10-recovery-endpoints)), because a guardian must actually hold a Shamir share before the owner can rely on them.
->
-> **After a release, the heir claim path is built** — six routes under [`/succession/inheritances/…`](#the-heirs-read-path--successioninheritances). It is gated on the on-chain `Released` state, mirrored by the chain indexer (shipped 2026-08-16) and surfaced as `chain.status` on [`GET /succession/status`](#get-successionstatus). Verify the blob's SHA-256 against the on-chain `ProofRegistry` root **in your own client** before decrypting — never against a "verified" flag from this API, which does not have one.
->
-> Note that `GET /succession/status` is owner-scoped: it reports *your* switch, never the switch of someone who named you. An heir learns that an owner released from `GET /succession/inheritances` and from nowhere else.
-
-### `POST /succession/beneficiaries`
-
-Registering the same beneficiary twice **updates** the existing record (upsert). Signed with `beneficiary-register` over `beneficiary_username`, so the four signature fields join the body below.
-
-**Request**
-
-```json
-{
-  "beneficiary_username": "carol9876ijkl",
-  "encrypted_label": "opaque, e.g. encrypted \"my daughter\"",
-  "public_key_x25519_snapshot": "base64…",
-  "public_key_mlkem_snapshot": "base64…",
-  "challenge": "64 lowercase hex characters",
-  "timestamp": 1737676800,
-  "signature": "base64 P1363 signature",
-  "password": "64-hex token, Paranoid Mode only"
-}
-```
-
-| Field                                 | Required      | Notes                                                                                                                                                                                          |
-| ------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `beneficiary_username`                | ✅            | Must exist and have encryption keys enrolled. Cannot be yourself.                                                                                                                              |
-| `encrypted_label`                     | ✅            | Opaque, non-empty.                                                                                                                                                                             |
-| `public_key_x25519_snapshot`          | ❌            | If sent, must **exactly match** the beneficiary's currently enrolled key. Send them to prove you wrapped keys against the current keys — a mismatch is rejected rather than silently accepted. |
-| `public_key_mlkem_snapshot`           | ❌            | Same.                                                                                                                                                                                          |
-| `challenge`, `timestamp`, `signature` | ✅            | The `beneficiary-register` action signature ([§5.3](./front-end-guide.md#53-action-signature-everything-destructive)).                                                                                             |
-| `password`                            | Paranoid only | Your second factor.                                                                                                                                                                            |
-
-The server always stores the **currently enrolled** keys, regardless of what you send. If a re-registration ever supersedes the stored snapshot, **all previously assigned inheritance shares are dropped** and `dropped_shares` reports how many — re-assign them. That cannot happen today: enrolment keys are immutable (see the box under `GET /succession/beneficiaries`), so the stored snapshot and the enrolled keys are always equal and **`dropped_shares` never appears in a response**. Handle it if you like, but do not build a flow that depends on receiving it.
-
-**`201 Created`**
-
-```json
-{
-  "message": "Beneficiary registered successfully",
-  "data": {
-    "id": "1a2b…-uuid",
-    "user_uuid": "0f5c8b1e-…",
-    "username": "carol9876ijkl",
-    "user_address": "9f2c…64 lowercase hex",
-    "encrypted_label": "opaque…",
-    "public_key_x25519_snapshot": "base64…",
-    "public_key_mlkem_snapshot": "base64…",
-    "status": "active",
-    "keys_rotated": false,
-    "share_count": 0,
-    "dropped_shares": 2,
-    "created_at": "2026-07-26T12:00:00Z"
-  }
-}
-```
-
-`dropped_shares` is omitted when zero, which today means always — see above.
-
-**`user_address` is the heir's, and you need it to assign anything.** `POST /succession/shares` carries a DEK wrapped with PQXDH, whose `info` string is `Cryple-PQXDH-v1|succession-dek|<your user_address>|<heir user_address>` — so without this field you can register an heir and never give them a single item. Do not try to derive it or reverse `GET /users/lookup`; that endpoint maps address → username only. Take it from here or from `GET /succession/beneficiaries`, and treat it as opaque: echo the exact string, never re-case or re-encode it, because it goes into a string that must match byte-for-byte on the heir's side years later.
-
-> ⚠️ **`share_count` is always `0` on this response — it is a GET-only field.** The upsert returns the row it just wrote and never counts the beneficiary's shares, so `0` here means "not computed", not "no shares". Re-registering a beneficiary whose keys are _unchanged_ keeps every existing share and still reports `share_count: 0`. Do not cache this response as your share tally; read the real count from `GET /succession/beneficiaries`. (`keys_rotated` is always `false` here, and on this response that is not informative — a row you just registered by username always points at a live account.)
-
-**Errors:** `400 INVALID_BODY` · `400 BAD_REQUEST` (`encrypted_label` empty, unknown username, self-registration, beneficiary has no encryption keys, or key snapshot mismatch) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
-
-### `GET /succession/beneficiaries`
-
-_Paginated — `?limit=` / `?cursor=`, `page` in the envelope ([§3.1](#31-pagination))._
-
-**`200 OK`** — `data` is an array of the object above (without `dropped_shares`). This is the only place `share_count` and `keys_rotated` carry real values.
-
-> ⚠️ **`keys_rotated: true` does not mean the heir rotated keys.** There is no key-rotation endpoint: `encryption_public_key_x25519` and `encryption_public_key_mlkem` are written once at enrolment and no route can change them (rotation is post-MVP — see [§14](./front-end-guide.md#14-client-implementation-notes-and-caveats) note 16). The "snapshot no longer matches the enrolled keys" half of this flag therefore cannot fire.
->
-> The one way you will see `true` today is that **the heir deleted their account**. The beneficiary row survives with its link to the account severed, so `username`, `user_uuid` and `user_address` come back as **empty strings** and the key comparison has nothing to compare against.
->
-> The remedy is the opposite of re-registration. Re-registering needs a username that no longer resolves, so `POST /succession/beneficiaries` answers `400 BAD_REQUEST`, and every `POST /succession/shares` against the row stays blocked with `400`. **`DELETE /succession/beneficiaries/{id}` is the only way to clear it.** Render it as "this heir closed their account — remove them and choose another", never as "re-register and re-assign".
-
-**Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
-
-### `DELETE /succession/beneficiaries/{id}`
-
-Signed with `beneficiary-delete` over the path `{id}`. This is the most destructive call in the domain: it **cascades to every inheritance share** for that heir, and those wrapped DEKs can only be regenerated by re-wrapping each item from your client.
-
-**Request** — the body is **required**; it carries the signature that authorizes the call. See [§5.3](./front-end-guide.md#53-action-signature-everything-destructive).
-
-```json
-{
-  "challenge": "64 lowercase hex characters",
-  "timestamp": 1737676800,
-  "signature": "base64 P1363 signature",
-  "password": "64-hex token, Paranoid Mode only"
-}
-```
-
-**`204 No Content`** — no body.
-
-**Errors:** `400 INVALID_PARAM` · `400 INVALID_BODY` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
-
-### `POST /succession/shares`
-
-Assigns one legacy item to one beneficiary by storing the item's key wrapped to that heir. Re-assigning the same `(beneficiary, item)` pair **updates** the stored key (upsert). Signed with `share-assign` over `beneficiary_id` and `item_id`, so the four signature fields join the body below.
-
-**Request**
-
-```json
-{
-  "beneficiary_id": "1a2b…-uuid",
-  "item_id": "6b2f…-uuid",
-  "item_type": "secret",
-  "pq_hybrid_encrypted_item_key": "opaque, DEK wrapped to the heir's hybrid keys",
-  "challenge": "64 lowercase hex characters",
-  "timestamp": 1737676800,
-  "signature": "base64 P1363 signature",
-  "password": "64-hex token, Paranoid Mode only",
-  "version": "v1"
-}
-```
-
-| Field                          | Required | Notes                                                           |
-| ------------------------------ | -------- | --------------------------------------------------------------- |
-| `beneficiary_id`               | ✅       | UUID from `POST/GET /succession/beneficiaries`.                 |
-| `item_id`                      | ✅       | UUID of one of **your** secrets or notes.                       |
-| `item_type`                    | ❌       | Omit ⇒ `"secret"`. Accepted: `"secret"`, `"note"` ([§15](#15-notes-endpoints)), `"document"` ([§16](#16-documents-endpoints)). Send it explicitly for anything that is not a secret, or the default sends the server looking for a secrets row with your item's id and you get `404`. |
-| `pq_hybrid_encrypted_item_key` | ✅       | Opaque, non-empty.                                              |
-| `version`                      | ❌       | Omit/`""` ⇒ `"v1"`.                                             |
-
-**`201 Created`**
-
-```json
-{
-  "message": "Inheritance share stored successfully",
-  "data": {
-    "id": "7e3d…-uuid",
-    "beneficiary_id": "1a2b…",
-    "item_id": "6b2f…",
-    "item_type": "secret",
-    "pq_hybrid_encrypted_item_key": "opaque…",
-    "version": "v1",
-    "created_at": "2026-07-26T12:00:00Z"
-  }
-}
-```
-
-**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (`beneficiary_id`/`item_id` not canonical UUIDs) · `400 BAD_REQUEST` (unsupported `version` or `item_type`, empty key, or **stale key snapshot** — re-register the beneficiary first) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (unknown beneficiary, or the item is not yours) · `500 INTERNAL_ERROR`.
-
-### `GET /succession/beneficiaries/{id}/shares`
-
-_Paginated — `?limit=` / `?cursor=`, `page` in the envelope ([§3.1](#31-pagination))._
-
-**`200 OK`** — `data` is an array of the share object above.
-
-**Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
-
-### `GET /succession/shares`
-
-_Paginated — `?limit=` / `?cursor=`, `page` in the envelope ([§3.1](#31-pagination))._
-
-Every share you have assigned, across **all** your heirs, in one listing. Same objects as the per-heir route; `beneficiary_id` on each row tells them apart.
-
-Use this whenever you need the *union* of assigned items rather than one heir's list — building the anchored vault tree, or rendering how much of the vault is spoken for. Walking `GET /succession/beneficiaries/{id}/shares` once per heir returns the same rows and costs a paginated walk per heir.
-
-**`200 OK`** — `data` is an array of the share object above.
-
-**Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
-
-### `DELETE /succession/shares/{id}`
-
-Signed with `share-delete` over the path `{id}`.
-
-**Request** — the body is **required**; it carries the signature that authorizes the call. See [§5.3](./front-end-guide.md#53-action-signature-everything-destructive).
-
-```json
-{
-  "challenge": "64 lowercase hex characters",
-  "timestamp": 1737676800,
-  "signature": "base64 P1363 signature",
-  "password": "64-hex token, Paranoid Mode only"
-}
-```
-
-**`204 No Content`** — no body.
-
-**Errors:** `400 INVALID_PARAM` · `400 INVALID_BODY` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
-
-### `PUT /succession/anchors/{epoch}` · `GET /succession/anchors` · `GET /succession/anchors/{epoch}`
-
-The proof material behind an anchored vault root. **Without it your heirs cannot verify anything**, so this is not an optional companion to anchoring — it is half of it.
-
-An inclusion proof needs the sibling hashes along the path, and an heir holds only the items assigned to them. Every other leaf belongs to an item they will never see, so the on-chain root alone gets them nowhere. These routes are where the sibling hashes live.
-
-> ⚠️ **Upload the leaf set _before_ you submit the userOp, in the same pass.** A crash between the two must leave a leaf set with no root — harmless, it is overwritten by the real one at that epoch — and never a root with no leaf set, which is an anchor nobody can prove against and which you cannot repair, because the epoch is frozen on-chain.
-
-**`PUT /succession/anchors/{epoch}`** — `{epoch}` is the anchor's epoch as a positive integer.
-
-```json
-{
-  "root": "0x… 32 bytes of hex",
-  "leaves": ["0x…", "0x…", "0x…"]
-}
-```
-
-`leaves` are the leaf hashes **in tree order** — canonical order is `(item_type, item_id)`, the same order you built the root from. Order is part of the value: re-sorting produces a different root and the write is refused. Both fields accept upper or lower case, with or without the `0x` prefix, and come back normalized to lowercase with the prefix. Maximum 10,000 leaves.
-
-**`201 Created`** on the first write for that epoch, **`200 OK`** when the identical set is already stored — retry freely, a repeat is a success.
-
-```json
-{
-  "message": "Anchored leaf set stored successfully",
-  "data": {
-    "epoch": 20685,
-    "root": "0x…",
-    "leaf_count": 3,
-    "leaves": ["0x…", "0x…", "0x…"],
-    "created_at": "2026-08-20T12:00:00Z",
-    "chain": { "root": "0x…", "matches": true }
-  }
-}
-```
-
-`chain` is **absent** until the indexer has seen the anchor on-chain, which is the normal state for the first few seconds after anchoring — absent means "not indexed yet", never "mismatch". Once present, `matches: false` means the stored set does not describe what is on-chain; an heir will fail verification against it, so re-anchor rather than leaving it.
-
-**Errors:** `400 INVALID_PARAM` (epoch not a positive integer) · `400 INVALID_BODY` · `400 BAD_REQUEST` (root or a leaf is not a 32-byte hash, the set is empty or over 10,000, or **the leaves do not produce the declared root** — you re-sorted them, or they are not the set you anchored) · `401 UNAUTHORIZED` · `409 CONFLICT` (the chain already anchored a **different** root for this epoch) · `500 INTERNAL_ERROR`.
-
-> **A retry after a failed anchor is fine, even with a different root.** Uploading before the userOp means a failed anchor leaves a set behind; if your vault changed before you retried, just upload the new set for the same epoch and it replaces the old one. What you cannot do is contradict the chain: once that epoch is anchored on-chain, only the root it actually holds is accepted, and `409` there is not retryable — recompute at the current epoch.
-
-**`GET /succession/anchors/{epoch}`** returns the same object. `404` when nothing is stored for that epoch.
-
-**`GET /succession/anchors`** — _paginated_ — lists epochs **newest first** with `epoch`, `root`, `leaf_count` and `created_at`, and **no `leaves`** (a listing of full sets would be megabytes). This is the lookup an heir's client makes: the newest epoch at or before the release moment, not the latest root.
-
-> **This is a `PUT`, not a signed action**, unlike everything else in §12. Nothing is destroyed or replaced, so the JWT covers it, and the content proves itself — a set that does not rebuild the on-chain root fails in the heir's browser regardless of who uploaded it.
-
-### The heir's read path — `/succession/inheritances/…`
-
-Everything else in §12 is you acting on **your own** account. These six routes are the other side: reading an account that named **you** as an heir, after its dead man's switch has released on-chain. They are what makes an inheritance actually arrive.
-
-`{owner}` in every path is the owner's `user_address` (64 lowercase hex; anything else is `400 INVALID_PARAM`). You get it from the listing below, and you need it anyway — your item keys were wrapped under `Cryple-PQXDH-v1|succession-dek|<owner user_address>|<your user_address>`.
-
-> **Every failure is the same `404`.** Not named, named but the owner is alive, owner does not exist, item not assigned to you — one response for all of them. Do not try to distinguish them, and do not render "you may be an heir": you cannot know that, by design.
-
-#### `GET /succession/inheritances`
-
-Accounts that named you **and have released**. Unpaginated.
-
-```json
-{
-  "message": "Inheritances retrieved successfully",
-  "data": [
-    {
-      "owner_user_address": "9f2c…",
-      "owner_username": "alice1234abcd",
-      "smart_account_address": "0x…",
-      "beneficiary_id": "1a2b…-uuid",
-      "item_count": 3,
-      "released_at": 1771200000
-    }
-  ]
-}
-```
-
-> **An empty array is the normal answer, and it is not informative.** An account that named you but whose owner is alive is **omitted entirely** — not listed as pending, not counted. That is deliberate: an heir who knows they are named can watch the owner's public on-chain check-in cadence and infer their health. Never build a "you are an heir to N people" surface; this endpoint cannot answer it.
-
-`smart_account_address` is there because **you** read `ProofRegistry` on-chain — see the verification note below.
-
-#### `GET /succession/inheritances/{owner}/items`
-
-One row per item left to you, in canonical `(item_type, item_id)` order — the same order the anchored leaves were built in.
-
-```json
-{
-  "id": "share uuid",
-  "beneficiary_id": "1a2b…-uuid",
-  "item_id": "3f6b…-uuid",
-  "item_type": "secret | note | document",
-  "pq_hybrid_encrypted_item_key": "opaque…",
-  "version": "v1",
-  "created_at": "2026-07-26T12:00:00Z"
-}
-```
-
-`pq_hybrid_encrypted_item_key` is the item's DEK, PQXDH-wrapped to the encryption keys you had enrolled when the owner assigned it. Unwrap it with your own seed-derived keys and `usage=succession-dek`.
-
-#### `GET /succession/inheritances/{owner}/items/{id}`
-
-The ciphertext.
-
-```json
-{
-  "item_id": "3f6b…-uuid",
-  "item_type": "secret",
-  "version": "v1",
-  "ciphertext": "opaque…",
-  "snapshot_ciphertext": "opaque… (documents only)",
-  "snapshot_seq": 7
-}
-```
-
-A secret or a note carries `ciphertext`; a document carries `snapshot_ciphertext` and `snapshot_seq` instead. **The bytes are byte-identical to what the owner stored** — the leaf commits to `hex(SHA-256(blob))` of exactly these, so re-encoding them anywhere in your pipeline breaks a proof that is otherwise correct.
-
-The owner's own `wrapped_dek` is **not** returned. It is sealed to their vault KEK and useless to you; your copy of the key is in the share.
-
-#### `GET /succession/inheritances/{owner}/items/{id}/updates?since=`
-
-_Paginated._ A document's delta log past `since` (default `0`). `400 INVALID_PARAM` for a negative or non-integer `since`. `404` for any item that is not a document.
-
-> ⚠️ **Everything this returns is unverifiable, by construction.** The anchored leaf covers the **snapshot only**; these deltas were appended after the compaction that produced it. You need them — a document without its deltas is stale — but you must render the difference. "Verified as of the owner's last save, plus later edits that carry no proof" is the honest presentation; a single "verified ✓" over the merged document is not.
-
-#### `GET /succession/inheritances/{owner}/anchors` and `…/anchors/{epoch}`
-
-The owner's retained leaf sets, same shapes as [the owner's own routes](#put-successionanchorsepoch--get-successionanchors--get-successionanchorsepoch). The listing is newest-epoch-first and carries counts without leaves; fetch the one epoch you need.
-
-**Pick the newest epoch at or before `released_at`**, not the latest one. Past epochs are frozen on-chain, so that root describes the vault as it stood while the owner was alive.
-
-#### Verifying — this part is yours, not ours
-
-```
-1. GET the leaf set for your chosen epoch
-2. Read latestRoot/rootAt(epoch) from ProofRegistry ON-CHAIN, using smart_account_address
-3. Rebuild the root from the leaf set — it must equal the chain's
-4. Compute your item's leaf: SHA-256("cryple.vault.leaf.v1|<item_type>|<item_id>|<hex(SHA-256(blob))>")
-5. Verify its inclusion proof against that root
-6. Only then: PQXDH-unwrap the DEK, AES-GCM-open the ciphertext
-```
-
-> **This API never tells you an item verified, and you must never ask it to.** There is no `verified` field on any response and there will not be one. Step 2 reads the chain directly — a root this server hands you proves nothing, because this server is exactly what the verification is meant to be independent of. If step 3 or 5 fails, show the failure; do not decrypt and hope.
-
-### `GET /succession/status`
-
-The **owner's own** dead-man's-switch state, as the chain reports it. Never 404s for a valid account.
-
-> **Changed 2026-09-03 — breaking.** This response used to carry an off-chain `status`, `votes`, `required_votes`, `release_cycle`, `inactivity_threshold_days` and `trigger_started_at` beside `chain`. All of them are gone, together with the guardian release vote that produced them ([Task 91](../api-general/.docs/tasks/tasks.md#task-91)). `chain` is now the whole answer.
-
-**`200 OK`**
-
-```json
-{
-  "message": "Release status retrieved successfully",
-  "data": {
-    "chain": {
-      "indexed": true,
-      "smart_account_address": "0x4dcb2c4a8d8b42f58522ed7e116bb33fc75843b1",
-      "status": "active",
-      "last_check_in": 1771200000,
-      "inactivity_period_seconds": 600,
-      "contest_period_seconds": 300,
-      "triggerable_at": 1771200600
-    }
-  }
-}
-```
-
-> ⚠️ **`chain.status` is the only status here, and it is the contract's own.** There is no second, off-chain status to confuse it with any more. **Anything that gates on "can this inheritance be opened" reads `chain.status`.** See [§13](#13-enumerations).
-
-> ⚠️ **`chain` timestamps are unix seconds (numbers), not RFC 3339 strings.** That is deliberate — they are block timestamps, and reformatting them would make this API disagree with the chain in a way nobody could see. Do not feed `chain.last_check_in` to a date parser expecting ISO 8601.
-
-> ⚠️ **The optional `chain.*` timestamps are absent, not `null`.** The server **omits the key entirely** when unset — there is no `"trigger_started_at": null` in any response. Type them `| undefined` and test with `in` or `!== undefined`; a client typing them `| null`, or branching on `=== null`, takes the wrong path on every response.
-
-**`chain.indexed: false` means "not configured on-chain", never "safe."** Every other `chain` field is then absent. It is the state of a smart account whose owner has not yet run `configure()` — or, rarely, one whose events the indexer has not read. `smart_account_address` is populated either way, because it is derived at sign-up and known long before the smart account exists on-chain.
-
-> ⚠️ **`chain.status: "unknown"` is not the same as `unconfigured`, and it is not a contract state.** It means the API could not read the chain mirror at all — an infrastructure fault on our side, not a fact about the owner's switch. `indexed` is `false` in both cases, so **branch on `chain.status`, not on `indexed`, when the difference matters.** Render `unknown` as "chain status unavailable, retry", never as "not set up": an owner whose switch is genuinely in Contest can see `unknown` during an outage. Nothing that gates opening an inheritance may treat it as permission, and the API does not either.
-
-> ⚠️ **"Account" and "smart account" are two different things in this API.** A bare **account** is the user's Cryple account, identified by `user_address` (64-char hex, the SHA-256 of their seed) — that is what `GET /users/me`, `DELETE /users` and the `account-delete` signed action all operate on. A **smart account** is their ERC-4337 contract on Arbitrum, identified by an Ethereum address, and every field naming it carries the `smart_` prefix. They are never interchangeable and never equal.
-
-`chain.triggerable_at` is `last_check_in + inactivity_period_seconds`, present only while `chain.status` is `active`. It is what a countdown UI counts down to. It is derived per request rather than stored, because the contract recomputes it on every read and a stored copy would go stale on each check-in.
-
-**There is no vote tally here, and no guardian can affect a release.** `POST /succession/votes` and `GET /succession/votes` were removed on 2026-09-03 ([Task 91](../api-general/.docs/tasks/tasks.md#task-91)): a quorum could only start its countdown once the chain already said the owner had gone silent, at which point `trigger()` is permissionless and the keeper sends it anyway. Guardians are a recovery role — seed recovery and the guardian-gated PIN reset.
-
-**Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
-
-> **Not in this API:** the heartbeat/check-in itself, and the switch's on-chain configuration. Both are **owner actions signed on the owner's device** — nothing server-side can check in on a user's behalf, and that is the invariant the whole product rests on. The chain indexer mirrors the results here; it cannot produce them.
->
-> **The "I'm alive — cancel" button is a chain transaction, not a call to this API.** There is deliberately no `PATCH /succession/cancel`: a second exit the chain never witnessed could clear a countdown while the chain was genuinely in Contest. The button calls `DeadManSwitch.checkIn()`, the indexer sees `Revoked`, and `chain.status` returns to `active`.
+## 10–11. Recovery and PIN Reset Endpoints — **removed 2026-09-04**
+
+Every route that was documented here is gone: `PUT /recovery/setup`, the four
+`/recovery/guardians/*` routes, `POST /recovery/request`,
+`GET /recovery/session/{id}`, `GET /recovery/vault`,
+`GET /recovery/sessions/pending`, `GET /recovery/share/{session_id}`,
+`POST /recovery/submit`, and all six `/auth/pin-reset/*` routes. The `guardians`,
+`recovery_*` and `pin_reset_*` tables went with them.
+
+**What a client must do differently:**
+
+- There is **no account recovery of any kind**. A lost seed phrase is terminal,
+  and so is a forgotten PIN on a Paranoid account — `PUT /users/password` changes
+  a PIN the user still knows and is the only way a PIN ever changes.
+- The client must say so **before** the PIN is set, not after. See
+  [../tasks.md](../tasks.md), Tasks 95 and 105.
+- The nine signed actions these routes used (`recovery-setup`, `guardian-invite`,
+  `guardian-accept`, `guardian-revoke`, `recovery-share-submit` and the four
+  `pin-reset-*`) are retired from
+  [signed-actions.md](../api-general/.docs/auth/signed-actions.md).
+- **`GET /users/{uuid}/public-keys` stays** and now has no caller. It is what
+  private sharing (Task 102) will use to wrap an item key to a recipient.
+
+The implementation of everything above is preserved and running in the
+`dms-shamir` proof of concept.
+
+## 12. Notes Endpoints
+
+🔒 All protected. Editable encrypted plain text.
 
 ### `POST /notes`
 
@@ -1737,11 +733,11 @@ Replaces a note's payload. **JWT only** — no challenge, no signature, no PIN.
 
 > **⚠️ Re-seal under the same DEK. Do not generate a new one.**
 >
-> When you assign a note to an heir, the server stores that note's DEK wrapped to the heir's public keys. If you re-key the note on an edit, that stored value still unwraps to the **old** DEK, which no longer opens the new ciphertext. The heir's inheritance is broken, and **nothing reports it** — both fields are opaque, so the server cannot tell a re-seal from a re-key, and the failure only surfaces at release, when the owner is not around to fix it.
+> Both `ciphertext` and `wrapped_dek` are opaque, so the server cannot tell a re-seal from a re-key and **nothing reports** a mistake here. Anything holding a copy of the old DEK stops being able to open the note.
 >
-> Keep the item DEK, encrypt the new plaintext under it, and send back the **same** `wrapped_dek` you were given. If you must rotate a note's DEK, re-assign every affected share via `POST /succession/shares` in the same operation — `GET /succession/beneficiaries/{id}/shares` tells you which heirs hold it.
+> Keep the item DEK, encrypt the new plaintext under it, and send back the **same** `wrapped_dek` you were given.
 
-**This is a strict update, never an upsert.** A `PUT` to an id that does not exist returns `404` and creates nothing. If it created rows, a `PUT` arriving after a `DELETE` would resurrect a note whose heir assignments were already gone — the note back, the inheritance silently not.
+**This is a strict update, never an upsert.** A `PUT` to an id that does not exist returns `404` and creates nothing. A `PUT` arriving after a `DELETE` would otherwise resurrect a row the client believes is gone.
 
 **Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (path id is not a canonical UUID) · `400 BAD_REQUEST` (same field rules as `POST`) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (no such note, or not yours — the same response either way) · `500 INTERNAL_ERROR`.
 
@@ -1801,8 +797,6 @@ The note id is signed as an argument, so a signature captured for one note canno
 
 **Errors:** `400 INVALID_PARAM` · `400 INVALID_BODY` (absent or not valid JSON) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` (bad signature, or a second factor that does not match the account's mode) · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
 
-> **Deleting a note also deletes what heirs inherited of it.** Every wrapped key assigned to that note is removed in the same transaction, so deleting one note silently shrinks the inheritance of every heir it was assigned to. Nothing else is affected. Warn before deleting a note that is assigned to someone (`GET /succession/beneficiaries/{id}/shares` tells you which), and treat any cached `share_count` from [§12](#12-succession-endpoints) as stale afterwards.
-
 ### `DELETE /notes` — batch
 
 One `note-delete` signature covering a whole set, so a multi-select delete costs one seed prompt instead of N. **Sort the ids ascending and de-duplicate them**, then sign them as consecutive arguments — the server rebuilds the payload the same way, so the order you send them in does not matter, but the set must match.
@@ -1831,12 +825,6 @@ One `note-delete` signature covering a whole set, so a multi-select delete costs
 `requested` is the de-duplicated count. `deleted` can be lower without being an error: an id that is not yours simply does not match, exactly as a cross-user read is invisible. Compare the two if you need to tell the user something was already gone.
 
 **Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (any id is not a canonical UUID — nothing is deleted) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (empty id set) · `500 INTERNAL_ERROR`.
-
-> **This route deletes heir assignments too**, on exactly the same terms as the single-note delete above — every wrapped key for every note in the set, in one transaction.
-
-### Notes and succession
-
-A note is inheritable exactly like a secret. Assign one with `POST /succession/shares` and `"item_type": "note"` ([§12](#12-succession-endpoints)) — the server checks the note belongs to you before storing the wrapped key. Omitting `item_type` still defaults to `"secret"`, so **send it explicitly for notes**; the default would make the server look for a secrets row with your note's id and answer `404`.
 
 ---
 
@@ -1969,11 +957,11 @@ Merges the log into a new snapshot and prunes what it replaces, in one transacti
 
 Rotates the document's wrapped DEK. **JWT only.** Guarded by `expected_revision` → `409 CONFLICT` on a stale write.
 
-> **Rotating the DEK invalidates the whole log, not one blob.** Every delta and the snapshot are sealed under the same document DEK. Compact first, then rotate, then re-assign every heir who holds this document via `POST /succession/shares` — otherwise their inheritance breaks silently and only surfaces at release.
+> **Rotating the DEK invalidates the whole log, not one blob.** Every delta and the snapshot are sealed under the same document DEK, so compact first and then rotate.
 
 ### `DELETE /documents/{id}`
 
-Deletes a document, its entire update log, and every heir assignment for it. **Requires a `document-delete` signed action**, unlike create, edit and compact.
+Deletes a document and its entire update log. **Requires a `document-delete` signed action**, unlike create, edit and compact.
 
 **Request:** `{ "challenge": "…", "timestamp": 1737676800, "signature": "…", "password": "Paranoid Mode only" }`
 
@@ -1987,6 +975,248 @@ One `document-delete` signature covering a whole set. **Sort the ids ascending a
 
 `deleted` can be lower without being an error. An empty id set is `404 NOT_FOUND`, returned before the signature is checked so it cannot burn a challenge.
 
-### Documents and succession
+---
 
-A document is inheritable. Assign one with `POST /succession/shares` and `"item_type": "document"` ([§12](#12-succession-endpoints)), using the document's `id` exactly as this section returns it.
+## 17. Files Endpoints
+
+🔒 All protected. The drive. A "file" is an opaque encrypted object in Cloudflare R2 plus one row of metadata here — **no byte of file content passes through this API.** It issues presigned URLs and records rows; you `PUT` and `GET` the bytes directly against R2.
+
+**The domain is opt-in.** With `FILES_ENABLE=false` — the default — none of these routes are wired and every one of them is `404`. Treat a `404` on `GET /files` as "the drive is off on this deployment", not as an error to show a user.
+
+Read [storage-plan.md](../api-general/.docs/storage-plan.md) before implementing. This section is the wire contract; that document is the format, and getting the format wrong corrupts data rather than failing a request.
+
+### The object layout, and the four numbers that must agree
+
+A file is `chunk_count` sealed chunks laid end to end:
+
+```
+chunk_plaintext = u32be(chunk_index) ‖ u32be(chunk_count) ‖ payload
+chunk_object    = 0x01 ‖ iv(12) ‖ AES-256-GCM(DEK, iv, chunk_plaintext) ‖ tag(16)
+```
+
+| Constant | Value | Why |
+| --- | --- | --- |
+| Chunk payload | 8 MiB (`8388608`) | One chunk is one R2 multipart part, and R2's minimum part size is 5 MiB |
+| Chunk overhead | `37` | `1` envelope byte + `12` IV + `8` position header + `16` GCM tag |
+| Chunk stride | `8388645` | Chunk *n* of a full object starts at `n × 8388645` — this is what makes a ranged read possible |
+| Padding bucket | 64 KiB (`65536`) | The plaintext is padded to the next multiple **before** chunking |
+
+> **The overhead is 37, not 29.** 29 is the envelope overhead of a chunk with no position header, which is what this format was before the index moved out of AEAD additional data — the sealed-blob envelope has none. An offset computed with 29 drifts 8 bytes per chunk and every ranged read after the first fails its GCM tag.
+
+**Raw bytes, not base64.** The envelope's base64 encoding exists for `TEXT` columns; an R2 object is not one, and base64-ing a multi-gigabyte file inflates it by a third for nothing. `ciphertext` (the manifest) is base64 because it is a column; the object is not.
+
+`size_bytes` is the **stored, padded** length of the whole object. Derive it, and never guess it:
+
+```
+padded     = ceil(true_size / 65536) × 65536
+chunk_count = ceil(padded / 8388608)
+size_bytes  = padded + chunk_count × 37
+```
+
+The last chunk is short, so `size_bytes` is **not** `chunk_count × 8388645`. The server rejects a `POST` whose two numbers do not describe the same object: it requires `ceil(size_bytes / 8388645) == chunk_count` and answers `400 BAD_REQUEST` with `size_bytes does not match chunk_count`.
+
+### The sealed manifest
+
+There is no filename column. A file's name, MIME type and **true plaintext length** live in `ciphertext`, sealed under the file's own DEK exactly like `secrets.ciphertext`:
+
+```json
+{
+  "name": "passport-scan.pdf",
+  "mime": "application/pdf",
+  "size": 2483911,
+  "chunk_size": 8388608,
+  "chunk_count": 1,
+  "thumbnail_id": "…optional uuid",
+  "created_at": "2026-09-09T10:14:22Z"
+}
+```
+
+`size` is the true length and lives only here — `size_bytes` on the wire is the padded one, which is what the account is billed and quota'd for.
+
+**`chunk_count` is a manifest field and nothing else.** `POST /files` takes one in its body, but no response ever returns it: the row carries `size_bytes` and not the chunk layout. So a client reads the layout from the manifest it just decrypted, and the only number it has to reconcile against the row is `size_bytes`. **Verify the manifest against the row before decrypting** ([storage-plan.md §5](../api-general/.docs/storage-plan.md#5-settled-decisions)): recompute `size_bytes` from `size` with the formula above and refuse if it disagrees. Present that as a data error, not a security alert — the likely cause is a bug in an upload.
+
+### `POST /files`
+
+Checks the quota, mints the object key, writes the row at `r2_state: "pending"`, and returns presigned upload URLs. **JWT only** — no signature.
+
+**Request:**
+
+```json
+{
+  "id": "6b2f…-uuid, generated by you",
+  "ciphertext": "base64 sealed manifest",
+  "wrapped_dek": "base64",
+  "size_bytes": 65573,
+  "chunk_count": 1,
+  "version": "v1"
+}
+```
+
+**`ciphertext_sha256` is not sent here** — it goes to `PATCH`. It is computed over the finished object, which does not exist yet at this point, and this is the call that hands you the URLs to create it with. Sending it here anyway is ignored.
+
+`id` is optional but **send it** — same idempotency contract as `POST /notes` and `POST /documents`. A replay returns `200` with the stored row instead of minting a second row and a second R2 object, and **if that row is still `pending` it comes back with a fresh ticket listing only the parts R2 does not yet have.** `POST` is therefore both create and resume; `GET /files/{id}/upload` is the same answer without re-sending the body.
+
+**`201 Created`** (or **`200 OK`** on replay):
+
+```json
+{
+  "message": "File created successfully",
+  "data": {
+    "id": "6b2f…-uuid",
+    "ciphertext": "base64…",
+    "wrapped_dek": "base64…",
+    "size_bytes": 65573,
+    "ciphertext_sha256": "…",
+    "version": "v1",
+    "r2_state": "pending",
+    "gcs_state": "pending",
+    "created_at": "…Z",
+    "updated_at": "…Z",
+    "upload": {
+      "multipart": false,
+      "chunk_size": 8388608,
+      "parts": [ { "number": 1, "url": "https://…presigned…", "size": 65573 } ],
+      "expires_at": "…Z"
+    }
+  }
+}
+```
+
+**`multipart` decides the upload shape and you must honour it.** `false` is a single presigned `PUT` of the whole object — no multipart, and therefore no minimum part size, which is what keeps small files cheap at an 8 MiB chunk. `true` is one `UploadPart` URL per chunk. Part numbers are 1-based and `size` is exactly what that part must carry.
+
+`expires_at` is one hour out by default (`FILES_UPLOAD_URL_TTL_SECONDS`). A large multipart that outlives it re-requests the ticket rather than failing the whole upload.
+
+**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (`id` is not a canonical UUID) · `400 BAD_REQUEST` (`size_bytes does not match chunk_count`, or an unsupported `version`) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · **`413 BAD_REQUEST`** (over `FILES_MAX_OBJECT_BYTES`, 5 GiB by default) · **`507 QUOTA_EXCEEDED`** · `500 INTERNAL_ERROR`.
+
+### `GET /files/{id}/upload` — resume
+
+Which parts R2 already holds, plus URLs for the ones it does not.
+
+**`200 OK`:** `{ "uploaded": [1, 3], "parts": [ { "number": 2, "url": "…", "size": 8388645 } ] }`
+
+**Nothing about a partial upload is recorded in this API** — the answer comes from R2's own `ListParts`. So a client that reloads mid-upload must ask rather than remember, and must not assume its own progress counter survived.
+
+**`uploaded` listing every part with an empty `parts` means the object is already assembled** and only the `PATCH` is outstanding — the state a client reaches when its completion call was cut off after R2 acted. Send nothing, hash the object, and `PATCH`.
+
+**The hash covers the finished object, not what you re-send.** So a resume still reads and re-seals every chunk; `uploaded` only says which ones need not be `PUT` again. That is possible because a chunk's IV is derived from its index, making sealing reproducible — see `storage-plan.md` §3.3.
+
+**Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
+
+### `DELETE /files/{id}/upload` — give the reservation back
+
+Abandons an upload that will not be finished: aborts the multipart if there is one, removes the row, and frees the quota immediately. **JWT only, and it takes no body** — the one `DELETE` in this API that does not, because it carries no signed action.
+
+**`204 No Content`** — no body.
+
+**Call this when an upload has failed and the user has given up on it**, not on every error. The row plus the parts R2 already holds are what make an interrupted upload resumable through `GET /files/{id}/upload`; abandoning throws that away. Nothing was stored, so there is nothing to restore.
+
+**Why a `POST /files` row costs quota at all:** the check runs *before* any URL is signed, so a `pending` row is a **reservation** — without it a client could mint unlimited signed capacity. That is also why the fix is to remove the row rather than to stop counting it.
+
+**Only a `pending` row can be abandoned.** A stored file, a row already deleted, another account's id, a second call, and a `PATCH` that landed between the failure and this request all answer `404` — and all of them mean *stop worrying about it*, never *retry*. `DELETE /files/{id}` with a `file-delete` signature stays the only way to remove a file that exists.
+
+**A closed tab never calls this**, so a server-side sweep still collects `pending` rows older than `FILES_ABANDONED_AFTER_SECONDS` (24 h). This route only turns "within a day" into "now" for the case the user is watching.
+
+**Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
+
+### `PATCH /files/{id}`
+
+Completes the upload. **JWT only.**
+
+**Request:**
+
+```json
+{ "ciphertext_sha256": "hex sha-256 of the whole stored object" }
+```
+
+**`ciphertext_sha256` is required here**, and this is the first moment it can exist: it is the hash of the finished object. Compute it incrementally as you seal and upload — one running SHA-256 over each sealed chunk in order — so a multi-gigabyte upload never has to hold more than the parts in flight. A malformed value is `400 BAD_REQUEST` before the service is reached.
+
+**Do not send part ETags, and do not read them.** A `parts` array is still accepted and **ignored** since 2026-09-10: the server builds the completion from R2's own `ListParts`. A client that reloaded mid-upload has forgotten the ETags it once had, so any list it could send would be incomplete. This also means **the bucket does not need `ETag` under CORS `ExposeHeaders`** — a browser never has to read a header off its own `PUT`.
+
+**Retrying a `PATCH` is safe, including one whose answer you never received.** Completion is what consumes the multipart, so a second attempt finds no upload id — that is treated as *already assembled*, not as an error, and the length check below decides. Without this a lost response left the object finished in R2 and the row stuck at `pending` forever.
+
+**`200 OK`** with the file row, now `r2_state: "ok"`.
+
+**The server verifies before it believes you.** It `HEAD`s the object and compares its length against the `size_bytes` you declared at `POST`. A mismatch is `409 CONFLICT`, and **the object is abandoned rather than repaired**: the multipart is aborted, the row stays `pending`, and a 24-hour sweep collects it. Do not retry with an adjusted size — start a new upload.
+
+**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` · `400 BAD_REQUEST` (`ciphertext_sha256` missing or not 64 hex characters) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `409 CONFLICT` (the stored object does not match the declared size) · `500 INTERNAL_ERROR`.
+
+### `GET /files`
+
+The listing. Returns the sealed manifests — **a directory listing is your render of data this API cannot read.**
+
+**`200 OK`:** the same row shape as `POST`, minus `upload`, in a `data` array with a `page` object.
+
+Paginated per [§3.1](#31-pagination), the same envelope `GET /notes` and `GET /documents` use — follow `next_cursor` until `has_more` is `false`, and never build a cursor yourself.
+
+Rows with `r2_state: "pending"` are uploads that have not completed. They are not in the vault and cannot be downloaded, but they are not junk either: `GET /files/{id}/upload` resumes one and `DELETE /files/{id}/upload` gives its reservation back, and the sweep collects whatever is left after `FILES_ABANDONED_AFTER_SECONDS`. Show them as unfinished uploads rather than as files — or as nothing at all, which leaves the user unable to reclaim the space.
+
+**Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
+
+### `GET /files/usage`
+
+What a storage bar needs.
+
+**`200 OK`:** `{ "used_bytes": 8454149, "stored_bytes": 65573, "quota_bytes": 524288000, "file_count": 2 }`
+
+`quota_bytes` is `users.storage_quota_bytes` — a ceiling, not a plan. The default is 500 MB.
+
+**There are two sums because they answer different questions**, and a client that shows the wrong one lies to the user:
+
+| | What it is | What it is for |
+| --- | --- | --- |
+| `stored_bytes` | `SUM(size_bytes) WHERE r2_state = 'ok'` — what R2 actually holds | **What a storage bar shows.** These are files that exist |
+| `used_bytes` | the same sum over **every** live row, `pending` included | What the ceiling is checked against, before any URL is signed |
+
+The difference is uploads that reserved their bytes and have not finished. **The reservation is deliberate** — without it a client could call `POST /files` a thousand times and mint unlimited signed capacity — and it is why `507 QUOTA_EXCEEDED` can arrive while a bar drawn from `stored_bytes` still shows room. Draw the difference as a second, quieter segment rather than hiding it, and `DELETE /files/{id}/upload` is what gives a reservation back.
+
+**A deleted row is in neither sum.** Its bytes are released the moment it is marked, before the objects leave R2 and GCS — the space returns to the user ahead of the storage bill, which is the friendlier way round.
+
+**Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
+
+### `GET /files/{id}`
+
+The manifest, the wrapped DEK, and a short-lived presigned `GET` for the object.
+
+**`200 OK`:** the file row plus `{ "url": "https://…presigned…", "expires_at": "…Z" }`
+
+The URL is scoped to one object and one method and lives **five minutes** by default (`FILES_DOWNLOAD_URL_TTL_SECONDS`). Re-request it rather than caching it; an expired URL fails in a way that looks like a missing file.
+
+**Reads never touch the GCS replica.** That is what keeps its egress at zero. `gcs_state` tells you about insurance, not about availability, and a file with `gcs_state: "pending"` is fully readable.
+
+**Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
+
+### `DELETE /files/{id}`
+
+**Requires a `file-delete` signed action** ([signed-actions.md](../api-general/.docs/auth/signed-actions.md)), plus the second factor on Paranoid accounts — unlike create and complete, which are JWT only.
+
+**Request:** `{ "challenge": "…", "timestamp": 1737676800, "signature": "…", "password": "Paranoid Mode only" }`
+
+**`204 No Content`** — no body.
+
+**This is the one-element case of `DELETE /files`**, below — same action label, same signature shape. Use whichever matches the gesture.
+
+**The row is marked, not removed.** `deleted_at` is set and the objects leave R2 and GCS when the mirror worker gets to them. Until then the bytes still count against the quota, and `GET /files/{id}` is already `404`.
+
+**Errors:** `400 INVALID_BODY` (a `DELETE` with no body is `400`, not `204`) · `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` (bad signature **or** wrong PIN — indistinguishable, by design) · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
+
+### `DELETE /files`
+
+Deletes a set of files under **one** signature. **Requires a `file-delete` signed action** over the ids, plus the second factor on Paranoid accounts.
+
+**Request:** `{ "ids": ["…", "…"], "challenge": "…", "timestamp": 1737676800, "signature": "…", "password": "Paranoid Mode only" }`
+
+The ids in the signed payload are **sorted ascending and de-duplicated**, exactly as for `secret-delete`, `note-delete` and `document-delete` — the server rebuilds the list its own way and a differently-ordered one verifies against nothing. Send `ids` in that same normalized order.
+
+**`200 OK`:** `{ "requested": 3, "deleted": 2 }` — read the body; this route does not return `204`.
+
+**A shortfall is not a partial failure.** The rows are marked in one statement, so it applies to the whole set or to none of it. `deleted < requested` means some ids matched no row — already deleted, never existed, or belonging to another account, all indistinguishable by design. Treat it as *the list is out of date* and reload.
+
+**`deleted` counts rows, never objects.** Each marked row is removed from R2 and GCS afterwards, one at a time, exactly as a single delete already was; the bytes leave the quota when the mirror worker gets to them.
+
+**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (any id that is not a canonical lowercase UUID, checked before anything is deleted) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (an empty id list) · `500 INTERNAL_ERROR`.
+
+### What this API does not do
+
+- **It does not see your bytes.** Uploads and downloads are client ↔ R2. What it holds is a wrapped key it cannot unwrap and a hash you computed.
+- **It does not verify your padding, your chunking or your hash.** It sees a stored length and checks it against the object that landed. Everything else — the 64 KiB bucket, the position header in each chunk, `ciphertext_sha256` actually matching — is a client obligation, and a client that gets one wrong produces a file only it can fail to open.
+- **It does not replicate synchronously.** `r2_state: "ok"` with `gcs_state: "pending"` is the normal state for up to a minute. **The UI must not claim two providers**; the honest promise is "replicated within a minute".

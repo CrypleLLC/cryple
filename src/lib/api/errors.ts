@@ -9,6 +9,7 @@ export const ERROR_CODES = [
   'CONFLICT',
   'INTERNAL_ERROR',
   'NOT_READY',
+  'QUOTA_EXCEEDED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -45,6 +46,18 @@ export class ApiError extends Error {
 
   get isAuthEndpointRejection(): boolean {
     return this.status === 404 && this.code === 'NOT_FOUND';
+  }
+
+  get isQuotaExceeded(): boolean {
+    return this.status === 507;
+  }
+
+  get isObjectTooLarge(): boolean {
+    return this.status === 413;
+  }
+
+  get isDriveDisabled(): boolean {
+    return this.status === 404 && this.endpoint.includes('/files');
   }
 }
 

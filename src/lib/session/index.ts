@@ -193,10 +193,6 @@ export class SessionKeystore {
     return this.require().tree.mlkem768.publicKey;
   }
 
-  get heirLabelKey(): Uint8Array {
-    return this.require().tree.heirLabelKey;
-  }
-
   get vaultKek(): Uint8Array {
     return this.require().tree.vaultKek;
   }

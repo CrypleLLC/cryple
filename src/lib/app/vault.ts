@@ -117,12 +117,22 @@ function receivedBytes(ciphertext: string): number {
   return new TextEncoder().encode(ciphertext).length;
 }
 
+const BYTE_UNITS = ['KiB', 'MiB', 'GiB', 'TiB'] as const;
+
 export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) {
+    return '—';
+  }
   if (bytes < 1024) {
-    return `${bytes} B`;
+    return `${Math.round(bytes)} B`;
   }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KiB`;
+
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < BYTE_UNITS.length - 1) {
+    value /= 1024;
+    unit += 1;
   }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+
+  return `${value.toFixed(1)} ${BYTE_UNITS[unit]}`;
 }

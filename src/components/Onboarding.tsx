@@ -12,21 +12,18 @@ import {
   mnemonicSentence,
   onboardingReducer,
   PIN_STEP_COPY,
-  SEED_RECOVERY_COPY,
   SEED_WARNING,
   verifyBackup,
   type OnboardingOrigin,
   type OnboardingState,
 } from '@/lib/app';
 import { useCryple } from './CrypleProvider';
-import SeedRecovery from './SeedRecovery';
 import { Button, Card, CopyButton, Field, Notice, TextArea } from './ui';
 
 export default function Onboarding() {
   const { enrol } = useCryple();
   const [state, dispatch] = useReducer(onboardingReducer, INITIAL_ONBOARDING);
   const [busy, setBusy] = useState(false);
-  const [recovering, setRecovering] = useState(false);
 
   async function finish(paranoid: boolean, pin: string) {
     if (state.mnemonic === undefined) {
@@ -52,29 +49,12 @@ export default function Onboarding() {
     }
   }
 
-  function adoptRecoveredPhrase(mnemonic: string) {
-    setRecovering(false);
-    dispatch({ type: 'choose-origin', origin: 'import' });
-    dispatch({ type: 'mnemonic-ready', mnemonic: mnemonicSentence(mnemonic) });
-  }
-
-  if (recovering) {
-    return (
-      <div className="mx-auto max-w-2xl space-y-6">
-        <SeedRecovery
-          onRecovered={adoptRecoveredPhrase}
-          onCancel={() => setRecovering(false)}
-        />
-      </div>
-    );
-  }
-
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       {state.error ? <Notice tone="danger">{state.error}</Notice> : null}
 
       {state.step === 'origin' ? (
-        <OriginStep dispatch={dispatch} onRecover={() => setRecovering(true)} />
+        <OriginStep dispatch={dispatch} />
       ) : null}
       {state.step === 'backup' ? <BackupStep state={state} dispatch={dispatch} /> : null}
       {state.step === 'verify' ? <VerifyStep state={state} dispatch={dispatch} /> : null}
@@ -88,7 +68,7 @@ export default function Onboarding() {
       ) : null}
       {state.step === 'enrolling' ? (
         <Card title="Creating your vault">
-          <p className="text-sm text-slate-600 dark:text-slate-400">
+          <p className="text-compact text-ink-soft">
             {state.paranoid
               ? 'Deriving your keys and enrolling them. This takes a moment — the PIN stretch is deliberately slow.'
               : 'Deriving your keys and enrolling them. This takes a moment.'}
@@ -107,7 +87,7 @@ export default function Onboarding() {
 
 type Dispatch = (event: Parameters<typeof onboardingReducer>[1]) => void;
 
-function OriginStep({ dispatch, onRecover }: { dispatch: Dispatch; onRecover: () => void }) {
+function OriginStep({ dispatch }: { dispatch: Dispatch }) {
   const [tab, setTab] = useState<OnboardingOrigin>('generate');
   const [wordCount, setWordCount] = useState<MnemonicWordCount>(12);
 
@@ -140,7 +120,7 @@ function OriginStep({ dispatch, onRecover }: { dispatch: Dispatch; onRecover: ()
       subtitle="Your recovery phrase is the account. Nothing on our servers can replace it."
       flush
     >
-      <div className="flex border-b border-slate-200 px-5 dark:border-slate-800">
+      <div className="flex border-b border-line px-5">
         {(
           [
             ['generate', 'Sign up'],
@@ -152,10 +132,10 @@ function OriginStep({ dispatch, onRecover }: { dispatch: Dispatch; onRecover: ()
             type="button"
             aria-current={tab === id ? 'true' : undefined}
             onClick={() => setTab(id)}
-            className={`-mb-px border-b-2 px-4 py-3 text-sm transition ${
+            className={`-mb-px border-b-2 px-4 py-3 text-compact font-semibold transition-colors ${
               tab === id
-                ? 'border-brand-500 font-medium text-slate-900 dark:text-slate-100'
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                ? 'border-brand-500 text-brand-700'
+                : 'border-transparent text-ink-muted hover:text-ink'
             }`}
           >
             {label}
@@ -166,7 +146,7 @@ function OriginStep({ dispatch, onRecover }: { dispatch: Dispatch; onRecover: ()
       <div className="space-y-4 p-5">
         {signingUp ? (
           <>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
+            <p className="text-compact text-ink-soft">
               We will generate a recovery phrase for you. Write it down — it is the only way back
               into your vault.
             </p>
@@ -185,7 +165,7 @@ function OriginStep({ dispatch, onRecover }: { dispatch: Dispatch; onRecover: ()
           </>
         ) : (
           <>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
+            <p className="text-compact text-ink-soft">
               Enter the recovery phrase you already have. Signing in on a new device works the
               same way — there is no password to recover.
             </p>
@@ -206,16 +186,6 @@ function OriginStep({ dispatch, onRecover }: { dispatch: Dispatch; onRecover: ()
         <Button onClick={signingUp ? startSignUp : startSignIn}>
           {signingUp ? 'Create my recovery phrase' : 'Continue'}
         </Button>
-
-        {signingUp ? null : (
-          <button
-            type="button"
-            onClick={onRecover}
-            className="text-sm text-brand-600 underline-offset-4 hover:underline dark:text-brand-400"
-          >
-            {SEED_RECOVERY_COPY.entry}
-          </button>
-        )}
       </div>
     </Card>
   );
@@ -242,7 +212,7 @@ function BackupStep({
 
         {revealed ? (
           <div className="space-y-3">
-            <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 font-mono text-sm leading-relaxed break-words text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+            <p className="rounded-xl border border-line bg-raised px-4 py-3 font-mono text-sm leading-relaxed break-words text-ink">
               {phrase}
             </p>
             <CopyButton value={phrase} label="Copy phrase" copiedLabel="Copied to clipboard" />
@@ -389,7 +359,7 @@ function PinStep({
           />
         ) : null}
 
-        <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+        <div className="rounded-xl border border-line bg-raised p-4">
           <label className="flex cursor-pointer items-start gap-3">
             <input
               type="checkbox"
@@ -398,17 +368,17 @@ function PinStep({
               className="mt-0.5 h-4 w-4 shrink-0 accent-brand-500"
             />
             <span>
-              <span className="block text-sm font-medium">
+              <span className="block text-compact font-semibold text-ink">
                 {MODE_COPY.paranoid.title} mode — also require this PIN to sign in
               </span>
-              <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+              <span className="mt-1 block text-compact text-ink-muted">
                 {paranoid ? MODE_COPY.paranoid.tradeoff : MODE_COPY.standard.tradeoff}
               </span>
             </span>
           </label>
 
           {signingUp && paranoid ? (
-            <p className="mt-3 text-xs text-amber-700 dark:text-amber-500">
+            <p className="mt-3 text-compact text-warning">
               {MODE_COPY.oneWayDoor}
             </p>
           ) : null}

@@ -24,7 +24,7 @@ const userAddress = vectors.seed_and_user_address.user_address;
 const tree = await deriveKeyTreeFromSeed(hexToBytes(vectors.seed_and_user_address.seed_hex));
 
 const context: PqxdhContext = {
-  usage: 'succession-dek',
+  usage: 'recovery-share',
   senderUserAddress: userAddress,
   recipientUserAddress: userAddress,
 };
@@ -54,12 +54,8 @@ describe('the info string is built exactly as specified', () => {
     ).toBe(`Cryple-PQXDH-v1|recovery-share|${'a'.repeat(64)}|${'b'.repeat(64)}`);
   });
 
-  it('defines exactly the three usage labels', () => {
-    expect([...PQXDH_USAGES]).toEqual([
-      'succession-dek',
-      'recovery-share',
-      'recovery-session',
-    ]);
+  it('defines exactly the two usage labels', () => {
+    expect([...PQXDH_USAGES]).toEqual(['recovery-share', 'recovery-session']);
   });
 });
 
@@ -82,7 +78,7 @@ describe('the combiner reproduces the recorded session key', () => {
     const other = await deriveSessionKey(
       hexToBytes(pq.intermediate.ecdh_secret_hex),
       hexToBytes(pq.intermediate.kem_secret_hex),
-      { ...context, usage: 'recovery-share' },
+      { ...context, usage: 'recovery-session' },
     );
     expect(bytesToHex(other)).not.toBe(pq.output.session_key_hex);
   });
@@ -139,7 +135,7 @@ describe('the recorded wire blob decrypts', () => {
     await expect(
       pqxdhUnwrap(pq.aead_wrap_example.wire_blob_base64, secrets, {
         ...context,
-        usage: 'recovery-share',
+        usage: 'recovery-session',
       }),
     ).rejects.toThrow();
   });

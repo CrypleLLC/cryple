@@ -212,7 +212,7 @@ describe('selection', () => {
 });
 
 describe('batch delete copy', () => {
-  it('names the inheritance consequence, singular and plural', () => {
+  it('names the consequence, singular and plural', () => {
     expect(batchDeleteConfirmation(1)).toContain('this note');
     expect(batchDeleteConfirmation(1)).toContain('inherit it');
     expect(batchDeleteConfirmation(3)).toContain('these 3 notes');
