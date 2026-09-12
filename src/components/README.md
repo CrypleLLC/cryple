@@ -156,6 +156,67 @@ body locking, Tab walking the controls and wrapping at the end, Tab from outside
 in, Escape closing, focus returning to the trigger, and the lock releasing. The one path not
 exercised is a mouse drag from inside the dialog to outside it.
 
+## The account menu, and what lives in Settings
+
+The sidebar holds the **places you keep things** — vault, notes, documents, drive. Everything about
+the account itself lives behind the avatar in the top right: clicking it opens a menu with
+**Settings** and **Log out**.
+
+**Lock is not in that menu**, and that is deliberate. It sits as its own button immediately to the
+left of the avatar, because it is the one control a person reaches for in a hurry — someone walking
+up behind them. A control you need in two seconds does not belong two clicks deep. It also only
+exists when the device remembers the recovery phrase; `lockExit` returns nothing otherwise, and the
+button is simply absent rather than present and broken.
+
+**Settings is a modal with tabs**, `SETTINGS_TABS` in `lib/app/settings.ts`. Sharing and Security
+are the two, and it takes the `wide` variant to give them room. Neither is a place you keep things,
+so neither earned a permanent seat in the sidebar.
+
+**But what arrived *is* a place you keep things, so it stayed in the sidebar.** `SharingScreen` in
+Settings is only the relationships — invite, review, connect, disconnect. The items other people
+sent you are the **Shared** tab, rendered as a tile grid like the drive, because that is what they
+are to the person looking at them.
+
+### Shared reads every tile before it can draw one
+
+A shared tile shows a real name — a filename, a note title, a secret's name — and none of those
+reach the server in clear. `describeReceived` derives the connection key, unwraps the item's DEK and
+opens the payload for **each** arrival, which is why the screen has a loading state where the other
+grids do not. A share whose connection is gone, or whose payload will not open, renders as
+*Unreadable* and is not clickable rather than disappearing.
+
+**A tile carries a name and a body, and they are not the same string.** `describeReceived` takes a
+view function per text type rather than reading the payload itself, because what a payload *is* is
+app knowledge, not sharing knowledge: `sharedSecretView` in `lib/app/sharing.ts` names the tile
+after the secret's `name` and shows only its `value`, while `sharedNoteView` titles the tile from
+the first line and shows the whole note. Returning the raw plaintext for both is the bug this split
+fixes — a secret's plaintext is a JSON envelope, and the reader was shown
+`{"name":…,"value":…}` where the value belonged.
+
+### Sharing is a per-item control, not a selection-mode one
+
+Every item that can be sent carries its own share affordance: a `SharingIcon` button on each drive,
+note and document tile, and an icon-and-label button on each vault row. All four open the same
+`ShareItemDialog`.
+
+**It used to live in the selection toolbar, disabled unless exactly one item was selected**, which
+put a single-item action behind a multi-select gesture and hid it from anyone who never pressed
+*Select*. Selection mode still exists for deleting in bulk; sharing is not a bulk action and no
+longer pretends to be. A tile whose payload did not decrypt cannot be shared — its DEK is what would
+travel, and sending one that does not open just reproduces the failure on the far side.
+
+**`ShareItemDialog` is a `Modal`, not a card on the screen behind it.** It used to render inline,
+which pushed the grid or table down the moment you pressed share and left you reading a form in the
+middle of a list. It is a focused, one-item task with an obvious end, which is exactly what the
+modal primitive is for — it traps focus, closes on Escape or backdrop, and restores focus to the
+share button you came from. It carries no explicit *Close* button because the modal header has one.
+
+**The dialog states no rules.** The consequences of sharing — a recipient can copy what you send,
+deleting your original breaks their copy, removing a share cannot un-read it — are read once in the
+Sharing settings tab, next to the invitation that creates the relationship in the first place. They
+belong where you decide to trust someone, not repeated on every send, where they become furniture
+nobody reads.
+
 ## Session custody
 
 `CrypleProvider` owns the one `SessionKeystore` and the one `TokenStore` for the app. Its phase is

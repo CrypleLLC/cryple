@@ -35,3 +35,16 @@ const LOG_OUT_NOTHING_STORED: SessionExit = {
 export function sessionExits(deviceRemembersPhrase: boolean): SessionExit[] {
   return deviceRemembersPhrase ? [LOCK, LOG_OUT_ERASING_DEVICE] : [LOG_OUT_NOTHING_STORED];
 }
+
+export function lockExit(exits: readonly SessionExit[]): SessionExit | undefined {
+  return exits.find((exit) => exit.id === 'lock');
+}
+
+export function logOutExit(exits: readonly SessionExit[]): SessionExit {
+  const found = exits.find((exit) => exit.id === 'log-out');
+  if (found === undefined) {
+    throw new Error('there is always a way out of a session');
+  }
+
+  return found;
+}

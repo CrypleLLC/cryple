@@ -39,6 +39,7 @@ export interface UsernameResolution {
 
 export interface PublicKeysRecord {
   uuid: string;
+  user_address: string;
   encryption_public_key_x25519: string;
   encryption_public_key_mlkem: string;
 }

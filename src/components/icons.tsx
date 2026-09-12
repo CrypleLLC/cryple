@@ -44,6 +44,18 @@ export function SecurityIcon(props: IconProps) {
   );
 }
 
+export function SharingIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="17.5" cy="6.5" r="2.5" />
+      <circle cx="6.5" cy="12" r="2.5" />
+      <circle cx="17.5" cy="17.5" r="2.5" />
+      <path d="M8.8 10.8 15.2 7.7" />
+      <path d="m8.8 13.2 6.4 3.1" />
+    </Icon>
+  );
+}
+
 export function LockSessionIcon(props: IconProps) {
   return (
     <Icon {...props}>

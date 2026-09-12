@@ -1288,3 +1288,163 @@ The ids in the signed payload are **sorted ascending and de-duplicated**, exactl
 - **It does not see your bytes.** Uploads and downloads are client ↔ R2. What it holds is a wrapped key it cannot unwrap and a hash you computed.
 - **It does not verify your padding, your chunking or your hash.** It sees a stored length and checks it against the object that landed. Everything else — the 64 KiB bucket, the position header in each chunk, `ciphertext_sha256` actually matching — is a client obligation, and a client that gets one wrong produces a file only it can fail to open.
 - **It does not replicate synchronously.** `r2_state: "ok"` with `gcs_state: "pending"` is the normal state for up to a minute. **The UI must not claim two providers**; the honest promise is "replicated within a minute".
+
+## 18. Sharing Endpoints
+
+Safe sharing: an account gives another account **read** access to one of its items, and the server
+never holds a key to any of it. All routes require the JWT.
+
+**Read `internal/domain/sharing/README.md` for the design.** This section is the wire contract.
+
+### The shape, in one paragraph
+
+A **connection** is the authorisation object: one per ordered pair of accounts, `pending` until the
+recipient accepts, carrying the PQXDH blob that establishes the pair's session key. Everything else
+hangs off it. A **share** carries one re-wrapped DEK per item — **the ciphertext is never copied**,
+so the recipient reads the owner's row.
+
+⚠️ **Three properties the UI must state and must not overstate:**
+
+- **Deleting the original breaks the recipient.** That is the feature, not a bug.
+- **Removing a share cuts off future reads through the API and nothing more.** It cannot claw back a
+  DEK the recipient's client already holds. Never imply a share can be un-read.
+- **Re-sharing cannot be prevented.** Never claim it can.
+
+### Signed actions
+
+Every mutation carries one, and the counterparty or the item is **inside the signature**, so a proxy
+that rewrites a body cannot redirect a share. See
+[signed-actions.md](../api-general/.docs/auth/signed-actions.md).
+
+| Route | `action` | Signed arguments, in order |
+| --- | --- | --- |
+| `POST /connections` | `connection-invite` | `recipient_username` (normalised), `pqxdh_blob` |
+| `POST /connections/{id}/accept` | `connection-accept` | `connection_id` |
+| `DELETE /connections/{id}` | `connection-delete` | `connection_id` |
+| `POST /shares` | `share-create` | `connection_id`, `item_type`, `item_id` |
+| `DELETE /shares/{id}` | `share-delete` | `share_id` |
+
+⚠️ **`share-create` is a signed-action label; `item-share` is the PQXDH usage label.** Different
+protocols — a signature payload and an HKDF `info` input. Never use one where the other belongs.
+
+### `POST /connections`
+
+Invites an account to receive shares. `id` is optional and client-generated, so a retry is
+idempotent rather than a second row.
+
+```json
+{
+  "id": "0e2a4c6e-8b0d-4f4a-8c8e-0b2d4f6a8c0e",
+  "recipient_username": "pedrosilva",
+  "pqxdh_blob": "...",
+  "challenge": "...", "timestamp": 1785000000, "signature": "...", "password": "..."
+}
+```
+
+**`201 Created`** → `{ id, direction, username, status, pqxdh_blob, created_at }`.
+
+**Errors:** `400 BAD_REQUEST` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (no account uses that
+username **right now** — only a current username resolves) · `409 CONFLICT` (a connection between
+the pair already exists).
+
+### `GET /connections`
+
+Paginated, both directions. Each row carries `direction` (`inbound` / `outbound`), the
+counterparty's **current** username joined at read time, their `user_address`, and `status`.
+
+**Each side gets only the blob it can open**: `pqxdh_blob` goes to the recipient, whose keys it was
+encapsulated to, and `sender_wrapped_key` to the sender, who wrapped it under their own vault KEK.
+The sender cannot open what they encapsulated to the recipient, which is why there are two.
+
+⚠️ **`user_address` is on this row because the recipient cannot open anything without it.** The
+frozen PQXDH `info` binds both full addresses, so re-deriving the connection key means rebuilding
+the sender's side of that string. It is no new disclosure — the pair are connected, and the address
+is already reachable through `GET /users/{uuid}/public-keys`.
+
+⚠️ A rename shows up here immediately and breaks nothing — connections bind `user_id`, never the
+username string.
+
+### `POST /connections/{id}/accept`
+
+Body is the signed action alone. **`204 No Content`.**
+
+⚠️ **Acceptance is where key substitution is caught.** The PQXDH `info` binds both full
+`user_address` values and the recipient derives with their own, so a server that handed the sender
+substituted keys produces a blob the recipient cannot open — it fails here, loudly. What that does
+**not** catch is an active man-in-the-middle, which is why the acceptance screen must show the
+sender's key fingerprint and ask for an out-of-band comparison as a step, not a dismissible detail.
+
+**Errors:** `400 BAD_REQUEST` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (not yours, not pending,
+or gone).
+
+### `DELETE /connections/{id}`
+
+Either side may delete. Body is the signed action alone. **`204 No Content`.**
+
+⚠️ **This deletes every share on the connection**, and leaves no tombstone.
+
+### `POST /shares`
+
+Shares one item over an **accepted** connection. `id` is optional and client-generated.
+
+```json
+{
+  "id": "...",
+  "connection_id": "...",
+  "item_type": "secret | note | document | file",
+  "item_id": "...",
+  "wrapped_dek": "...",
+  "challenge": "...", "timestamp": 1785000000, "signature": "...", "password": "..."
+}
+```
+
+`wrapped_dek` is the item's **existing** DEK re-wrapped under the connection's session key — one
+AES-256-GCM wrap with a fresh random 96-bit IV, not a new PQXDH envelope. **Never a counter for the
+IV**: one key protects many messages here.
+
+**`201 Created`** → the share.
+
+**Errors:** `400 BAD_REQUEST` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (unknown connection,
+**or an item the sender does not own** — the same answer either way) · `409 CONFLICT` (that item is
+already shared on that connection) · `422 BAD_REQUEST` (the connection has not been accepted).
+
+### `GET /shares`
+
+The inbox: what arrived, paginated. Each row carries the share, its `wrapped_dek`, and the sender's
+current username.
+
+### `GET /shares/{id}`
+
+The shared item: the share, plus the owner's `ciphertext` for it. For a `document` this is the
+snapshot ciphertext; for a `file` it is the **sealed manifest**, and the object bytes need the next
+route.
+
+**Errors:** `404 NOT_FOUND` — for a non-recipient, **and for the sender**. This is the recipient's
+read, not a shared view; what went out is `GET /items/{type}/{id}/shares`.
+
+### `GET /shares/{id}/download`
+
+For `item_type: "file"` only. Returns a short-lived presigned `GET` for the owner's object, plus the
+`wrapped_dek`.
+
+**`200 OK`** → `{ share_id, wrapped_dek, url, expires_at }`.
+
+**Errors:** `400 BAD_REQUEST` (the share is not a file) · `404 NOT_FOUND`.
+
+### `DELETE /shares/{id}`
+
+Withdraws a share. Body is the signed action alone. **`204 No Content`.** Prospective only — see the
+warning at the top of this section.
+
+### `GET /items/{type}/{id}/shares`
+
+Who an item went to: one row per recipient, with their current username. **Never returns a wrapped
+DEK** — it is the owner's view of their own outbound shares.
+
+```json
+{ "id": "...", "item_type": "note", "item_id": "...", "username": "anacosta", "created_at": "..." }
+```
+
+⚠️ **The field is `username`, not `sender_username`.** This direction's counterparty is the
+recipient, so this listing has its own shape rather than reusing the inbox row.
+

@@ -151,6 +151,15 @@ didn't write (or a future format change) fails loudly instead of showing the wro
 name or a value. Both directions round-trip losslessly by construction; there is no normalisation
 to lose.
 
+**"No other party parses it" includes the recipient of a share, which is why it is decoded there
+too.** A secret sent to another account arrives as that same JSON envelope, and `lib/sharing` is
+deliberately ignorant of its shape. `sharedSecretView` in `sharing.ts` is the adapter: it decodes
+the envelope into the `{ name, body }` pair the Shared grid draws, so the tile is named after the
+secret and the reader is shown its **value** rather than the envelope around it. `sharedNoteView`
+is the same seam for a note, where the plaintext *is* the body and the title comes from
+`noteTitle`. A malformed envelope falls back to `UNREADABLE_SECRET_NAME` and the raw text — all
+there is to show — rather than throwing, because `describeReceived` must never throw.
+
 ## The notes file grid
 
 `buildNoteTiles` is the notes counterpart of `buildVaultRows`: full `NoteRecord`s paired with

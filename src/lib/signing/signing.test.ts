@@ -185,8 +185,24 @@ describe('the four batchable delete actions', () => {
 });
 
 describe('the action table matches the authoritative spec', () => {
-  it('covers all 8 actions', () => {
-    expect(Object.keys(ACTIONS)).toHaveLength(8);
+  it('covers all 13 actions', () => {
+    expect(Object.keys(ACTIONS)).toHaveLength(13);
+  });
+
+  it('binds the counterparty or the item into every sharing signature', () => {
+    expect(ACTIONS['connection-invite'].args).toEqual(['recipient_username', 'pqxdh_blob']);
+    expect(ACTIONS['share-create'].args).toEqual(['connection_id', 'item_type', 'item_id']);
+
+    for (const action of [
+      'connection-invite',
+      'connection-accept',
+      'connection-delete',
+      'share-create',
+      'share-delete',
+    ] as const) {
+      expect(ACTIONS[action].secondFactor).toBe(true);
+      expect(ACTIONS[action]).not.toHaveProperty('variadic');
+    }
   });
 
   it('keeps username-update single-argument, and behind the second factor', () => {
