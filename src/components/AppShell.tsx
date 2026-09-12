@@ -150,7 +150,6 @@ export default function AppShell() {
                 {lockable ? <LockButton exit={lockable} onRun={run} /> : null}
                 <AccountMenu
                   username={account?.username}
-                  paranoid={paranoid}
                   logOut={leave}
                   onSettings={() => setSettingsOpen(true)}
                   onLogOut={run}
@@ -180,7 +179,6 @@ export default function AppShell() {
               {lockable ? <LockButton exit={lockable} onRun={run} /> : null}
               <AccountMenu
                 username={account?.username}
-                paranoid={paranoid}
                 logOut={leave}
                 onSettings={() => setSettingsOpen(true)}
                 onLogOut={run}

@@ -2,13 +2,15 @@
 
 import { useState } from 'react';
 import { ACCOUNT_MENU_COPY, SETTINGS_TABS, type SettingsTabId } from '@/lib/app';
-import SecurityScreen from './SecurityScreen';
+import PinScreen from './PinScreen';
 import SharingScreen from './SharingScreen';
+import UsernameScreen from './UsernameScreen';
 import { Modal } from './ui';
 
 const PANELS: Record<SettingsTabId, () => React.JSX.Element> = {
   sharing: SharingScreen,
-  security: SecurityScreen,
+  username: UsernameScreen,
+  pin: PinScreen,
 };
 
 export default function SettingsModal({ onClose }: { onClose: () => void }) {
@@ -22,8 +24,12 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
       onClose={onClose}
       wide
     >
-      <div className="space-y-5">
-        <div role="tablist" aria-label={ACCOUNT_MENU_COPY.settingsTitle} className="flex gap-1">
+      <div className="flex flex-col gap-5 sm:h-[40rem] sm:flex-row sm:gap-6">
+        <div
+          role="tablist"
+          aria-label={ACCOUNT_MENU_COPY.settingsTitle}
+          className="flex shrink-0 gap-1 sm:w-44 sm:flex-col sm:border-r sm:border-line sm:pr-5"
+        >
           {SETTINGS_TABS.map((entry) => (
             <button
               key={entry.id}
@@ -31,7 +37,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               role="tab"
               aria-selected={tab === entry.id}
               onClick={() => setTab(entry.id)}
-              className={`rounded-lg px-3 py-2 text-compact font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 ${
+              className={`rounded-lg px-3 py-2 text-compact font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 sm:w-full sm:text-left ${
                 tab === entry.id
                   ? 'bg-brand-50 text-brand-700'
                   : 'text-ink-soft hover:bg-raised hover:text-ink'
@@ -42,7 +48,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           ))}
         </div>
 
-        <div role="tabpanel">
+        <div role="tabpanel" className="min-w-0 flex-1 sm:overflow-y-auto">
           <Panel />
         </div>
       </div>

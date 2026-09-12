@@ -55,7 +55,7 @@ what `rekeySecondFactor` is for.
 
 **The upgrade is not complete when this function returns.** A Standard account also has no local
 seed vault, because there was no PIN to wrap one under — so the caller must create it, and that
-needs the recovery phrase, which the keystore deliberately does not retain. `SecurityScreen` asks
+needs the recovery phrase, which the keystore deliberately does not retain. `PinScreen` asks
 for the phrase alongside the new PIN, checks it derives to the signed-in `user_address` before
 sending anything, then calls `createSeedVault` **after** this succeeds. Creating it first would
 leave a Standard account holding a vault if the request failed.

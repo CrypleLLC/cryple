@@ -1,6 +1,7 @@
 export const SETTINGS_TABS = [
   { id: 'sharing', label: 'Sharing' },
-  { id: 'security', label: 'Security' },
+  { id: 'username', label: 'Username' },
+  { id: 'pin', label: 'PIN' },
 ] as const;
 
 export type SettingsTabId = (typeof SETTINGS_TABS)[number]['id'];

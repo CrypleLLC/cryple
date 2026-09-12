@@ -32,13 +32,6 @@ export const SHARING_COPY = {
     'This connection’s fingerprint has changed since you accepted it. Do not send anything ' +
     'and check with them through another channel.',
 
-  rulesTitle: 'What sending an item does, and what it cannot undo',
-  revokeWarning:
-    'Removing a share stops them opening it again through Cryple. It cannot take back a copy ' +
-    'their device already holds.',
-  deleteOriginalWarning:
-    'They are reading your copy, not their own. If you delete this item, it stops working for ' +
-    'them too.',
   reshareWarning:
     'Anything you send can be copied by the person you send it to. Only share with people you ' +
     'would trust with the contents.',

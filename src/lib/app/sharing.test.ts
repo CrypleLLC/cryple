@@ -58,20 +58,8 @@ describe('the fingerprint pin', () => {
 });
 
 describe('the copy', () => {
-  it('never claims a share can be un-read', () => {
-    expect(SHARING_COPY.revokeWarning).toMatch(/cannot take back/i);
-  });
-
   it('says plainly that a recipient can copy what they receive', () => {
     expect(SHARING_COPY.reshareWarning).toMatch(/can be copied/i);
-  });
-
-  it('warns that deleting the original breaks the recipient', () => {
-    expect(SHARING_COPY.deleteOriginalWarning).toMatch(/stops working for them/i);
-  });
-
-  it('heads the rules block without promising a share can be undone', () => {
-    expect(SHARING_COPY.rulesTitle).toMatch(/cannot undo/i);
   });
 
   it('asks for an out-of-band fingerprint check in words a person can act on', () => {
