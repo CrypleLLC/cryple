@@ -79,10 +79,12 @@ import {
   DownloadIcon,
   DriveIcon,
   FileTypeIcon,
+  SharingIcon,
   TrashIcon,
   UploadIcon,
 } from './icons';
 import { Button, Card, Empty, Notice, SizeStepper, Spinner } from './ui';
+import ShareItemDialog from './ShareItemDialog';
 
 interface DriveTile {
   id: string;
@@ -111,6 +113,7 @@ export default function DriveScreen() {
   const [confirming, setConfirming] = useState<DriveTile>();
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const [sharing, setSharing] = useState<string>();
   const [confirmingBatch, setConfirmingBatch] = useState(false);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -448,6 +451,10 @@ export default function DriveScreen() {
     >
       {message !== undefined && <Notice tone={message.tone}>{message.text}</Notice>}
 
+      {sharing ? (
+        <ShareItemDialog itemType="file" itemId={sharing} onClose={() => setSharing(undefined)} />
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="text-compact text-ink-muted" aria-live="polite">
@@ -600,6 +607,7 @@ export default function DriveScreen() {
                   setSelected((current) => toggleFileSelection(current, tile.id));
                 }}
                 onDelete={() => setConfirming(tile)}
+                onShare={() => setSharing(tile.id)}
                 onResume={() => void resume(tile)}
                 onDismiss={transfer === undefined ? undefined : () => dropTransfer(transfer.key)}
               />
@@ -626,6 +634,7 @@ function DriveFile({
   onOpen,
   onToggle,
   onDelete,
+  onShare,
   onResume,
   onDismiss,
 }: {
@@ -639,6 +648,7 @@ function DriveFile({
   onOpen: () => void;
   onToggle: () => void;
   onDelete: () => void;
+  onShare: () => void;
   onResume: () => void;
   onDismiss?: () => void;
 }) {
@@ -751,6 +761,17 @@ function DriveFile({
             className="flex h-5 w-5 items-center justify-center rounded-md border border-line-strong bg-surface/90 text-ink-soft shadow-card transition hover:text-brand-700 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
           >
             <DownloadIcon className="h-3 w-3 shrink-0" />
+          </button>
+        )}
+        {tile.openable && (
+          <button
+            type="button"
+            aria-label={`Share ${tile.name}`}
+            disabled={busy}
+            onClick={onShare}
+            className="flex h-5 w-5 items-center justify-center rounded-md border border-line-strong bg-surface/90 text-ink-soft shadow-card transition hover:text-brand-700 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+          >
+            <SharingIcon className="h-3 w-3 shrink-0" />
           </button>
         )}
         {tile.resume !== undefined && (

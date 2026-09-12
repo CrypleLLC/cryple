@@ -67,7 +67,13 @@ the clock; if sign-in fails on a valid account, check the device clock first.
 
 `ACTIONS` encodes [signed-actions.md § Actions](../../../../api-general/.docs/auth/signed-actions.md#actions)
 as data — label → argument order → second-factor flag → who signs. **A new action is one row,
-not new code.** All 18 are present and the count is asserted.
+not new code.** All eight are present and the count is asserted.
+
+**`username-update`** is one `username` argument, **not** variadic, second factor demanded. The
+argument it binds is the **normalised** name — lowercased and trimmed — and applying that rule is
+[`lib/users`](../users/README.md)'s job, not this module's: the server normalises again before
+verifying, so signing the raw input produces a well-formed request that fails authentication, and
+the failure wears a bad signature's clothes rather than a formatting mistake's.
 
 `normalizeActionArgs` enforces arity, rejects empty arguments, and rejects any argument
 containing `:` — the field separator.
@@ -82,8 +88,8 @@ Sending a token on a Standard account fails exactly as hard as omitting it on a 
 so both mistakes are prevented here rather than at the call site.
 
 **The signer's own mode decides — the *signer's*, not the account owner's.** Every action in
-`ACTIONS` today is signed by the account's own owner, so `signer` is `'owner'` on all six and the
-distinction costs nothing. Keep it anyway: it is load-bearing the moment private sharing adds an
+`ACTIONS` today is signed by the account's own owner, so `signer` is `'owner'` on all of them and
+the distinction costs nothing. Keep it anyway: it is load-bearing the moment private sharing adds an
 action one account signs against another's data, and it was load-bearing before, when guardians
 signed against an owner's account.
 

@@ -21,8 +21,9 @@ import {
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
 import NoteEditor from './NoteEditor';
-import { CheckIcon, NotesIcon, PlusIcon, TrashIcon } from './icons';
+import { CheckIcon, NotesIcon, PlusIcon, SharingIcon, TrashIcon } from './icons';
 import { Button, Card, Empty, Notice, SizeStepper, Spinner } from './ui';
+import ShareItemDialog from './ShareItemDialog';
 
 type View = { mode: 'list' } | { mode: 'note'; id?: string };
 
@@ -36,6 +37,7 @@ export default function NotesScreen() {
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [confirmingBatch, setConfirmingBatch] = useState(false);
+  const [sharing, setSharing] = useState<string>();
   const [deleting, setDeleting] = useState(false);
   const [pageSize, setPageSize] = useState<IconSize>(defaultIconSize('notes'));
 
@@ -133,6 +135,10 @@ export default function NotesScreen() {
     <div className="space-y-5">
       {message ? <Notice tone="danger">{message}</Notice> : null}
 
+      {sharing ? (
+        <ShareItemDialog itemType="note" itemId={sharing} onClose={() => setSharing(undefined)} />
+      ) : null}
+
       {tiles !== undefined && tiles.length > 0 ? (
         <div className="flex min-h-10 flex-wrap items-center justify-between gap-3">
           <p className="text-compact text-ink-muted" aria-live="polite">
@@ -218,6 +224,7 @@ export default function NotesScreen() {
               selected={selected.includes(tile.id)}
               busy={deleting}
               onOpen={() => openTile(tile.id)}
+              onShare={() => setSharing(tile.id)}
               onToggle={() => {
                 setSelecting(true);
                 setSelected((current) => toggleNoteSelection(current, tile.id));
@@ -249,6 +256,7 @@ function NoteFile({
   selected,
   busy,
   onOpen,
+  onShare,
   onToggle,
 }: {
   tile: NoteTile;
@@ -257,6 +265,7 @@ function NoteFile({
   selected: boolean;
   busy: boolean;
   onOpen: () => void;
+  onShare: () => void;
   onToggle: () => void;
 }) {
   return (
@@ -312,6 +321,18 @@ function NoteFile({
         } ${selecting || selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
       >
         <CheckIcon className="h-3.5 w-3.5 shrink-0" />
+      </button>
+
+      <button
+        type="button"
+        aria-label={`Share ${tile.title}`}
+        disabled={busy || !tile.readable}
+        onClick={onShare}
+        className={`absolute right-3 top-3 z-10 flex h-5 w-5 items-center justify-center rounded-md border border-line-strong bg-surface/90 text-ink-soft shadow-card transition hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 ${
+          selecting ? 'opacity-0' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+        }`}
+      >
+        <SharingIcon className="h-3 w-3 shrink-0" />
       </button>
     </li>
   );

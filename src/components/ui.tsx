@@ -273,12 +273,14 @@ export function Modal({
   subtitle,
   onClose,
   footer,
+  wide = false,
   children,
 }: {
   title: string;
   subtitle?: string;
   onClose: () => void;
   footer?: ReactNode;
+  wide?: boolean;
   children: ReactNode;
 }) {
   const titleId = useId();
@@ -349,7 +351,9 @@ export function Modal({
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-lift outline-none"
+        className={`flex max-h-[85vh] w-full flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-lift outline-none ${
+          wide ? 'max-w-4xl' : 'max-w-2xl'
+        }`}
       >
         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div>

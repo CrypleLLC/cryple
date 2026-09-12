@@ -27,8 +27,9 @@ import {
   type IconSize,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
-import { CheckIcon, DocumentsIcon, PlusIcon, TrashIcon } from './icons';
+import { CheckIcon, DocumentsIcon, PlusIcon, SharingIcon, TrashIcon } from './icons';
 import { Button, Card, Empty, Notice, SizeStepper, Spinner } from './ui';
+import ShareItemDialog from './ShareItemDialog';
 
 export default function DocumentsScreen() {
   const context = useAuthedContext();
@@ -39,6 +40,7 @@ export default function DocumentsScreen() {
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [confirming, setConfirming] = useState(false);
+  const [sharing, setSharing] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [pageSize, setPageSize] = useState<IconSize>(defaultIconSize('documents'));
 
@@ -125,6 +127,14 @@ export default function DocumentsScreen() {
     <div className="space-y-5">
       {message !== undefined && <Notice tone="danger">{message}</Notice>}
 
+      {sharing ? (
+        <ShareItemDialog
+          itemType="document"
+          itemId={sharing}
+          onClose={() => setSharing(undefined)}
+        />
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-compact text-ink-muted">
           {tiles.length === 0 ? 'No documents yet' : documentCountLabel(tiles.length)}
@@ -204,6 +214,7 @@ export default function DocumentsScreen() {
               selected={selected.includes(tile.id)}
               busy={busy}
               onOpen={() => activate(tile.id)}
+              onShare={() => setSharing(tile.id)}
               onToggle={() => {
                 setSelecting(true);
                 setSelected((current) => toggleNoteSelection(current, tile.id));
@@ -224,6 +235,7 @@ function DocumentFile({
   selected,
   busy,
   onOpen,
+  onShare,
   onToggle,
 }: {
   tile: DocumentTile;
@@ -233,6 +245,7 @@ function DocumentFile({
   selected: boolean;
   busy: boolean;
   onOpen: () => void;
+  onShare: () => void;
   onToggle: () => void;
 }) {
   return (
@@ -296,6 +309,18 @@ function DocumentFile({
         } ${selecting || selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
       >
         <CheckIcon className="h-3.5 w-3.5 shrink-0" />
+      </button>
+
+      <button
+        type="button"
+        aria-label={`Share ${tile.title}`}
+        disabled={busy || !tile.readable}
+        onClick={onShare}
+        className={`absolute right-3 top-3 z-10 flex h-5 w-5 items-center justify-center rounded-md border border-line-strong bg-surface/90 text-ink-soft shadow-card transition hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 ${
+          selecting ? 'opacity-0' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+        }`}
+      >
+        <SharingIcon className="h-3 w-3 shrink-0" />
       </button>
     </li>
   );

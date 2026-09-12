@@ -16,7 +16,10 @@ import {
   KEM_CIPHERTEXT_LENGTH,
   IV_LENGTH,
   type PqxdhContext,
+  type PqxdhUsage,
 } from './index';
+
+const foreignUsage = 'not-a-registered-usage' as PqxdhUsage;
 
 const pq = vectors.pqxdh;
 const userAddress = vectors.seed_and_user_address.user_address;
@@ -24,7 +27,7 @@ const userAddress = vectors.seed_and_user_address.user_address;
 const tree = await deriveKeyTreeFromSeed(hexToBytes(vectors.seed_and_user_address.seed_hex));
 
 const context: PqxdhContext = {
-  usage: 'recovery-share',
+  usage: 'item-share',
   senderUserAddress: userAddress,
   recipientUserAddress: userAddress,
 };
@@ -47,15 +50,15 @@ describe('the info string is built exactly as specified', () => {
   it('joins version, usage, sender and recipient with pipes', () => {
     expect(
       buildInfo({
-        usage: 'recovery-share',
+        usage: 'item-share',
         senderUserAddress: 'a'.repeat(64),
         recipientUserAddress: 'b'.repeat(64),
       }),
-    ).toBe(`Cryple-PQXDH-v1|recovery-share|${'a'.repeat(64)}|${'b'.repeat(64)}`);
+    ).toBe(`Cryple-PQXDH-v1|item-share|${'a'.repeat(64)}|${'b'.repeat(64)}`);
   });
 
-  it('defines exactly the two usage labels', () => {
-    expect([...PQXDH_USAGES]).toEqual(['recovery-share', 'recovery-session']);
+  it('defines exactly the sharing usage label', () => {
+    expect([...PQXDH_USAGES]).toEqual(['item-share']);
   });
 });
 
@@ -78,7 +81,7 @@ describe('the combiner reproduces the recorded session key', () => {
     const other = await deriveSessionKey(
       hexToBytes(pq.intermediate.ecdh_secret_hex),
       hexToBytes(pq.intermediate.kem_secret_hex),
-      { ...context, usage: 'recovery-session' },
+      { ...context, usage: foreignUsage },
     );
     expect(bytesToHex(other)).not.toBe(pq.output.session_key_hex);
   });
@@ -135,7 +138,7 @@ describe('the recorded wire blob decrypts', () => {
     await expect(
       pqxdhUnwrap(pq.aead_wrap_example.wire_blob_base64, secrets, {
         ...context,
-        usage: 'recovery-session',
+        usage: foreignUsage,
       }),
     ).rejects.toThrow();
   });

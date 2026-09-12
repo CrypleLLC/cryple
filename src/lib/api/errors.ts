@@ -10,6 +10,7 @@ export const ERROR_CODES = [
   'INTERNAL_ERROR',
   'NOT_READY',
   'QUOTA_EXCEEDED',
+  'USERNAME_UNAVAILABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -54,6 +55,10 @@ export class ApiError extends Error {
 
   get isObjectTooLarge(): boolean {
     return this.status === 413;
+  }
+
+  get isUsernameUnavailable(): boolean {
+    return this.status === 422 && this.code === 'USERNAME_UNAVAILABLE';
   }
 
   get isDriveDisabled(): boolean {

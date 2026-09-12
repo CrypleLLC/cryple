@@ -5,14 +5,17 @@ import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import { hasSeedVault } from '@/lib/pin';
 import {
-  accountInitial,
   sessionExits,
   type SessionExit,
   type SessionExitId,
+  lockExit,
+  logOutExit,
 } from '@/lib/app';
 import { useCryple } from './CrypleProvider';
 import NotesScreen from './NotesScreen';
-import SecurityScreen from './SecurityScreen';
+import AccountMenu from './AccountMenu';
+import SharedScreen from './SharedScreen';
+import SettingsModal from './SettingsModal';
 import VaultScreen from './VaultScreen';
 import { VaultRevealAction, VaultRevealProvider } from './VaultReveal';
 import {
@@ -21,12 +24,12 @@ import {
   LockSessionIcon,
   LogOutIcon,
   NotesIcon,
-  SecurityIcon,
   VaultIcon,
   type IconProps,
+  SharingIcon,
 } from './icons';
 import StorageMeter from './StorageMeter';
-import { Badge, Button, Notice, Spinner } from './ui';
+import { Button, Notice, Spinner } from './ui';
 
 const DocumentsScreen = dynamic(() => import('./DocumentsScreen'), {
   loading: () => <Spinner />,
@@ -69,18 +72,18 @@ const NAV_ITEMS = [
     screen: DocumentsScreen,
   },
   {
+    id: 'shared',
+    label: 'Shared',
+    description: 'What other accounts have sent you, decrypted on this device.',
+    icon: SharingIcon,
+    screen: SharedScreen,
+  },
+  {
     id: 'drive',
     label: 'Drive',
     description: 'Files, encrypted on this device before they are stored.',
     icon: DriveIcon,
     screen: DriveScreen,
-  },
-  {
-    id: 'security',
-    label: 'Security',
-    description: 'How signing in to this account works.',
-    icon: SecurityIcon,
-    screen: SecurityScreen,
   },
 ] as const satisfies readonly NavItem[];
 
@@ -96,10 +99,13 @@ export default function AppShell() {
   const [tab, setTab] = useState<TabId>('vault');
   const [remembersPhrase, setRemembersPhrase] = useState(false);
   const [confirming, setConfirming] = useState<SessionExit>();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => setRemembersPhrase(hasSeedVault()), [paranoid]);
 
   const exits = sessionExits(remembersPhrase);
+  const lockable = lockExit(exits);
+  const leave = logOutExit(exits);
   const current: NavItem = NAV_ITEMS.find((item) => item.id === tab) ?? NAV_ITEMS[0];
   const Screen = current.screen;
   const ScreenActions = current.actions;
@@ -141,7 +147,14 @@ export default function AppShell() {
               <BrandMark />
               <div className="flex shrink-0 items-center gap-2">
                 {ScreenActions ? <ScreenActions /> : null}
-                <ExitButtons exits={exits} onRun={run} />
+                {lockable ? <LockButton exit={lockable} onRun={run} /> : null}
+                <AccountMenu
+                  username={account?.username}
+                  paranoid={paranoid}
+                  logOut={leave}
+                  onSettings={() => setSettingsOpen(true)}
+                  onLogOut={run}
+                />
               </div>
             </div>
             <nav className="flex gap-1 overflow-x-auto px-3 pb-3">
@@ -164,8 +177,14 @@ export default function AppShell() {
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {ScreenActions ? <ScreenActions /> : null}
-              <AccountSummary username={account?.username} paranoid={paranoid} />
-              <ExitButtons exits={exits} onRun={run} />
+              {lockable ? <LockButton exit={lockable} onRun={run} /> : null}
+              <AccountMenu
+                username={account?.username}
+                paranoid={paranoid}
+                logOut={leave}
+                onSettings={() => setSettingsOpen(true)}
+                onLogOut={run}
+              />
             </div>
           </header>
 
@@ -186,6 +205,8 @@ export default function AppShell() {
 
             <Screen />
           </main>
+
+          {settingsOpen ? <SettingsModal onClose={() => setSettingsOpen(false)} /> : null}
         </div>
       </div>
     </VaultRevealProvider>
@@ -235,50 +256,13 @@ function NavButton({
   );
 }
 
-function AccountSummary({
-  username,
-  paranoid,
-}: {
-  username: string | undefined;
-  paranoid: boolean;
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-2.5 rounded-xl border border-line bg-raised py-1.5 pl-1.5 pr-3">
-      <span className="brand-gradient flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-caption font-semibold text-white">
-        {accountInitial(username)}
-      </span>
-      <div className="hidden min-w-0 lg:block">
-        <p className="truncate text-compact font-semibold text-ink">{username}</p>
-      </div>
-      <Badge tone={paranoid ? 'brand' : 'neutral'}>{paranoid ? 'Paranoid' : 'Standard'}</Badge>
-    </div>
-  );
-}
+function LockButton({ exit, onRun }: { exit: SessionExit; onRun: (exit: SessionExit) => void }) {
+  const ExitIcon = EXIT_ICONS[exit.id];
 
-function ExitButtons({
-  exits,
-  onRun,
-}: {
-  exits: SessionExit[];
-  onRun: (exit: SessionExit) => void;
-}) {
   return (
-    <div className="flex shrink-0 gap-2">
-      {exits.map((exit) => {
-        const ExitIcon = EXIT_ICONS[exit.id];
-
-        return (
-          <Button
-            key={exit.id}
-            variant={exit.destructive ? 'danger' : 'secondary'}
-            title={exit.description}
-            onClick={() => onRun(exit)}
-          >
-            <ExitIcon className="h-4 w-4 shrink-0" />
-            {exit.label}
-          </Button>
-        );
-      })}
-    </div>
+    <Button variant="secondary" title={exit.description} onClick={() => onRun(exit)}>
+      <ExitIcon className="h-4 w-4 shrink-0" />
+      {exit.label}
+    </Button>
   );
 }

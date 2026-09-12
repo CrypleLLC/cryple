@@ -6,6 +6,7 @@ import { createSeedVault } from '@/lib/pin';
 import { enableSecondFactor } from '@/lib/users';
 import { checkUpgrade, SECOND_FACTOR_COPY, writeModeHint } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
+import UsernameCard from './UsernameCard';
 import { Button, Card, Field, Notice, PanelGrid, TextArea } from './ui';
 
 export default function SecurityScreen() {
@@ -59,20 +60,24 @@ export default function SecurityScreen() {
 
   if (paranoid) {
     return (
-      <Card
-        title={SECOND_FACTOR_COPY.enabled.title}
-        subtitle={SECOND_FACTOR_COPY.enabled.summary}
-      >
-        <div className="space-y-4">
-          {notice ? <Notice tone="success">{notice}</Notice> : null}
-          <Notice tone="info">{SECOND_FACTOR_COPY.enabled.oneWayDoor}</Notice>
-        </div>
-      </Card>
+      <PanelGrid>
+        <UsernameCard />
+        <Card
+          title={SECOND_FACTOR_COPY.enabled.title}
+          subtitle={SECOND_FACTOR_COPY.enabled.summary}
+        >
+          <div className="space-y-4">
+            {notice ? <Notice tone="success">{notice}</Notice> : null}
+            <Notice tone="info">{SECOND_FACTOR_COPY.enabled.oneWayDoor}</Notice>
+          </div>
+        </Card>
+      </PanelGrid>
     );
   }
 
   return (
     <PanelGrid>
+      <UsernameCard />
       <Card
         title={SECOND_FACTOR_COPY.offered.title}
         subtitle={SECOND_FACTOR_COPY.offered.summary}
