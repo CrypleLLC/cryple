@@ -81,11 +81,10 @@ export default function VaultScreen() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-8">
       <Card
         title="Stored items"
         subtitle="Names and values are encrypted on this device before they are stored."
-        flush
       >
         {message ? (
           <div className="px-5 pt-4">

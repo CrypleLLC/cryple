@@ -96,6 +96,50 @@ Shape follows the same system: `rounded-lg` (8px) for buttons and controls, `rou
 for cards, panels and modals, `rounded-full` for badges. Depth is three shadows — `shadow-card`
 at rest, `shadow-raised` for a lifted control, `shadow-lift` for a hover lift or a modal.
 
+**A block is not drawn at all.** `Card` has no border, no background, no shadow and no padding of
+its own — it is a heading, an optional subtitle, and the content, in a `flex flex-col`. Blocks are
+separated by whitespace and by their titles, not by panels. Everything sits directly on the ground.
+
+This landed in two steps on 2026-09-12 and the first one was wrong: the border came off but the
+white surface and `shadow-card` stayed, which just traded an outline for a raised panel. The
+instruction was never "draw the box differently", it was "stop drawing the box". **A card is
+positioning, not decoration.** With no panel doing the separating, spacing carries it: screens
+stack at `space-y-8` and `PanelGrid` is `gap-8`, up from `5`.
+
+The `flush` prop went with the padding. It existed to suppress `p-5` for tables and tile grids;
+with no padding to suppress it meant nothing, so it was deleted rather than left as a prop that
+does nothing.
+
+What is still drawn is the stuff doing a different job: the sidebar and sticky-header rules, which
+separate chrome from content scrolling underneath; input and secondary-button borders, which are
+affordances; table row dividers, which are how rows stay scannable; and the thumbnail rings on
+drive, note and document tiles, which frame an image rather than a panel. **Removing one of those
+is not "consistency" — it is deleting a signal.**
+
+**The note editor keeps `bg-surface`, and that is deliberate.** It is the area you type into, in
+the same family as `Field` and `TextArea`, and those keep a light background because writing on the
+grey ground is worse to read. Its shadow went, so it is a writing surface rather than a highlighted
+panel. The documents editor's `.cryple-sheet` keeps its surface and shadow for the same reason and
+one more: an A4 page is literally paper.
+
+### Reading widths are capped; miniature grids are not
+
+`main` is `mx-auto w-full`, and the cap depends on what the screen shows. Beyond about 1150px a
+line of prose or a table row stops being generous and starts being hard to read — actions a metre
+from the name they belong to, a two-column grid with a chasm down the middle. **A grid of tiles has
+the opposite problem**: capping it wastes rows and forces scrolling past space that was right
+there.
+
+So `NavItem.miniatures` decides. Notes, Documents, Shared and Drive set it and render at
+`max-w-none`; Vault stays `max-w-6xl`. The desktop header's inner row uses the same value, so the
+page title always sits on the left edge of whatever is under it. The cap is on the content, never
+on the shell — the sidebar and sticky header span the window either way.
+
+**`NoteEditor` carries its own `max-w-5xl`,** because it lives inside the full-width Notes screen
+but is prose, not tiles. Without it, opening a note on a wide monitor gives you a line length
+nobody wants to write in. The documents editor needs no equivalent: `/docs/[id]` is its own route
+with its own A4 measure.
+
 Type is Inter with JetBrains Mono for data, both from `next/font`, exposed as `font-sans` /
 `font-mono`. The scale is named rather than numeric: `text-caption` (11px, uppercase, tracked —
 badges and metadata), `text-compact` (13px — the workhorse for body copy, table cells and button

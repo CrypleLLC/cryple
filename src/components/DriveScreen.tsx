@@ -427,7 +427,7 @@ export default function DriveScreen() {
 
   if (unavailable) {
     return (
-      <Card flush>
+      <Card>
         <Empty icon={<DriveIcon className="h-6 w-6" />}>
           The drive is not switched on for this deployment.
         </Empty>
@@ -570,7 +570,7 @@ export default function DriveScreen() {
       )}
 
       {grid.length === 0 ? (
-        <Card flush>
+        <Card>
           <Empty icon={<DriveIcon className="h-6 w-6" />}>
             {dragging
               ? 'Drop the files here.'

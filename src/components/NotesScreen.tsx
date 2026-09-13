@@ -204,7 +204,7 @@ export default function NotesScreen() {
       {tiles === undefined ? (
         <Spinner />
       ) : tiles.length === 0 ? (
-        <Card flush>
+        <Card>
           <Empty icon={<NotesIcon className="h-6 w-6" />}>
             No notes yet. Use the button in the corner to write one — it is encrypted on this
             device before it is stored.
