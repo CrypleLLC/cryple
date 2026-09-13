@@ -6,9 +6,9 @@ import { createSeedVault } from '@/lib/pin';
 import { enableSecondFactor } from '@/lib/users';
 import { checkUpgrade, SECOND_FACTOR_COPY, writeModeHint } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
-import { Button, Card, Field, Notice, PanelGrid, TextArea } from './ui';
+import { Button, Card, Field, Notice, TextArea } from './ui';
 
-export default function SecurityScreen() {
+export default function PinScreen() {
   const context = useAuthedContext();
   const { paranoid, refreshAccount, reportError } = useCryple();
 
@@ -59,10 +59,7 @@ export default function SecurityScreen() {
 
   if (paranoid) {
     return (
-      <Card
-        title={SECOND_FACTOR_COPY.enabled.title}
-        subtitle={SECOND_FACTOR_COPY.enabled.summary}
-      >
+      <Card title={SECOND_FACTOR_COPY.enabled.title} subtitle={SECOND_FACTOR_COPY.enabled.summary}>
         <div className="space-y-4">
           {notice ? <Notice tone="success">{notice}</Notice> : null}
           <Notice tone="info">{SECOND_FACTOR_COPY.enabled.oneWayDoor}</Notice>
@@ -72,46 +69,41 @@ export default function SecurityScreen() {
   }
 
   return (
-    <PanelGrid>
-      <Card
-        title={SECOND_FACTOR_COPY.offered.title}
-        subtitle={SECOND_FACTOR_COPY.offered.summary}
-      >
-        <div className="space-y-4">
-          {message ? <Notice tone="danger">{message}</Notice> : null}
-          <Notice tone="warning">{SECOND_FACTOR_COPY.offered.oneWayDoor}</Notice>
+    <Card title={SECOND_FACTOR_COPY.offered.title} subtitle={SECOND_FACTOR_COPY.offered.summary}>
+      <div className="space-y-4">
+        {message ? <Notice tone="danger">{message}</Notice> : null}
+        <Notice tone="warning">{SECOND_FACTOR_COPY.offered.oneWayDoor}</Notice>
 
-          <TextArea
-            label="Recovery phrase"
-            value={mnemonic}
-            autoComplete="off"
-            spellCheck={false}
-            hint={SECOND_FACTOR_COPY.offered.phrasePrompt}
-            onChange={(event) => setMnemonic(event.target.value)}
-          />
+        <TextArea
+          label="Recovery phrase"
+          value={mnemonic}
+          autoComplete="off"
+          spellCheck={false}
+          hint={SECOND_FACTOR_COPY.offered.phrasePrompt}
+          onChange={(event) => setMnemonic(event.target.value)}
+        />
 
-          <Field
-            label="New PIN"
-            type="password"
-            inputMode="numeric"
-            maxLength={6}
-            value={pin}
-            onChange={(event) => setPin(event.target.value)}
-          />
-          <Field
-            label="Confirm PIN"
-            type="password"
-            inputMode="numeric"
-            maxLength={6}
-            value={confirmation}
-            onChange={(event) => setConfirmation(event.target.value)}
-          />
+        <Field
+          label="New PIN"
+          type="password"
+          inputMode="numeric"
+          maxLength={6}
+          value={pin}
+          onChange={(event) => setPin(event.target.value)}
+        />
+        <Field
+          label="Confirm PIN"
+          type="password"
+          inputMode="numeric"
+          maxLength={6}
+          value={confirmation}
+          onChange={(event) => setConfirmation(event.target.value)}
+        />
 
-          <Button disabled={busy} onClick={() => void upgrade()}>
-            {busy ? 'Turning it on…' : 'Turn on PIN protection'}
-          </Button>
-        </div>
-      </Card>
-    </PanelGrid>
+        <Button disabled={busy} onClick={() => void upgrade()}>
+          {busy ? 'Turning it on…' : 'Turn on PIN protection'}
+        </Button>
+      </div>
+    </Card>
   );
 }

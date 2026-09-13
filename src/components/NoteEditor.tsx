@@ -237,7 +237,7 @@ export default function NoteEditor({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto w-full max-w-5xl space-y-4">
       <div className="flex items-center gap-3">
         <button
           type="button"
@@ -305,7 +305,7 @@ export default function NoteEditor({
         </Notice>
       ) : null}
 
-      <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
+      <div className="overflow-hidden rounded-2xl bg-surface">
         <div className="border-b border-line px-3 py-2">
           <NoteEditorToolbar
             disabled={unreadable || busy}

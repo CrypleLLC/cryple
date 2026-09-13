@@ -24,26 +24,24 @@ import {
 import { CheckIcon, ClipboardIcon, CloseIcon, MinusIcon, PlusIcon } from './icons';
 
 export function PanelGrid({ children }: { children: ReactNode }) {
-  return <div className="grid gap-5 md:grid-cols-2">{children}</div>;
+  return <div className="grid gap-8 md:grid-cols-2">{children}</div>;
 }
 
 export function Card({
   title,
   subtitle,
   actions,
-  flush = false,
   children,
 }: {
   title?: string;
   subtitle?: string;
   actions?: ReactNode;
-  flush?: boolean;
   children: ReactNode;
 }) {
   return (
-    <section className="flex flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
+    <section className="flex flex-col">
       {title || subtitle || actions ? (
-        <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
+        <header className="flex items-start justify-between gap-4 pb-4">
           <div className="min-w-0">
             {title ? <h2 className="text-title text-ink">{title}</h2> : null}
             {subtitle ? <p className="mt-1 text-compact text-ink-muted">{subtitle}</p> : null}
@@ -51,7 +49,7 @@ export function Card({
           {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
         </header>
       ) : null}
-      <div className={flush ? 'min-w-0 flex-1' : 'min-w-0 flex-1 p-5'}>{children}</div>
+      <div className="min-w-0 flex-1">{children}</div>
     </section>
   );
 }
@@ -273,12 +271,14 @@ export function Modal({
   subtitle,
   onClose,
   footer,
+  wide = false,
   children,
 }: {
   title: string;
   subtitle?: string;
   onClose: () => void;
   footer?: ReactNode;
+  wide?: boolean;
   children: ReactNode;
 }) {
   const titleId = useId();
@@ -349,7 +349,9 @@ export function Modal({
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-lift outline-none"
+        className={`flex max-h-[85vh] w-full flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-lift outline-none ${
+          wide ? 'max-w-4xl' : 'max-w-2xl'
+        }`}
       >
         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div>

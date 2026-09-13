@@ -11,6 +11,8 @@ Task 11 of [tasks.md](../../../tasks/tasks.md). Endpoints per
 | --- | --- | --- |
 | `getMe` / `fetchAccountMode` | `GET /users/me` 🔒 | — |
 | `lookupUsername` | `GET /users/lookup?address=` public | — |
+| `resolveUsername` | `GET /users/resolve?username=` 🔒 | — |
+| `updateUsername` | `PUT /users/username` 🔒 | `username-update` |
 | `getPublicKeys` | `GET /users/{uuid}/public-keys` 🔒 | — |
 | `enableSecondFactor` | `POST /users/second-factor` 🔒 | `enable-second-factor` |
 | `rotateSecondFactor` | `PUT /users/password` 🔒 | `rotate-second-factor` |
@@ -53,7 +55,7 @@ what `rekeySecondFactor` is for.
 
 **The upgrade is not complete when this function returns.** A Standard account also has no local
 seed vault, because there was no PIN to wrap one under — so the caller must create it, and that
-needs the recovery phrase, which the keystore deliberately does not retain. `SecurityScreen` asks
+needs the recovery phrase, which the keystore deliberately does not retain. `PinScreen` asks
 for the phrase alongside the new PIN, checks it derives to the signed-in `user_address` before
 sending anything, then calls `createSeedVault` **after** this succeeds. Creating it first would
 leave a Standard account holding a vault if the request failed.
@@ -81,6 +83,57 @@ call fails at the account lookup before anything else. `deleteAccount` treats th
 — the token is useless either way — and clears the token and locks the keystore in a `finally`
 so local state never outlives the account.
 
+## Usernames
+
+An account holds a **set** of usernames and displays one. The wire contract is
+[front-end-endpoints.md § 8](../../../front-end-endpoints.md#8-users-endpoints), and the server's
+own account of why is
+[`users/README.md § Usernames`](../../../../api-general/internal/domain/users/README.md). The three
+facts that shape this module: a rename **adds** a name and never releases one, only the **current**
+name resolves, and a collision is one answer whoever holds the string.
+
+### Normalise before signing, not after
+
+`updateUsername` lowercases and trims, signs **that**, and sends **that**. The server normalises
+again and checks the signature against its own result, so a client that signs the raw input
+produces a request that looks valid and fails authentication. `normalizeUsername` is exported
+because `resolveUsername` and the rename screen have to apply the same rule before they compare
+anything.
+
+`USERNAME_PATTERN` mirrors `utils.IsUsername` — `^[a-z0-9][a-z0-9._-]{1,62}[a-z0-9]$`, so 3 to 64
+ASCII characters. It is checked locally first, which keeps the ordinary typo off the network;
+`MalformedUsernameError` carries `USERNAME_MALFORMED` as its `userMessage` so the provider's
+`reportError` renders it without a second mapping. The server's own `400 INVALID_PARAM` on this
+route maps to the same string, for the request that gets past the local check.
+
+### The `422` says one thing and must keep saying one thing
+
+`422 USERNAME_UNAVAILABLE` is returned identically whether the string is another account's current
+name or one it reserved — that uniformity is what stops the claim route becoming a rename oracle.
+`userMessageFor` therefore renders one message and **no copy anywhere may narrate a difference the
+server did not report**. A test asserts both cases produce the same string.
+
+### `resolveUsername` returns `undefined`, it does not throw
+
+A `404` here means *no account uses this name right now* and nothing more: it is the same answer
+for a name nobody ever held and for one somebody renamed away from. Returning `undefined` for both
+makes that structural rather than careful — there is no branch in which a caller could render
+"this user does not exist", which would claim something the server did not say. A malformed name
+returns `undefined` too, without a request, so the local check cannot be distinguished from a miss.
+Anything that is not a `404` propagates, so an outage is never mis-rendered as "no such name".
+
+**Never call it to repair a connection.** A stored username can outlive the account that held it —
+deleting an account releases its whole set — so re-resolving one to heal a lost connection would
+silently attach to whoever holds the name now. That rule belongs to sharing (Task 104) but it is
+the reason this wrapper exists at all, and the reason it has no caching.
+
+### What this module cannot show
+
+The API exposes no route for an account's **own** set of names, so a user who forgets a name they
+used before cannot be shown it. Switching back is just claiming the name again; there is no
+separate reclaim call. `GET /users/usernames` would disclose only the caller's own set and is
+defensible, but it is API surface Task 118 did not specify.
+
 ## Note on `lookupUsername`
 
 Public and unauthenticated, so it takes no context. It validates the address shape locally
@@ -89,6 +142,8 @@ before sending, because the server's `400` carries no message to render.
 ## Tests
 
 `users.test.ts` stubs `fetch` and verifies each signature against the fixture-derived public
-key by rebuilding its payload, checks that `enable-second-factor` sends no `password` while
+key by rebuilding its payload, pins that `username-update` signs the normalised form of a
+mixed-case input with surrounding space and that the collision and format failures render their
+own copy, pins that a reserved and an unknown name resolve to the same `undefined`, checks that `enable-second-factor` sends no `password` while
 rotation presents the current one, exercises both branches of the ambiguous `401`, and
 asserts the held token is replaced after each transition.

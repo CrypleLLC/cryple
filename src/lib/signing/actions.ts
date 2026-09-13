@@ -19,6 +19,7 @@ export const ACTIONS = {
     signer: 'owner',
   },
   'account-delete': { args: ['user_address'], secondFactor: true, signer: 'owner' },
+  'username-update': { args: ['username'], secondFactor: true, signer: 'owner' },
   'secret-delete': {
     args: ['secret_id'],
     secondFactor: true,
@@ -43,6 +44,19 @@ export const ACTIONS = {
     signer: 'owner',
     variadic: true,
   },
+  'connection-invite': {
+    args: ['recipient_username', 'pqxdh_blob'],
+    secondFactor: true,
+    signer: 'owner',
+  },
+  'connection-accept': { args: ['connection_id'], secondFactor: true, signer: 'owner' },
+  'connection-delete': { args: ['connection_id'], secondFactor: true, signer: 'owner' },
+  'share-create': {
+    args: ['connection_id', 'item_type', 'item_id'],
+    secondFactor: true,
+    signer: 'owner',
+  },
+  'share-delete': { args: ['share_id'], secondFactor: true, signer: 'owner' },
 } as const satisfies Record<string, ActionSpec>;
 
 export type ActionLabel = keyof typeof ACTIONS;

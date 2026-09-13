@@ -1,9 +1,28 @@
-import { ApiError, assertCanonicalUuid, request } from '@/lib/api';
+import { ApiError, assertCanonicalUuid, request, USERNAME_MALFORMED } from '@/lib/api';
 import { deriveServerAuthToken } from '@/lib/pin';
 import { signActionEnvelope } from '@/lib/signing';
 import { requireToken, type AuthedContext } from '@/lib/context';
 
 const USER_ADDRESS_PATTERN = /^[0-9a-f]{64}$/;
+
+export const USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{1,62}[a-z0-9]$/;
+
+export class MalformedUsernameError extends Error {
+  readonly userMessage = USERNAME_MALFORMED;
+
+  constructor(value: string) {
+    super(`"${value}" does not match ${USERNAME_PATTERN.source}`);
+    this.name = 'MalformedUsernameError';
+  }
+}
+
+export function normalizeUsername(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+export function isUsername(value: string): boolean {
+  return USERNAME_PATTERN.test(value);
+}
 
 export interface AccountRecord {
   user_address: string;
@@ -13,8 +32,14 @@ export interface AccountRecord {
   created_at: string;
 }
 
+export interface UsernameResolution {
+  uuid: string;
+  username: string;
+}
+
 export interface PublicKeysRecord {
   uuid: string;
+  user_address: string;
   encryption_public_key_x25519: string;
   encryption_public_key_mlkem: string;
 }
@@ -50,6 +75,62 @@ export async function lookupUsername(
     timeoutMs: options.timeoutMs,
   });
   return response.data.username;
+}
+
+export async function updateUsername(
+  context: AuthedContext,
+  username: string,
+): Promise<string> {
+  const claimed = normalizeUsername(username);
+  if (!isUsername(claimed)) {
+    throw new MalformedUsernameError(username);
+  }
+
+  const envelope = signActionEnvelope(
+    'username-update',
+    [claimed],
+    {
+      privateKey: context.session.identityPrivateKey,
+      serverAuthToken: context.session.serverAuthToken(),
+    },
+    { paranoid: context.paranoid },
+  );
+
+  await request<void>({
+    method: 'PUT',
+    path: '/users/username',
+    token: requireToken(context),
+    timeoutMs: context.timeoutMs,
+    body: { username: claimed, ...envelope },
+  });
+
+  return claimed;
+}
+
+export async function resolveUsername(
+  context: AuthedContext,
+  username: string,
+): Promise<UsernameResolution | undefined> {
+  const wanted = normalizeUsername(username);
+  if (!isUsername(wanted)) {
+    return undefined;
+  }
+
+  try {
+    const response = await request<UsernameResolution>({
+      method: 'GET',
+      path: '/users/resolve',
+      query: { username: wanted },
+      token: requireToken(context),
+      timeoutMs: context.timeoutMs,
+    });
+    return response.data;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return undefined;
+    }
+    throw error;
+  }
 }
 
 export async function getPublicKeys(

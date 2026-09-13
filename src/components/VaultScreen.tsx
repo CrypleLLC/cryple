@@ -12,8 +12,9 @@ import {
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
 import { useVaultReveal } from './VaultReveal';
-import { TrashIcon, VaultIcon } from './icons';
+import { SharingIcon, TrashIcon, VaultIcon } from './icons';
 import { Button, Card, CopyButton, Empty, Field, Notice, PanelGrid, Spinner } from './ui';
+import ShareItemDialog from './ShareItemDialog';
 
 export default function VaultScreen() {
   const context = useAuthedContext();
@@ -23,6 +24,7 @@ export default function VaultScreen() {
   const [rows, setRows] = useState<VaultRow[]>();
   const [message, setMessage] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [sharing, setSharing] = useState<string>();
 
   const [name, setName] = useState('');
   const [value, setValue] = useState('');
@@ -79,11 +81,10 @@ export default function VaultScreen() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-8">
       <Card
         title="Stored items"
         subtitle="Names and values are encrypted on this device before they are stored."
-        flush
       >
         {message ? (
           <div className="px-5 pt-4">
@@ -125,6 +126,14 @@ export default function VaultScreen() {
                       <div className="flex justify-end gap-2">
                         {row.readable ? <CopyButton value={row.value} label="Copy" /> : null}
                         <Button
+                          variant="ghost"
+                          aria-label={`Share ${row.name}`}
+                          onClick={() => setSharing(row.id)}
+                        >
+                          <SharingIcon />
+                          Share
+                        </Button>
+                        <Button
                           variant="danger"
                           disabled={busy}
                           onClick={() => void removeSecret(row.id)}
@@ -141,6 +150,10 @@ export default function VaultScreen() {
           </div>
         )}
       </Card>
+
+      {sharing ? (
+        <ShareItemDialog itemType="secret" itemId={sharing} onClose={() => setSharing(undefined)} />
+      ) : null}
 
       <PanelGrid>
         <Card title="Add a secret">
