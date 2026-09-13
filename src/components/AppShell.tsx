@@ -46,6 +46,7 @@ interface NavItem {
   icon: ComponentType<IconProps>;
   screen: ComponentType;
   actions?: ComponentType;
+  miniatures?: boolean;
 }
 
 const NAV_ITEMS = [
@@ -63,6 +64,7 @@ const NAV_ITEMS = [
     description: 'Letters and instructions you write, encrypted before they leave this device.',
     icon: NotesIcon,
     screen: NotesScreen,
+    miniatures: true,
   },
   {
     id: 'documents',
@@ -70,6 +72,7 @@ const NAV_ITEMS = [
     description: 'Long-form writing, encrypted here and synced across your devices.',
     icon: DocumentsIcon,
     screen: DocumentsScreen,
+    miniatures: true,
   },
   {
     id: 'shared',
@@ -77,6 +80,7 @@ const NAV_ITEMS = [
     description: 'What other accounts have sent you, decrypted on this device.',
     icon: SharingIcon,
     screen: SharedScreen,
+    miniatures: true,
   },
   {
     id: 'drive',
@@ -84,6 +88,7 @@ const NAV_ITEMS = [
     description: 'Files, encrypted on this device before they are stored.',
     icon: DriveIcon,
     screen: DriveScreen,
+    miniatures: true,
   },
 ] as const satisfies readonly NavItem[];
 
@@ -109,6 +114,7 @@ export default function AppShell() {
   const current: NavItem = NAV_ITEMS.find((item) => item.id === tab) ?? NAV_ITEMS[0];
   const Screen = current.screen;
   const ScreenActions = current.actions;
+  const measure = current.miniatures === true ? 'max-w-none' : 'max-w-6xl';
 
   function run(exit: SessionExit) {
     if (exit.confirm !== undefined && confirming?.id !== exit.id) {
@@ -150,7 +156,6 @@ export default function AppShell() {
                 {lockable ? <LockButton exit={lockable} onRun={run} /> : null}
                 <AccountMenu
                   username={account?.username}
-                  paranoid={paranoid}
                   logOut={leave}
                   onSettings={() => setSettingsOpen(true)}
                   onLogOut={run}
@@ -170,25 +175,26 @@ export default function AppShell() {
             </nav>
           </header>
 
-          <header className="sticky top-[var(--staging-banner-h)] z-10 hidden items-center justify-between gap-4 border-b border-line bg-surface/90 px-6 py-4 backdrop-blur md:flex">
-            <div className="min-w-0">
-              <h1 className="text-headline-lg text-ink">{current.label}</h1>
-              <p className="mt-0.5 truncate text-compact text-ink-muted">{current.description}</p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {ScreenActions ? <ScreenActions /> : null}
-              {lockable ? <LockButton exit={lockable} onRun={run} /> : null}
-              <AccountMenu
-                username={account?.username}
-                paranoid={paranoid}
-                logOut={leave}
-                onSettings={() => setSettingsOpen(true)}
-                onLogOut={run}
-              />
+          <header className="sticky top-[var(--staging-banner-h)] z-10 hidden border-b border-line bg-surface/90 py-4 backdrop-blur md:block">
+            <div className={`mx-auto flex w-full ${measure} items-center justify-between gap-4 px-6`}>
+              <div className="min-w-0">
+                <h1 className="text-headline-lg text-ink">{current.label}</h1>
+                <p className="mt-0.5 truncate text-compact text-ink-muted">{current.description}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {ScreenActions ? <ScreenActions /> : null}
+                {lockable ? <LockButton exit={lockable} onRun={run} /> : null}
+                <AccountMenu
+                  username={account?.username}
+                  logOut={leave}
+                  onSettings={() => setSettingsOpen(true)}
+                  onLogOut={run}
+                />
+              </div>
             </div>
           </header>
 
-          <main className="w-full flex-1 space-y-5 p-4 md:p-6">
+          <main className={`mx-auto w-full ${measure} flex-1 space-y-8 p-4 md:p-6`}>
             {confirming?.confirm !== undefined ? (
               <Notice tone="warning">
                 <p>{confirming.confirm}</p>

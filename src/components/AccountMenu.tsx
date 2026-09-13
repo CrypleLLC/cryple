@@ -2,18 +2,15 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { accountInitial, ACCOUNT_MENU_COPY, type SessionExit } from '@/lib/app';
-import { Badge } from './ui';
 import { LogOutIcon, SecurityIcon } from './icons';
 
 export default function AccountMenu({
   username,
-  paranoid,
   logOut,
   onSettings,
   onLogOut,
 }: {
   username: string | undefined;
-  paranoid: boolean;
   logOut: SessionExit;
   onSettings: () => void;
   onLogOut: (exit: SessionExit) => void;
@@ -63,7 +60,6 @@ export default function AccountMenu({
         <span className="hidden min-w-0 lg:block">
           <span className="block truncate text-compact font-semibold text-ink">{username}</span>
         </span>
-        <Badge tone={paranoid ? 'brand' : 'neutral'}>{paranoid ? 'Paranoid' : 'Standard'}</Badge>
       </button>
 
       {open ? (

@@ -20,7 +20,8 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `note-surface.ts` | DOM ↔ note document, for the `contentEditable` surface |
 | `DocumentsScreen.tsx` | The documents grid of page miniatures — opens each document in its own tab |
 | `DriveScreen.tsx` | The drive: file grid, drag-and-drop upload, progress, download, selection and delete |
-| `SecurityScreen.tsx` | The account section — the username panel, and the one-way upgrade to a PIN |
+| `UsernameScreen.tsx` | The Settings **Username** tab — one panel, `UsernameCard` |
+| `PinScreen.tsx` | The Settings **PIN** tab — the mode when it is on, the one-way upgrade when it is not |
 | `UsernameCard.tsx` | The rename panel: the current name, the claim, and what a rename does |
 | `StorageMeter.tsx` | The account's storage bar, in the sidebar corner — stored bytes solid, reservations behind them |
 | `documents/DocumentWorkspace.tsx` | The `/docs/[id]` page: title, toolbar, A4 sheet, counts, save status |
@@ -52,17 +53,22 @@ panel; the Vault's global reveal toggle is the first of them. State shared betwe
 and its screen lives in a provider wrapping the shell, as `VaultReveal.tsx` does, since the header
 sits outside the screen's tree.
 
-#### The username panel lives on the Security screen
+#### The username panel is its own Settings tab
 
-There is no Settings section, and adding one for a single field would split account chrome across
-two places. `UsernameCard` renders in both modes of `SecurityScreen`, first in the `PanelGrid`,
-so a Paranoid account — which has nothing left to configure about signing in — still has a panel
-to act on rather than a screen that only states a fact.
+It spent a while sharing a **Security** screen with the PIN upgrade, two unrelated panels side by
+side under a word vague enough to cover both. They split on 2026-09-12 into **Username** and
+**PIN**, which is what a person is actually looking for when they open Settings — you go there to
+change your name or to turn the PIN on, never to visit "security". `UsernameScreen` is a one-line
+wrapper around `UsernameCard` and exists only to give the tab a panel of its own; `PinScreen` holds
+what was the rest of `SecurityScreen`.
 
-Everything it decides is in [`lib/app/username.ts`](../lib/app/README.md#renaming-the-account);
+Neither uses `PanelGrid` any more. With the tab menu taking a column of the modal, one card in a
+two-column grid would sit in half the remaining width with nothing beside it.
+
+Everything the rename decides is in [`lib/app/username.ts`](../lib/app/README.md#renaming-the-account);
 the component sends the claim, calls `refreshAccount` so the header avatar and name follow the
 rename, and clears the field only on success. The two sentences about what a rename does are
-rendered unconditionally, not behind a disclosure — they are the screen's reason for existing as
+rendered unconditionally, not behind a disclosure — they are the panel's reason for existing as
 much as the field is.
 
 The second factor is **not** re-prompted here. A Paranoid session already holds its
@@ -89,6 +95,50 @@ system itself flags for text-dense surfaces:
 Shape follows the same system: `rounded-lg` (8px) for buttons and controls, `rounded-2xl` (16px)
 for cards, panels and modals, `rounded-full` for badges. Depth is three shadows — `shadow-card`
 at rest, `shadow-raised` for a lifted control, `shadow-lift` for a hover lift or a modal.
+
+**A block is not drawn at all.** `Card` has no border, no background, no shadow and no padding of
+its own — it is a heading, an optional subtitle, and the content, in a `flex flex-col`. Blocks are
+separated by whitespace and by their titles, not by panels. Everything sits directly on the ground.
+
+This landed in two steps on 2026-09-12 and the first one was wrong: the border came off but the
+white surface and `shadow-card` stayed, which just traded an outline for a raised panel. The
+instruction was never "draw the box differently", it was "stop drawing the box". **A card is
+positioning, not decoration.** With no panel doing the separating, spacing carries it: screens
+stack at `space-y-8` and `PanelGrid` is `gap-8`, up from `5`.
+
+The `flush` prop went with the padding. It existed to suppress `p-5` for tables and tile grids;
+with no padding to suppress it meant nothing, so it was deleted rather than left as a prop that
+does nothing.
+
+What is still drawn is the stuff doing a different job: the sidebar and sticky-header rules, which
+separate chrome from content scrolling underneath; input and secondary-button borders, which are
+affordances; table row dividers, which are how rows stay scannable; and the thumbnail rings on
+drive, note and document tiles, which frame an image rather than a panel. **Removing one of those
+is not "consistency" — it is deleting a signal.**
+
+**The note editor keeps `bg-surface`, and that is deliberate.** It is the area you type into, in
+the same family as `Field` and `TextArea`, and those keep a light background because writing on the
+grey ground is worse to read. Its shadow went, so it is a writing surface rather than a highlighted
+panel. The documents editor's `.cryple-sheet` keeps its surface and shadow for the same reason and
+one more: an A4 page is literally paper.
+
+### Reading widths are capped; miniature grids are not
+
+`main` is `mx-auto w-full`, and the cap depends on what the screen shows. Beyond about 1150px a
+line of prose or a table row stops being generous and starts being hard to read — actions a metre
+from the name they belong to, a two-column grid with a chasm down the middle. **A grid of tiles has
+the opposite problem**: capping it wastes rows and forces scrolling past space that was right
+there.
+
+So `NavItem.miniatures` decides. Notes, Documents, Shared and Drive set it and render at
+`max-w-none`; Vault stays `max-w-6xl`. The desktop header's inner row uses the same value, so the
+page title always sits on the left edge of whatever is under it. The cap is on the content, never
+on the shell — the sidebar and sticky header span the window either way.
+
+**`NoteEditor` carries its own `max-w-5xl`,** because it lives inside the full-width Notes screen
+but is prose, not tiles. Without it, opening a note on a wide monitor gives you a line length
+nobody wants to write in. The documents editor needs no equivalent: `/docs/[id]` is its own route
+with its own A4 measure.
 
 Type is Inter with JetBrains Mono for data, both from `next/font`, exposed as `font-sans` /
 `font-mono`. The scale is named rather than numeric: `text-caption` (11px, uppercase, tracked —
@@ -168,14 +218,48 @@ up behind them. A control you need in two seconds does not belong two clicks dee
 exists when the device remembers the recovery phrase; `lockExit` returns nothing otherwise, and the
 button is simply absent rather than present and broken.
 
-**Settings is a modal with tabs**, `SETTINGS_TABS` in `lib/app/settings.ts`. Sharing and Security
-are the two, and it takes the `wide` variant to give them room. Neither is a place you keep things,
-so neither earned a permanent seat in the sidebar.
+**Settings is a modal with tabs**, `SETTINGS_TABS` in `lib/app/settings.ts`. Sharing, Username and
+PIN are the three, and it takes the `wide` variant to give them room. None of them is a place you
+keep things, so none earned a permanent seat in the sidebar.
+
+**The tabs are a vertical menu down the left edge of the modal, not a row across the top.** The
+panels are settings pages of real height, and a horizontal strip above them reads as a step in a
+flow rather than a place you can move between freely. Below `sm` the row collapses to a column, so
+the menu sits above the panel as a horizontal strip again — a 400px-wide screen has no room for a
+side rail.
+
+**The modal is a fixed 40rem tall above `sm`, and the panel scrolls inside it.** Left to size
+itself, it jumped between 516px and 735px as you moved between tabs — the close button and the menu
+items walked up and down the screen under the cursor, which is what makes a tabbed dialog feel
+unstable. 40rem is measured, not guessed: it clears the tallest panel, the Standard account's PIN
+upgrade form at 622px, with room to spare. The cost is paid by the short panels, which show empty
+space below them; that is the trade a fixed size *is*, and a menu that stays still is worth more
+than a tight box.
+
+The height lives on the two-column container, not on `Modal` itself, and the panel column carries
+`sm:overflow-y-auto`. So content taller than the box — a Sharing tab with many connections —
+scrolls **within** the panel while the menu stays put, and the dialog's own `max-h-[85vh]` still
+shrinks the whole thing on a short viewport. Below `sm` none of it applies: the height is auto and
+the modal body scrolls as it always did.
+
+**The account's mode is read on the PIN tab, and nowhere else.** The header's account button used
+to carry a `Paranoid` / `Standard` badge; it was removed on 2026-09-12. The mode is not something
+you act on from the header — it changes in exactly one place, through a deliberate one-way upgrade
+— so a permanent badge in the chrome spent a slot on a fact that is checked rarely and changed
+once. The PIN tab says *PIN protection is on* when it is, and offers the upgrade when it is not,
+which is the same fact in words that mean something and a control next to it. `AccountMenu` no
+longer takes a `paranoid` prop at all, rather than taking one it ignores.
 
 **But what arrived *is* a place you keep things, so it stayed in the sidebar.** `SharingScreen` in
 Settings is only the relationships — invite, review, connect, disconnect. The items other people
 sent you are the **Shared** tab, rendered as a tile grid like the drive, because that is what they
 are to the person looking at them.
+
+**It stacks in one column rather than a `PanelGrid`:** invite form, then anything waiting for you,
+then the connections list. Side by side, the invite form and the list read as two equal choices
+when they are really a sequence — you invite someone, they appear in the list. The single column
+also gives the fingerprint comparison in `ConnectionInvitation` the full width it deserves, instead
+of squeezing two 24-character codes and their accept/decline buttons into half a modal.
 
 ### Shared reads every tile before it can draw one
 
@@ -211,11 +295,12 @@ middle of a list. It is a focused, one-item task with an obvious end, which is e
 modal primitive is for — it traps focus, closes on Escape or backdrop, and restores focus to the
 share button you came from. It carries no explicit *Close* button because the modal header has one.
 
-**The dialog states no rules.** The consequences of sharing — a recipient can copy what you send,
-deleting your original breaks their copy, removing a share cannot un-read it — are read once in the
-Sharing settings tab, next to the invitation that creates the relationship in the first place. They
-belong where you decide to trust someone, not repeated on every send, where they become furniture
-nobody reads.
+**The dialog states no rules.** One sentence covers sharing's consequences — *anything you send can
+be copied by the person you send it to* — and it is read once on the invitation card in the Sharing
+settings tab, where you decide to trust someone, not reprinted on every send where it becomes
+furniture nobody reads. The two further rules that once appeared here (deleting your original breaks
+their copy; removing a share cannot un-read it) were cut on 2026-09-12 for the same reason; see
+`lib/sharing/README.md` § What the UI must never claim for what still holds regardless.
 
 ## Session custody
 

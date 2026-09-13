@@ -118,7 +118,6 @@ function OriginStep({ dispatch }: { dispatch: Dispatch }) {
   return (
     <Card
       subtitle="Your recovery phrase is the account. Nothing on our servers can replace it."
-      flush
     >
       <div className="flex border-b border-line px-5">
         {(

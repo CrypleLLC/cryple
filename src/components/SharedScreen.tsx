@@ -108,7 +108,7 @@ export default function SharedScreen() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-8">
       {message ? <Notice tone="danger">{message}</Notice> : null}
 
       {items.length === 0 ? (

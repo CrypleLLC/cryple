@@ -3,12 +3,14 @@ import { isSettingsTab, SETTINGS_TABS } from './settings';
 import { lockExit, logOutExit, sessionExits } from './sign-out';
 
 describe('the settings tabs', () => {
-  it('opens on sharing, and holds both screens that left the sidebar', () => {
-    expect(SETTINGS_TABS.map((tab) => tab.id)).toEqual(['sharing', 'security']);
+  it('opens on sharing, then splits signing in into the two things you can change', () => {
+    expect(SETTINGS_TABS.map((tab) => tab.id)).toEqual(['sharing', 'username', 'pin']);
   });
 
   it('recognises only its own tab ids', () => {
-    expect(isSettingsTab('security')).toBe(true);
+    expect(isSettingsTab('pin')).toBe(true);
+    expect(isSettingsTab('username')).toBe(true);
+    expect(isSettingsTab('security')).toBe(false);
     expect(isSettingsTab('vault')).toBe(false);
   });
 });

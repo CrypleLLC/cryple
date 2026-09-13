@@ -64,22 +64,28 @@ connection silently attaches to whoever holds that name now.
 
 **A lost connection is a new invitation and a fresh fingerprint comparison. Never a repair.**
 
-## What the UI must say, and must not
+## What the UI must never claim
+
+- **Re-sharing cannot be prevented.** Never claim it can. The honest answer is the explicit *Copy to
+  my own account*, which re-encrypts under a **fresh** DEK — reusing the shared one would leave the
+  original owner holding a key that opens the recipient's copy for ever. This is the one rule the UI
+  states outright, as `reshareWarning` on the invitation card in the Sharing settings tab.
+
+Two further facts hold and are **deliberately not surfaced** as of 2026-09-12, by the product
+owner's decision after they were built and reviewed in the browser:
 
 - **Deleting the original breaks the recipient.** That is the feature, not a bug.
 - **Revocation is prospective.** Removing a share cuts off future reads through the API and nothing
-  more; it cannot claw back a DEK the recipient's client already holds. Never imply a share can be
-  un-read.
-- **Re-sharing cannot be prevented.** Never claim it can. The honest answer is the explicit *Copy to
-  my own account*, which re-encrypts under a **fresh** DEK — reusing the shared one would leave the
-  original owner holding a key that opens the recipient's copy for ever.
+  more; it cannot claw back a DEK the recipient's client already holds.
 
-**All three are said in one place: the invitation card in the Sharing settings tab.** They are
-properties of the relationship, not of an individual send, so they are read where the relationship
-is created rather than reprinted in the send dialog. Repeating a warning on every share is how a
-warning stops being read. `SHARING_COPY.rulesTitle` heads the block; the three strings underneath
-are asserted by `lib/app/sharing.test.ts`, so deleting one fails a test rather than quietly removing
-a disclosure.
+They were written as `deleteOriginalWarning` and `revokeWarning`, shown first inside the send
+dialog and then moved to the invitation card; both strings and their copy tests are now deleted
+rather than left unrendered, so nothing in the tree claims a disclosure the screen does not make.
+**Not stating them is not licence to contradict them.** No copy anywhere may imply a share can be
+un-read, or that a recipient keeps access after the original is deleted — the constraints are
+[Task 102](../../../../tasks.md#task-102) D2 and D3 and they did not change. Re-adding the two
+sentences is a one-line edit to `SHARING_COPY` plus a `<Notice>`; the reason they left is that a
+warning reprinted at every step is one nobody reads.
 
 ## Reading what arrived
 

@@ -193,7 +193,7 @@ export default function DocumentsScreen() {
       )}
 
       {tiles.length === 0 ? (
-        <Card flush>
+        <Card>
           <Empty icon={<DocumentsIcon className="h-6 w-6" />}>
             Long-form writing, encrypted on this device before it is stored. Documents open in
             their own tab.

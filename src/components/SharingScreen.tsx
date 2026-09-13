@@ -16,7 +16,7 @@ import {
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
 import ConnectionInvitation from './ConnectionInvitation';
-import { Badge, Button, Card, Empty, Field, Notice, PanelGrid } from './ui';
+import { Badge, Button, Card, Empty, Field, Notice } from './ui';
 import { SharingIcon } from './icons';
 
 const EMPTY_GROUPS: ConnectionGroups = { awaitingMe: [], awaitingThem: [], accepted: [] };
@@ -83,7 +83,7 @@ export default function SharingScreen() {
   }
 
   return (
-    <PanelGrid>
+    <div className="space-y-8">
       {message ? <Notice tone="danger">{message}</Notice> : null}
       {notice ? <Notice tone="success">{notice}</Notice> : null}
 
@@ -100,14 +100,7 @@ export default function SharingScreen() {
           <Button onClick={invite} disabled={busy || claim.trim() === ''}>
             {busy ? SHARING_COPY.inviteSending : SHARING_COPY.inviteSubmit}
           </Button>
-          <Notice tone="warning">
-            <p className="font-semibold">{SHARING_COPY.rulesTitle}</p>
-            <ul className="mt-2 list-disc space-y-1.5 pl-4">
-              <li>{SHARING_COPY.reshareWarning}</li>
-              <li>{SHARING_COPY.deleteOriginalWarning}</li>
-              <li>{SHARING_COPY.revokeWarning}</li>
-            </ul>
-          </Notice>
+          <Notice tone="warning">{SHARING_COPY.reshareWarning}</Notice>
         </div>
       </Card>
 
@@ -158,7 +151,6 @@ export default function SharingScreen() {
           </ul>
         )}
       </Card>
-
-    </PanelGrid>
+    </div>
   );
 }
