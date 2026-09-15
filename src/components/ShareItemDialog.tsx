@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
+  ConnectionNotTrustedError,
   deleteShare,
   listConnections,
   listItemRecipients,
@@ -10,7 +11,7 @@ import {
   type ItemRecipientRecord,
   type ItemType,
 } from '@/lib/sharing';
-import { ITEM_LABELS, sendableConnections, SHARING_COPY } from '@/lib/app';
+import { ITEM_LABELS, sendableConnections, sendRefusal, SHARING_COPY } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
 import { Button, Empty, Modal, Notice, Select } from './ui';
 import { SharingIcon } from './icons';
@@ -64,7 +65,9 @@ export default function ShareItemDialog({
       setChosen('');
       await refresh();
     } catch (error) {
-      setMessage(reportError(error));
+      setMessage(
+        error instanceof ConnectionNotTrustedError ? sendRefusal(error.trust) : reportError(error),
+      );
     } finally {
       setBusy(false);
     }

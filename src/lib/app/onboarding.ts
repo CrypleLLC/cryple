@@ -3,14 +3,7 @@ import { validatePin, type PinRejection } from '@/lib/pin';
 
 export type OnboardingOrigin = 'generate' | 'import';
 
-export type OnboardingStep =
-  | 'origin'
-  | 'backup'
-  | 'verify'
-  | 'import'
-  | 'pin'
-  | 'enrolling'
-  | 'done';
+export type OnboardingStep = 'origin' | 'import' | 'pin' | 'enrolling' | 'recovery-kit' | 'done';
 
 export interface OnboardingState {
   step: OnboardingStep;
@@ -19,17 +12,19 @@ export interface OnboardingState {
   mnemonic?: string;
   pin?: string;
   paranoid?: boolean;
+  username?: string;
+  recoveryKitSaved?: boolean;
   error?: string;
 }
 
 export type OnboardingEvent =
   | { type: 'choose-origin'; origin: OnboardingOrigin; wordCount?: MnemonicWordCount }
   | { type: 'mnemonic-ready'; mnemonic: string }
-  | { type: 'backup-confirmed' }
   // One event, because mode and PIN are one decision on one screen: the PIN is
   // always set, and `paranoid` only says whether it is also the server factor.
   | { type: 'pin-chosen'; pin: string; paranoid: boolean }
-  | { type: 'enrolled' }
+  | { type: 'enrolled'; username: string }
+  | { type: 'recovery-kit-saved' }
   | { type: 'failed'; message: string }
   | { type: 'back' };
 
@@ -72,9 +67,21 @@ export const PIN_STEP_COPY = {
   signIn: 'Enter the PIN for this device.',
 } as const;
 
-export const SEED_WARNING =
-  'Write these words down and store them offline. Anyone who has them has your vault, and nobody ' +
-  'can restore them for you if you lose them.';
+export const RECOVERY_KIT_STEP_COPY = {
+  title: 'Save your recovery kit',
+  subtitle:
+    'A one-page PDF with your username, your recovery phrase and a QR code you can scan to sign ' +
+    'in from the mobile app.',
+  warning:
+    'Print it or keep it on storage that stays offline. Anyone who has your recovery phrase has ' +
+    'your vault, and nobody can restore it for you if you lose it.',
+  download: 'Download recovery kit',
+  downloadAgain: 'Download again',
+  preparing: 'Preparing your kit…',
+  reveal: 'Show my phrase',
+  failed: 'Your recovery kit could not be created. Try again.',
+  continue: 'Continue to my vault',
+} as const;
 
 export function describePinRejection(reason: PinRejection): string {
   return PIN_REJECTION_COPY[reason];
@@ -125,50 +132,12 @@ export function mnemonicSentence(mnemonic: string): string {
   return mnemonicWords(mnemonic).join(' ');
 }
 
-export function buildVerificationChallenge(
-  mnemonic: string,
-  count = 3,
-  pick: (max: number) => number = (max) => Math.floor(Math.random() * max),
-): number[] {
-  const total = mnemonicWords(mnemonic).length;
-  const chosen = new Set<number>();
-
-  while (chosen.size < Math.min(count, total)) {
-    chosen.add(pick(total));
-  }
-
-  return [...chosen].sort((a, b) => a - b);
-}
-
-export function verifyBackup(
-  mnemonic: string,
-  indices: readonly number[],
-  answers: readonly string[],
-): boolean {
-  const words = mnemonicWords(mnemonic);
-
-  return (
-    indices.length === answers.length &&
-    indices.every(
-      (index, position) =>
-        words[index] !== undefined &&
-        words[index] === answers[position].normalize('NFKD').trim().toLowerCase(),
-    )
-  );
-}
-
 export function previousStep(state: OnboardingState): OnboardingStep | undefined {
   switch (state.step) {
-    case 'backup':
     case 'import':
       return 'origin';
-    case 'verify':
-      return 'backup';
     case 'pin':
-      if (state.origin === undefined) {
-        return 'origin';
-      }
-      return state.origin === 'import' ? 'import' : 'verify';
+      return state.origin === 'import' ? 'import' : 'origin';
     default:
       return undefined;
   }
@@ -176,6 +145,10 @@ export function previousStep(state: OnboardingState): OnboardingStep | undefined
 
 export function canGoBack(state: OnboardingState): boolean {
   return previousStep(state) !== undefined;
+}
+
+export function canEnterVault(state: OnboardingState): boolean {
+  return state.step === 'recovery-kit' && state.recoveryKitSaved === true;
 }
 
 export function onboardingReducer(
@@ -186,7 +159,7 @@ export function onboardingReducer(
     case 'choose-origin':
       return {
         ...state,
-        step: event.origin === 'generate' ? 'backup' : 'import',
+        step: event.origin === 'generate' ? 'pin' : 'import',
         origin: event.origin,
         wordCount: event.wordCount ?? state.wordCount,
         error: undefined,
@@ -199,15 +172,10 @@ export function onboardingReducer(
       return {
         ...state,
         mnemonic: event.mnemonic,
-        step: state.origin === 'generate' ? state.step : 'pin',
+        step: 'pin',
         error: undefined,
       };
     }
-
-    case 'backup-confirmed':
-      return state.step === 'backup'
-        ? { ...state, step: 'verify', error: undefined }
-        : { ...state, step: 'pin', error: undefined };
 
     case 'pin-chosen': {
       const feedback = checkPin(event.pin);
@@ -224,7 +192,16 @@ export function onboardingReducer(
     }
 
     case 'enrolled':
-      return { ...state, step: 'done', error: undefined };
+      return {
+        ...state,
+        step: state.origin === 'generate' ? 'recovery-kit' : 'done',
+        username: event.username,
+        pin: undefined,
+        error: undefined,
+      };
+
+    case 'recovery-kit-saved':
+      return state.step === 'recovery-kit' ? { ...state, recoveryKitSaved: true } : state;
 
     case 'failed': {
       if (state.step !== 'enrolling') {

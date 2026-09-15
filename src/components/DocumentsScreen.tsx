@@ -26,6 +26,7 @@ import {
   type DocumentTile,
   type IconSize,
 } from '@/lib/app';
+import { openWithSessionHandoff } from '@/lib/session/handoff';
 import { useAuthedContext, useCryple } from './CrypleProvider';
 import { CheckIcon, DocumentsIcon, PlusIcon, SharingIcon, TrashIcon } from './icons';
 import { Button, Card, Empty, Notice, SizeStepper, Spinner } from './ui';
@@ -80,7 +81,7 @@ export default function DocumentsScreen() {
   );
 
   const openInNewTab = useCallback((id: string) => {
-    window.open(documentHref(id), '_blank', 'noopener');
+    openWithSessionHandoff(documentHref(id));
   }, []);
 
   const create = useCallback(async () => {

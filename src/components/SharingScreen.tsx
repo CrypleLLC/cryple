@@ -1,17 +1,21 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   acceptConnection,
   deleteConnection,
   inviteByUsername,
   listConnections,
   UnknownRecipientError,
+  verifyConnection,
   type ConnectionRecord,
+  type ConnectionTrust,
 } from '@/lib/sharing';
 import {
+  connectionsToVerify,
   groupConnections,
   SHARING_COPY,
+  trustAlarm,
   type ConnectionGroups,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
@@ -26,19 +30,45 @@ export default function SharingScreen() {
   const { reportError } = useCryple();
 
   const [groups, setGroups] = useState<ConnectionGroups>(EMPTY_GROUPS);
+  const [trust, setTrust] = useState<Readonly<Record<string, ConnectionTrust>>>({});
   const [claim, setClaim] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [reviewing, setReviewing] = useState<ConnectionRecord>();
+  const latestCheck = useRef(0);
+
+  const checkConnections = useCallback(
+    async (connections: readonly ConnectionRecord[]) => {
+      const check = ++latestCheck.current;
+      const checked = connectionsToVerify(connections);
+      const results = await Promise.allSettled(
+        checked.map((connection) => verifyConnection(context, connection)),
+      );
+      if (check !== latestCheck.current) {
+        return;
+      }
+
+      const next: Record<string, ConnectionTrust> = {};
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          next[checked[index].id] = result.value;
+        }
+      });
+      setTrust(next);
+    },
+    [context],
+  );
 
   const refresh = useCallback(async () => {
     try {
-      setGroups(groupConnections(await listConnections(context)));
+      const connections = await listConnections(context);
+      setGroups(groupConnections(connections));
+      void checkConnections(connections);
     } catch (error) {
       setMessage(reportError(error));
     }
-  }, [context, reportError]);
+  }, [context, reportError, checkConnections]);
 
   useEffect(() => {
     void refresh();
@@ -135,22 +165,50 @@ export default function SharingScreen() {
         ) : (
           <ul className="space-y-3">
             {groups.accepted.map((connection) => (
-              <li key={connection.id} className="flex items-center justify-between gap-3">
-                <span className="font-mono text-ink">{connection.username}</span>
+              <ConnectionRow key={connection.id} connection={connection} trust={trust[connection.id]}>
                 <Button variant="ghost" onClick={() => disconnect(connection)}>
                   {SHARING_COPY.disconnect}
                 </Button>
-              </li>
+              </ConnectionRow>
             ))}
             {groups.awaitingThem.map((connection) => (
-              <li key={connection.id} className="flex items-center justify-between gap-3">
-                <span className="font-mono text-ink-soft">{connection.username}</span>
+              <ConnectionRow key={connection.id} connection={connection} trust={trust[connection.id]}>
                 <Badge tone="neutral">{SHARING_COPY.pendingOutbound}</Badge>
-              </li>
+              </ConnectionRow>
             ))}
           </ul>
         )}
       </Card>
     </div>
+  );
+}
+
+function ConnectionRow({
+  connection,
+  trust,
+  children,
+}: {
+  connection: ConnectionRecord;
+  trust: ConnectionTrust | undefined;
+  children: ReactNode;
+}) {
+  const alarm = trust === undefined ? undefined : trustAlarm(trust);
+  const accepted = connection.status === 'accepted';
+
+  return (
+    <li className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className={`truncate font-mono ${accepted ? 'text-ink' : 'text-ink-soft'}`}>
+            {connection.username}
+          </span>
+          {alarm?.tone === 'danger' ? (
+            <Badge tone="danger">{SHARING_COPY.fingerprintAlarmBadge}</Badge>
+          ) : null}
+        </span>
+        {children}
+      </div>
+      {alarm ? <Notice tone={alarm.tone}>{alarm.message}</Notice> : null}
+    </li>
   );
 }

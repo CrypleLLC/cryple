@@ -8,10 +8,65 @@ import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { TableKit } from '@tiptap/extension-table';
 import { CharacterCount, Placeholder, Selection } from '@tiptap/extensions';
 import { BODY_FRAGMENT } from '@/lib/documents';
+import {
+  highlightColorAttribute,
+  safeColor,
+  safeFontFamily,
+  safeFontSize,
+  safeLineHeight,
+  styleAttribute,
+} from '@/lib/document-styles';
 import { PageBreak } from './pageBreak';
 import { Pagination } from './pagination';
 
 export const BODY_PLACEHOLDER = 'Start writing…';
+
+const GuardedColor = Color.extend({
+  addGlobalAttributes() {
+    return [
+      { types: this.options.types, attributes: { color: styleAttribute('color', 'color', safeColor) } },
+    ];
+  },
+});
+
+const GuardedFontFamily = FontFamily.extend({
+  addGlobalAttributes() {
+    return [
+      {
+        types: this.options.types,
+        attributes: { fontFamily: styleAttribute('fontFamily', 'font-family', safeFontFamily) },
+      },
+    ];
+  },
+});
+
+const GuardedFontSize = FontSize.extend({
+  addGlobalAttributes() {
+    return [
+      {
+        types: this.options.types,
+        attributes: { fontSize: styleAttribute('fontSize', 'font-size', safeFontSize) },
+      },
+    ];
+  },
+});
+
+const GuardedLineHeight = LineHeight.extend({
+  addGlobalAttributes() {
+    return [
+      {
+        types: this.options.types,
+        attributes: { lineHeight: styleAttribute('lineHeight', 'line-height', safeLineHeight) },
+      },
+    ];
+  },
+});
+
+const GuardedHighlight = Highlight.extend({
+  addAttributes() {
+    return { color: highlightColorAttribute() };
+  },
+});
 
 export function documentExtensions(doc: Y.Doc) {
   return [
@@ -21,11 +76,11 @@ export function documentExtensions(doc: Y.Doc) {
     }),
     Collaboration.configure({ document: doc, field: BODY_FRAGMENT }),
     TextStyle,
-    Color,
-    FontFamily,
-    FontSize,
-    LineHeight.configure({ types: ['heading', 'paragraph'] }),
-    Highlight.configure({ multicolor: true }),
+    GuardedColor,
+    GuardedFontFamily,
+    GuardedFontSize,
+    GuardedLineHeight.configure({ types: ['heading', 'paragraph'] }),
+    GuardedHighlight.configure({ multicolor: true }),
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     TaskList,
     TaskItem.configure({ nested: true }),

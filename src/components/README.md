@@ -9,7 +9,7 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `CrypleProvider.tsx` | Session custody, phase machine, error translation, cross-tab handoff |
 | `AppProviders.tsx` | Mounts `CrypleProvider` in the root layout so every route shares one session |
 | `SessionGate.tsx` | The loading / onboarding / locked / ready switch, wrapped around each route |
-| `Onboarding.tsx` | Task 24 — phrase, PIN, mode, enrolment |
+| `Onboarding.tsx` | Task 24 — phrase, PIN, mode, enrolment, recovery kit download |
 | `Unlock.tsx` | PIN unlock and the 3-attempt device wipe |
 | `AppShell.tsx` | Task 25 — the sidebar shell and navigation registry |
 | `VaultScreen.tsx` | Vault index, add/delete secrets (Task 34) |
@@ -32,7 +32,7 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `documents/useOutline.ts` | Debounced heading reads off the editor, and `goToHeading` |
 | `documents/useDocumentSync.ts` | Binds `DocumentSync` to a component's lifetime |
 | `documents/extensions.ts` | The TipTap extension set, bound to the document's `Y.Doc` |
-| `ui.tsx` | Card / Button / IconButton / Field / TextArea / Select / Badge / Notice / Empty / Modal / SizeStepper primitives |
+| `ui.tsx` | Card / Button / IconButton / Field / TextArea / Select / Badge / Notice / Empty / Modal / SizeStepper / CopyButton / SecretField primitives. `SecretField` masks what is typed without making it a password field ([`lib/app`](../lib/app/README.md#a-secret-is-masked-while-it-is-typed)). `Field` and `TextArea` turn spellcheck, grammar extensions and translation off by default, and `CopyButton` clears the clipboard after 30 s — both in [`lib/app`](../lib/app/README.md#plaintext-the-browser-would-otherwise-send-away) |
 | `icons.tsx` | The stroke-icon set shared by navigation and primitives, plus `FileTypeIcon` — the drive's filled, per-type file glyph |
 | `StagingBanner.tsx` | The walking red warning banner, dev-only — see [`app`](../app/README.md#the-staging-banner) |
 
@@ -261,6 +261,19 @@ when they are really a sequence — you invite someone, they appear in the list.
 also gives the fingerprint comparison in `ConnectionInvitation` the full width it deserves, instead
 of squeezing two 24-character codes and their accept/decline buttons into half a modal.
 
+**Every connection in the list is checked against its pin on every load**, not only while an
+invitation is under review. `SharingScreen` runs `verifyConnection` on each accepted connection and
+each invitation this account sent, through `Promise.allSettled` so one failed lookup cannot hide
+another row's alarm. A row that fails shows the reason under it, and a changed key or account also
+gets a *Do not send* badge. A lookup that fails outright shows nothing on the row; a send still
+fails, because it runs the check again.
+
+**`ShareItemDialog` does not check up front, and does not need to.** The refusal lives inside
+`shareItem` and `shareItemById`, so no caller can skip it; the dialog only turns a
+`ConnectionNotTrustedError` into `sendRefusal`'s sentence. `ConnectionInvitation` uses the same
+check and disables *Accept* while it shows an alarm, so a changed fingerprint can never be accepted
+into a new pin. See `lib/sharing/README.md` § Checking a connection against its pin.
+
 ### Shared reads every tile before it can draw one
 
 A shared tile shows a real name — a filename, a note title, a secret's name — and none of those
@@ -328,6 +341,16 @@ list, and no "sign out all devices" — none of that is rendered anywhere.
 `enrol` writes the local seed vault **after** `POST /sign-up` succeeds, so a rejected enrolment
 does not leave a vault for an account that was never created. On any failure the keystore is
 locked, zeroing what was derived.
+
+`enrol` does not open the vault. It returns the username the server assigned, and the component
+calls `enterVault` when onboarding is finished — immediately for a sign-in, and after the recovery
+kit has been downloaded for a sign-up ([`lib/app` § Onboarding](../lib/app/README.md#onboarding)).
+`enterVault` falls back to `locked` if the session locked in the meantime.
+
+The PDF is built by [`lib/recovery-kit`](../lib/recovery-kit/README.md), loaded with a dynamic
+`import()` on the first click so `pdf-lib` and the QR encoder stay out of every other page load.
+The download uses the same object-URL-and-anchor approach as the drive, and the URL is revoked
+straight after the click. The phrase can be revealed on the step but has no copy button.
 
 The mode step states the one-way door before either button. There is no "disable PIN" control and
 there never will be.
@@ -781,6 +804,11 @@ from `editor.state.doc` on the fly, never written back. A stored attribute would
 appended on every device that opens the document, for a value the editor can recompute for free.
 [`lib/documents`](../lib/documents/README.md) explains why that cost never goes away.
 
+The editable body and the title field carry `PRIVATE_TEXT_ATTRIBUTES` / `PRIVATE_TEXT_PROPS`, so no
+spelling, grammar or translation service sees the text, and **the tab title is never the document's
+name** — it would land in synced browser history. Why, and what it costs, is in
+[`lib/app`](../lib/app/README.md#plaintext-the-browser-would-otherwise-send-away).
+
 ### `useEditorState` must not read the editor out of its own snapshot
 
 This is the trap that made the toolbar render blank on load, and it will bite again.
@@ -977,6 +1005,12 @@ allowlist, not here.
 The paragraph-style control calls `setHeading`, not `toggleHeading`: from a `<select>`, choosing
 the level that is already active must be a no-op, and toggle turns it back into a paragraph while
 the select still reads "Heading 2".
+
+**The toolbar's values live in [`lib/document-styles`](../lib/document-styles/README.md)**, not here,
+because they double as the allowlist. `extensions.ts` swaps TipTap's `Color`, `FontFamily`,
+`FontSize`, `LineHeight` and `Highlight` attribute definitions for guarded ones built from the same
+lists, so a pasted `style` or `data-color` can store only a value the toolbar could have set — or,
+for colours, a plain colour. That module explains the injection it closes.
 
 `FONT_FAMILIES` names `var(--font-sans)` and `var(--font-mono)` — the properties this app actually
 defines in `globals.css`. They previously named `--font-geist-*`, which exist in the Next.js

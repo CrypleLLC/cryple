@@ -197,6 +197,8 @@ it before designing anything file-shaped; build nothing from it until those clos
 - **No comments in code.** Documentation belongs in a `README.md` per domain/module; names carry the meaning. `src/lib/crypto.ts` is the counter-example — it predates this rule.
 - The server is zero-knowledge. Every `ciphertext`, `wrapped_dek`, `encrypted_*`, `pq_hybrid_*` field is produced and consumed exclusively here. If a flow seems to need the server reading one, the flow is being misread.
 - Never log, persist unencrypted, or send to the server: the seed phrase, private keys, DEKs, the PIN, or the `Server_Auth_Token`. Zero `sessionKey`, `ecdhSecret`, `kemSecret` and ephemeral private keys after use.
+- **The browser is a network client too.** Spellcheck, grammar extensions, translation, synced history and the clipboard all move plaintext off the device. Build text entry from `Field` / `TextArea`, or spread `PRIVATE_TEXT_PROPS` (`PRIVATE_TEXT_ATTRIBUTES` for TipTap) on a raw `<input>`, `<textarea>` or `contentEditable`. Never put decrypted content in `document.title`. Copy secrets only through `CopyButton`. See `src/lib/app/README.md` § Plaintext the browser would otherwise send away.
+- **Every response carries a Content Security Policy** from `src/lib/security-headers`. A new host the page talks to goes into it deliberately, never as a wildcard.
 - Path alias `@/*` → `./src/*`. TypeScript `strict` is on.
 - Branches: `development` → `staging` → `preview` → `main`. Work off `development` unless told otherwise.
 - `NEXT_PUBLIC_BASE_API_URL` points at the API root — **there is no `/v1` prefix**; default `http://localhost:8080`. Configure it once — route constants are the documented paths verbatim.
@@ -217,7 +219,12 @@ CI runs typecheck, lint (`--max-warnings 0`) and tests on every push and PR.
 **Lint is ESLint 9 flat config** (`eslint.config.mjs`), extending `next/core-web-vitals` and `next/typescript`. Two rules exist because of this project's threat model rather than style, and both carry their reasoning in the failure message:
 
 - **`no-console` is an error, with no exemptions.** The cross-cutting rule is "never log the seed phrase, private keys, DEKs, the PIN, or the `Server_Auth_Token`" — and the deleted `src/lib/crypto.ts` logged the environment and API URL. A blanket ban is the only version of that rule a linter can enforce. A `scripts/**` exemption existed for dev-only CLIs; the directory was removed on 2026-09-06 and the exemption went with it.
-- **`no-restricted-globals` blocks `localStorage` and `sessionStorage`.** Only the seed vault may reach persistent storage, and only for one PIN-encrypted blob. `src/lib/pin/**`, `src/lib/app/mode-hint.ts` and — since 2026-09-11 — `src/lib/app/icon-size.ts` are the exemptions; adding a fourth needs a reason that survives §Conventions. The third one's reason is written next to it in `eslint.config.mjs` and argued in `src/lib/app/README.md`: it stores one of four literal words naming how large the drive draws its icons, guarded so that anything unrecognised reads as no preference.
+- **`no-restricted-globals` blocks `localStorage` and `sessionStorage`, and `no-restricted-properties` blocks them through `window`, `globalThis` and `self`** — the second rule exists because `window.localStorage` walked straight past the first until 2026-09-13. Only the seed vault may reach persistent storage, and only for one PIN-encrypted blob. The exemptions:
+  - `src/lib/pin/**` and `src/lib/app/mode-hint.ts`.
+  - Since 2026-09-11, `src/lib/app/icon-size.ts`: one of four literal words naming how large the drive draws its icons, argued in `src/lib/app/README.md`.
+  - Since 2026-09-13, `src/lib/sharing/pins.ts`: the sharing fingerprint pins, sealed under a DEK wrapped by the vault KEK so no readable list of connections sits on the device, argued in `src/lib/sharing/README.md`.
+
+  Each reason is written next to it in `eslint.config.mjs`. Adding a fifth needs a reason that survives §Conventions.
 
   **IndexedDB is not blocked, and one module uses it**: `src/lib/files/handles.ts` keeps a `FileSystemFileHandle` per *unfinished* upload so resuming after a reload does not ask the user to find the file again. It is deleted the moment the upload completes. That is the only persistent store outside the seed vault, it holds no key material and no content, and its tradeoff — the browser records a filename on disk while an upload is in flight — is written down in `src/lib/files/README.md`. A new use of IndexedDB needs the same kind of argument.
 

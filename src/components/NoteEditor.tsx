@@ -11,6 +11,7 @@ import {
   noteTitle,
   NOTE_AUTOSAVE_DELAY_MS,
   NOTE_SAVE_LABELS,
+  PRIVATE_TEXT_PROPS,
   UNTITLED_NOTE,
   type OpenedNote,
 } from '@/lib/app';
@@ -325,7 +326,7 @@ export default function NoteEditor({
         tabIndex={0}
         contentEditable={!unreadable}
         suppressContentEditableWarning
-        spellCheck
+        {...PRIVATE_TEXT_PROPS}
         data-empty={isNoteEmpty(draft)}
         data-placeholder="Write your note. The first line becomes its name."
         style={{ fontSize: `${NOTE_FONT_DEFAULT_PX}px` }}

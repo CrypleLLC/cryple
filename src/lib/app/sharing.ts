@@ -1,4 +1,9 @@
-import type { ConnectionRecord, ItemType, SharedTextView } from '@/lib/sharing';
+import type {
+  ConnectionRecord,
+  ConnectionTrust,
+  ItemType,
+  SharedTextView,
+} from '@/lib/sharing';
 import { decodeSecretPayload, UNREADABLE_SECRET_NAME } from './vault';
 import { noteTitle } from './notes';
 
@@ -29,8 +34,17 @@ export const SHARING_COPY = {
   fingerprintConfirm: 'It matches — accept',
   fingerprintDecline: 'Decline',
   fingerprintChanged:
-    'This connection’s fingerprint has changed since you accepted it. Do not send anything ' +
-    'and check with them through another channel.',
+    'This connection’s fingerprint has changed since it was first checked on this device. ' +
+    'Cryple keys never change, so someone may be intercepting it, and nothing more can be sent ' +
+    'through it. Tell them through another channel, then disconnect and invite each other again.',
+  fingerprintAccountChanged:
+    'The username on this connection now leads to a different account from the one you ' +
+    'connected to, so nothing more can be sent through it.',
+  fingerprintUncheckable:
+    'This connection’s keys could not be checked, so nothing can be sent through it right now.',
+  fingerprintUnaccepted:
+    'This connection has not been accepted yet, so nothing can be sent through it.',
+  fingerprintAlarmBadge: 'Do not send',
 
   reshareWarning:
     'Anything you send can be copied by the person you send it to. Only share with people you ' +
@@ -96,8 +110,35 @@ export function sendableConnections(
   return connections.filter((connection) => connection.status === 'accepted');
 }
 
-export function fingerprintChanged(pinned: string | undefined, seen: string): boolean {
-  return pinned !== undefined && pinned !== seen;
+export function connectionsToVerify(
+  connections: readonly ConnectionRecord[],
+): ConnectionRecord[] {
+  return connections.filter(
+    (connection) => connection.status === 'accepted' || connection.direction === 'outbound',
+  );
+}
+
+export interface TrustAlarm {
+  tone: 'danger' | 'warning';
+  message: string;
+}
+
+export function trustAlarm(trust: ConnectionTrust): TrustAlarm | undefined {
+  switch (trust.status) {
+    case 'keys-changed':
+      return { tone: 'danger', message: SHARING_COPY.fingerprintChanged };
+    case 'account-changed':
+      return { tone: 'danger', message: SHARING_COPY.fingerprintAccountChanged };
+    case 'unresolvable':
+      return { tone: 'warning', message: SHARING_COPY.fingerprintUncheckable };
+    case 'trusted':
+    case 'unpinned':
+      return undefined;
+  }
+}
+
+export function sendRefusal(trust: ConnectionTrust): string {
+  return trustAlarm(trust)?.message ?? SHARING_COPY.fingerprintUnaccepted;
 }
 
 export function sharedSecretView(plaintext: string): SharedTextView {

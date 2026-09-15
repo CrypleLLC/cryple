@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
-  fingerprintChanged,
+  connectionsToVerify,
   groupConnections,
   sendableConnections,
+  sendRefusal,
   sharedNoteView,
   sharedSecretView,
   SHARING_COPY,
+  trustAlarm,
 } from './sharing';
 import { encodeSecretPayload, UNREADABLE_SECRET_NAME } from './vault';
-import type { ConnectionRecord } from '@/lib/sharing';
+import type { ConnectionRecord, ConnectionTrust } from '@/lib/sharing';
 
 function connection(over: Partial<ConnectionRecord>): ConnectionRecord {
   return {
@@ -46,14 +48,51 @@ describe('grouping connections', () => {
   });
 });
 
-describe('the fingerprint pin', () => {
-  it('raises nothing on a first sighting', () => {
-    expect(fingerprintChanged(undefined, 'AAAA-BBBB')).toBe(false);
+describe('what a connection check shows', () => {
+  const refused: ConnectionTrust[] = [
+    { status: 'keys-changed', fingerprint: 'CCCC-DDDD', pinned: 'AAAA-BBBB' },
+    { status: 'account-changed' },
+    { status: 'unresolvable' },
+    { status: 'unpinned', fingerprint: 'AAAA-BBBB' },
+  ];
+
+  it('raises nothing for a trusted connection or an invitation not yet accepted', () => {
+    expect(trustAlarm({ status: 'trusted', fingerprint: 'AAAA-BBBB' })).toBeUndefined();
+    expect(trustAlarm({ status: 'unpinned', fingerprint: 'AAAA-BBBB' })).toBeUndefined();
   });
 
-  it('raises when the pinned value no longer matches', () => {
-    expect(fingerprintChanged('AAAA-BBBB', 'CCCC-DDDD')).toBe(true);
-    expect(fingerprintChanged('AAAA-BBBB', 'AAAA-BBBB')).toBe(false);
+  it('raises a danger alarm when the keys or the account behind a connection changed', () => {
+    expect(
+      trustAlarm({ status: 'keys-changed', fingerprint: 'CCCC-DDDD', pinned: 'AAAA-BBBB' }),
+    ).toEqual({ tone: 'danger', message: SHARING_COPY.fingerprintChanged });
+    expect(trustAlarm({ status: 'account-changed' })).toEqual({
+      tone: 'danger',
+      message: SHARING_COPY.fingerprintAccountChanged,
+    });
+  });
+
+  it('warns rather than alarms when the keys could not be checked', () => {
+    expect(trustAlarm({ status: 'unresolvable' })?.tone).toBe('warning');
+  });
+
+  it('tells the person that nothing was sent, for every refusal', () => {
+    for (const trust of refused) {
+      expect(sendRefusal(trust)).toMatch(/nothing (more )?can be sent/i);
+    }
+  });
+
+  it('sends a changed fingerprint to a new invitation, never a repair', () => {
+    expect(SHARING_COPY.fingerprintChanged).toMatch(/invite each other again/i);
+  });
+
+  it('checks accepted connections and invitations this account sent, not ones awaiting me', () => {
+    const checked = connectionsToVerify([
+      connection({ id: 'a', direction: 'inbound', status: 'pending' }),
+      connection({ id: 'b', direction: 'outbound', status: 'pending' }),
+      connection({ id: 'c', direction: 'inbound', status: 'accepted' }),
+    ]);
+
+    expect(checked.map((c) => c.id)).toEqual(['b', 'c']);
   });
 });
 

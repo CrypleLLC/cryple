@@ -4,23 +4,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Editor } from '@tiptap/react';
 import { useEditorState } from '@tiptap/react';
-
-const FONT_FAMILIES = [
-  { label: 'Sans', value: 'var(--font-sans)' },
-  { label: 'Serif', value: 'Georgia, "Times New Roman", serif' },
-  { label: 'Mono', value: 'var(--font-mono)' },
-];
-
-const FONT_SIZES = ['12px', '14px', '16px', '18px', '20px', '24px', '30px', '36px'];
-const DEFAULT_FONT_SIZE = '16px';
-
-const LINE_HEIGHTS = [
-  { label: 'Single', value: '1.3' },
-  { label: 'Normal', value: '1.7' },
-  { label: '1.5', value: '2' },
-  { label: 'Double', value: '2.6' },
-];
-const DEFAULT_LINE_HEIGHT = '1.7';
+import { PRIVATE_TEXT_PROPS } from '@/lib/app';
+import {
+  DEFAULT_FONT_SIZE,
+  DEFAULT_LINE_HEIGHT,
+  FONT_FAMILIES,
+  FONT_SIZES,
+  HIGHLIGHT_COLORS,
+  LINE_HEIGHTS,
+  TEXT_COLORS,
+} from '@/lib/document-styles';
 
 const BLOCK_STYLES = [
   { label: 'Body text', level: 0 },
@@ -28,9 +21,6 @@ const BLOCK_STYLES = [
   { label: 'Heading 2', level: 2 },
   { label: 'Heading 3', level: 3 },
 ] as const;
-
-const HIGHLIGHTS = ['#fef08a', '#bbf7d0', '#bfdbfe', '#fecaca'];
-const COLORS = ['#0f172a', '#b91c1c', '#1d4ed8', '#15803d', '#a16207'];
 
 const MARKS = ['bold', 'italic', 'underline', 'strike', 'code'] as const;
 const ALIGNMENTS = ['left', 'center', 'right', 'justify'] as const;
@@ -169,7 +159,7 @@ export default function DocumentToolbar({ editor }: { editor: Editor | null }) {
 
       <Swatches
         label="Text colour"
-        colors={COLORS}
+        colors={TEXT_COLORS}
         onPick={(color) => editor.chain().focus().setColor(color).run()}
         onClear={() => editor.chain().focus().unsetColor().run()}
       >
@@ -177,7 +167,7 @@ export default function DocumentToolbar({ editor }: { editor: Editor | null }) {
       </Swatches>
       <Swatches
         label="Highlight"
-        colors={HIGHLIGHTS}
+        colors={HIGHLIGHT_COLORS}
         onPick={(color) => editor.chain().focus().toggleHighlight({ color }).run()}
         onClear={() => editor.chain().focus().unsetHighlight().run()}
       >
@@ -387,6 +377,7 @@ function LinkControl({
           <input
             ref={input}
             aria-label="Link address"
+            {...PRIVATE_TEXT_PROPS}
             type="url"
             inputMode="url"
             placeholder="https://example.com"

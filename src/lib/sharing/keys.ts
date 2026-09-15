@@ -119,6 +119,16 @@ export async function unwrapUnderConnection(
   return new Uint8Array(plaintext);
 }
 
+export function publishedRecipientKeys(record: {
+  encryption_public_key_x25519: string;
+  encryption_public_key_mlkem: string;
+}): RecipientKeys {
+  return {
+    x25519PublicKey: base64ToBytes(record.encryption_public_key_x25519),
+    mlkemPublicKey: base64ToBytes(record.encryption_public_key_mlkem),
+  };
+}
+
 export async function keyFingerprint(keys: RecipientKeys): Promise<string> {
   const material = new Uint8Array(keys.x25519PublicKey.length + keys.mlkemPublicKey.length);
   material.set(keys.x25519PublicKey, 0);

@@ -55,6 +55,107 @@ connections and re-wrapping in flight, and it only works if a human actually com
 band. Present it as a step, not a dismissible detail, and pin it: a fingerprint that changes later
 is an alarm, not a refresh.
 
+### Where the pin lives — `pins.ts`
+
+A pin is the counterparty's fingerprint, stored under the connection id. The invitee writes it on
+accepting, after comparing it out loud. The inviter writes it when sending the invitation, from the
+exact keys the connection key was sealed to. [`verify.ts`](#checking-a-connection-against-its-pin--verifyts)
+is what compares against it.
+
+**The pins are one sealed blob in `localStorage`**, under `cryple.sharing.pins`:
+`{ v: 1, wrapped_dek, ciphertext }`. A fresh DEK seals the JSON map on every write, and the DEK is
+wrapped by the vault KEK — the construction every vault item uses, so the KEK still only ever wraps
+DEKs. Without the seed the device holds a blob of known size and nothing more: not the connection
+ids, not the fingerprints, not how many there are beyond what the length suggests.
+
+Until 2026-09-13 each pin was a plaintext `localStorage` key, `cryple.sharing.fingerprint.<id>`,
+written through `window.localStorage` so the lint rule never saw it. That was a readable record on
+the device of whom the account shares with. **Plaintext pins left by that version are sealed on the
+first read and the originals deleted.** A sealed pin wins over a plaintext one for the same
+connection, because a plaintext key is exactly what something else on the device could have
+written.
+
+**The rules the module keeps:**
+
+- **Reads and writes run one at a time.** Two invitations accepted together would otherwise both
+  read the old map and the second write would drop the first pin.
+- **Anything unreadable is no pins, never an error.** That covers a damaged record, a blob sealed
+  by another account, and an unknown version. An invitation must still render; the cost is that it
+  cannot alarm.
+- **Logging out wipes them**, together with the seed vault. They are unreadable without that
+  account's seed anyway, and a device handed on should not keep even their size.
+
+**What this does not fix.** The pins are still per device. On a new device, or after a log-out,
+there is nothing to compare against, and accepting pins whatever is shown then. Something with
+write access to the device's storage can also delete the blob and silence the alarm, though it
+cannot forge a pin. Both end when the pins move into encrypted, synced account space beside the
+connection nicknames ([Task 104.5](../../../tasks/tasks.md#task-104-5)). The server has no
+encrypted per-connection slot to hold them today.
+
+## Checking a connection against its pin — `verify.ts`
+
+Until 2026-09-13 the pin was read only by `ConnectionInvitation`, a card that exists only while an
+inbound invitation is pending. Once the invitation was accepted nothing compared against the pin
+again, so the alarm could never fire for the accepted connection it exists to protect, and the
+inviting side never pinned at all. That was
+[Task 40.14](../../../../tasks.md#task-40), and this section is its fix.
+
+`verifyConnection` resolves the connection's current username, fetches that account's published
+keys, and answers with one of five statuses:
+
+| Status | What it means | Can send |
+| --- | --- | --- |
+| `trusted` | The published keys match the pin, or an accepted connection was seen for the first time on this device and is now pinned | Yes |
+| `unpinned` | An invitation awaiting this account; its fingerprint is shown for comparison and pinned only on accepting | No |
+| `keys-changed` | The published keys no longer match the pin | No |
+| `account-changed` | The username resolves to an account whose `user_address` is not the connection's | No |
+| `unresolvable` | The username resolves to no account | No |
+
+**Where it runs:**
+
+- **`shareItem` and `shareItemById`**, through `assertConnectionTrusted`, before anything is wrapped
+  and before the item's DEK is even unwrapped. A refusal throws `ConnectionNotTrustedError` carrying
+  the status. Putting it in this module rather than in a component is the point: no caller can send
+  without it.
+- **The Sharing screen**, on every load, for every accepted connection and every invitation this
+  account sent.
+- **The invitation card**, which disables *Accept* while it shows an alarm.
+
+**The rules it keeps:**
+
+- **Refuse, never only warn.** A warning is what an active man-in-the-middle is counting on being
+  clicked past. A lookup that cannot be completed is refused too: a server hiding a substitution
+  would only have to make the lookup fail.
+- **A pin is never replaced.** `pinFingerprint` keeps a pin that already stands and returns it,
+  inside the same one-at-a-time queue as every other read and write, so a first sighting racing an
+  accept cannot overwrite it. Keys are immutable in this protocol, so no legitimate change exists to
+  re-pin. A changed fingerprint is answered by a new invitation: a new connection id, and a fresh
+  comparison out loud.
+- **The account is checked as well as the keys.** The lookup goes through the username, and a
+  deleted account's usernames are released for someone else to claim
+  ([Task 118](../../../../tasks.md#task-118)).
+- **The inviter pins when the invitation is sent**, from the keys `sealConnectionKey` actually used.
+  A later first sighting could only pin whatever the server publishes by then. A connection invited
+  before this change is pinned the first time it is seen accepted.
+- **Published keys are cached for the session, never across sessions.** The cache is keyed by the
+  `SessionKeystore` and emptied when it locks, and a lookup still in flight when the session locks is
+  not written into the next session's cache. Only the network read is cached; the pin is compared on
+  every call. A substitution made mid-session is therefore caught at the next unlock, not the next
+  send.
+- **Plaintext pins from before 2026-09-13 are sealed at unlock.** `CrypleProvider` calls
+  `sealLegacyFingerprintPins` as soon as a session is ready, instead of waiting for someone to review
+  an invitation.
+
+**What it still does not do:**
+
+- **The inviter is never shown a fingerprint to read out loud.** Its pin records what the server
+  published when the invitation was sent, taken on trust. The only comparison a person makes is the
+  invitee's, and it covers the inviter only if the invitee reads their own fingerprint back.
+- **Opening something that arrived is not gated on the check.** The check protects what this
+  account sends, and a refused lookup does not stop the Shared tab from reading its inbox.
+- **Pins are still per device**, as described above, until
+  [Task 104.5](../../../tasks/tasks.md#task-104-5).
+
 ## Never re-resolve a username to repair a connection
 
 A nickname stored in the vault can outlive the connection it pointed at — the counterparty deleted

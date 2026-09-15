@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import vectors from '@/test/fixtures/test-vectors.json';
 import {
-  buildVerificationChallenge,
+  canEnterVault,
   canGoBack,
   checkMnemonic,
   checkPin,
@@ -13,7 +13,7 @@ import {
   mnemonicWords,
   onboardingReducer,
   PIN_STEP_COPY,
-  verifyBackup,
+  RECOVERY_KIT_STEP_COPY,
   type OnboardingState,
 } from './index';
 
@@ -83,53 +83,68 @@ describe('mnemonic entry validates the checksum before any derivation', () => {
   });
 });
 
-describe('backup verification', () => {
-  it('asks for distinct word positions in ascending order', () => {
-    const indices = buildVerificationChallenge(mnemonic, 3);
-
-    expect(indices).toHaveLength(3);
-    expect(new Set(indices).size).toBe(3);
-    expect([...indices].sort((a, b) => a - b)).toEqual(indices);
-    expect(indices.every((index) => index >= 0 && index < 12)).toBe(true);
-  });
-
-  it('never asks for more positions than the phrase has', () => {
-    expect(buildVerificationChallenge(mnemonic, 50)).toHaveLength(12);
-  });
-
-  it('accepts the right words and rejects a wrong one', () => {
-    const words = mnemonicWords(mnemonic);
-    const indices = [0, 5, 11];
-    const answers = indices.map((index) => words[index]);
-
-    expect(verifyBackup(mnemonic, indices, answers)).toBe(true);
-    expect(verifyBackup(mnemonic, indices, [answers[0], 'wrong', answers[2]])).toBe(false);
-  });
-
-  it('is tolerant of case and stray whitespace in what the user types', () => {
-    const words = mnemonicWords(mnemonic);
-    const indices = [1, 2];
-    const typed = indices.map((index) => `  ${words[index].toUpperCase()} `);
-
-    expect(verifyBackup(mnemonic, indices, typed)).toBe(true);
-  });
-
-  it('rejects a short answer list rather than passing on a prefix match', () => {
-    const words = mnemonicWords(mnemonic);
-    expect(verifyBackup(mnemonic, [0, 1], [words[0]])).toBe(false);
-  });
-});
-
 describe('the onboarding flow', () => {
-  it('sends a generated phrase through backup and verification', () => {
+  it('sends a generated phrase straight to the PIN', () => {
     const state = run([
       { type: 'choose-origin', origin: 'generate' },
       { type: 'mnemonic-ready', mnemonic },
-      { type: 'backup-confirmed' },
     ]);
 
-    expect(state.step).toBe('verify');
+    expect(state.step).toBe('pin');
     expect(state.mnemonic).toBe(mnemonic);
+  });
+
+  it('hands a new account its recovery kit once the server has named it', () => {
+    const enrolled = run([
+      { type: 'choose-origin', origin: 'generate' },
+      { type: 'mnemonic-ready', mnemonic },
+      { type: 'pin-chosen', pin, paranoid: true },
+      { type: 'enrolled', username: '3f1c8a2b9d4e' },
+    ]);
+
+    expect(enrolled.step).toBe('recovery-kit');
+    expect(enrolled.username).toBe('3f1c8a2b9d4e');
+    expect(enrolled.mnemonic).toBe(mnemonic);
+    expect(enrolled.pin).toBeUndefined();
+  });
+
+  it('opens the vault only after the kit has been downloaded', () => {
+    const atKit = run([
+      { type: 'choose-origin', origin: 'generate' },
+      { type: 'mnemonic-ready', mnemonic },
+      { type: 'pin-chosen', pin, paranoid: false },
+      { type: 'enrolled', username: '3f1c8a2b9d4e' },
+    ]);
+    expect(canEnterVault(atKit)).toBe(false);
+
+    const saved = onboardingReducer(atKit, { type: 'recovery-kit-saved' });
+    expect(canEnterVault(saved)).toBe(true);
+  });
+
+  it('ignores a kit reported saved before there is an account to name on it', () => {
+    const atPin = run([
+      { type: 'choose-origin', origin: 'generate' },
+      { type: 'mnemonic-ready', mnemonic },
+      { type: 'recovery-kit-saved' },
+    ]);
+
+    expect(atPin.recoveryKitSaved).toBeUndefined();
+    expect(canEnterVault(atPin)).toBe(false);
+  });
+
+  it('gives a signed-in account no kit step — the phrase came from the user', () => {
+    const enrolled = run([
+      { type: 'choose-origin', origin: 'import' },
+      { type: 'mnemonic-ready', mnemonic },
+      { type: 'pin-chosen', pin, paranoid: false },
+      { type: 'enrolled', username: '3f1c8a2b9d4e' },
+    ]);
+
+    expect(enrolled.step).toBe('done');
+  });
+
+  it('keeps the PIN out of the kit step copy', () => {
+    expect(JSON.stringify(RECOVERY_KIT_STEP_COPY)).not.toMatch(/\bPIN\b/i);
   });
 
   it('sends an imported phrase straight to the PIN — there is nothing to back up', () => {
@@ -184,25 +199,17 @@ describe('the onboarding flow', () => {
 });
 
 describe('going back a step', () => {
-  it('retraces the generate branch one step at a time, never resetting the flow', () => {
-    const atMode = run([
+  it('returns the generate branch to the start, discarding the unused phrase', () => {
+    const atPin = run([
       { type: 'choose-origin', origin: 'generate' },
       { type: 'mnemonic-ready', mnemonic },
-      { type: 'backup-confirmed' },
-      { type: 'backup-confirmed' },
     ]);
-    expect(atMode.step).toBe('pin');
+    expect(atPin.step).toBe('pin');
 
-    const atVerify = onboardingReducer(atMode, { type: 'back' });
-    expect(atVerify.step).toBe('verify');
-    expect(atVerify.mnemonic).toBe(mnemonic);
-
-    const atBackup = onboardingReducer(atVerify, { type: 'back' });
-    expect(atBackup.step).toBe('backup');
-    expect(atBackup.mnemonic).toBe(mnemonic);
-
-    const atOrigin = onboardingReducer(atBackup, { type: 'back' });
+    const atOrigin = onboardingReducer(atPin, { type: 'back' });
     expect(atOrigin.step).toBe('origin');
+    expect(atOrigin.mnemonic).toBeUndefined();
+    expect(atOrigin.origin).toBeUndefined();
   });
 
   it('retraces the import branch to the phrase, keeping it so it can be edited', () => {
@@ -277,16 +284,16 @@ describe('going back a step', () => {
     expect(onboardingReducer(enrolling, { type: 'back' })).toEqual(enrolling);
   });
 
-  it('offers a way back from every step that is not the first or in flight', () => {
+  it('offers a way back only before the account exists', () => {
     const reachable = run([
       { type: 'choose-origin', origin: 'generate' },
       { type: 'mnemonic-ready', mnemonic },
     ]);
 
-    for (const step of ['backup', 'verify', 'import', 'pin'] as const) {
+    for (const step of ['import', 'pin'] as const) {
       expect(canGoBack({ ...reachable, step })).toBe(true);
     }
-    for (const step of ['origin', 'enrolling', 'done'] as const) {
+    for (const step of ['origin', 'enrolling', 'recovery-kit', 'done'] as const) {
       expect(canGoBack({ ...reachable, step })).toBe(false);
     }
   });
@@ -375,7 +382,7 @@ describe('the generated phrase is shown as one sentence, not a numbered list', (
     expect(mnemonicSentence(mnemonic).split(' ')).toHaveLength(12);
   });
 
-  it('collapses stray whitespace so what is copied matches what is shown', () => {
+  it('collapses stray whitespace so what is written down matches what is shown', () => {
     expect(mnemonicSentence(`  ${mnemonic.replace(/ /g, '   ')}\n`)).toBe(mnemonic);
   });
 });

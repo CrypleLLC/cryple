@@ -16,3 +16,6 @@ export * from './shell';
 export * from './username';
 export * from './sharing';
 export * from './settings';
+export * from './private-text';
+export * from './clipboard';
+export * from './secret-field';

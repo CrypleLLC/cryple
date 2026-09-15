@@ -1,9 +1,9 @@
 'use client';
 
-import { useMemo, useReducer, useState } from 'react';
+import { useReducer, useState } from 'react';
 import { generateMnemonic, type MnemonicWordCount } from '@/lib/keys';
 import {
-  buildVerificationChallenge,
+  canEnterVault,
   canGoBack,
   checkMnemonic,
   checkPin,
@@ -12,16 +12,15 @@ import {
   mnemonicSentence,
   onboardingReducer,
   PIN_STEP_COPY,
-  SEED_WARNING,
-  verifyBackup,
+  RECOVERY_KIT_STEP_COPY,
   type OnboardingOrigin,
   type OnboardingState,
 } from '@/lib/app';
 import { useCryple } from './CrypleProvider';
-import { Button, Card, CopyButton, Field, Notice, TextArea } from './ui';
+import { Button, Card, Field, Notice, TextArea } from './ui';
 
 export default function Onboarding() {
-  const { enrol } = useCryple();
+  const { enrol, enterVault } = useCryple();
   const [state, dispatch] = useReducer(onboardingReducer, INITIAL_ONBOARDING);
   const [busy, setBusy] = useState(false);
 
@@ -34,11 +33,15 @@ export default function Onboarding() {
     const outcome = await enrol(state.mnemonic, pin, paranoid);
     setBusy(false);
 
-    if (outcome.status !== 'ready') {
-      dispatch({
-        type: 'failed',
-        message: outcome.status === 'failed' ? outcome.message : 'Could not create your vault.',
-      });
+    if (outcome.status === 'failed') {
+      dispatch({ type: 'failed', message: outcome.message });
+
+      return;
+    }
+
+    dispatch({ type: 'enrolled', username: outcome.username });
+    if (state.origin !== 'generate') {
+      enterVault();
     }
   }
 
@@ -56,8 +59,6 @@ export default function Onboarding() {
       {state.step === 'origin' ? (
         <OriginStep dispatch={dispatch} />
       ) : null}
-      {state.step === 'backup' ? <BackupStep state={state} dispatch={dispatch} /> : null}
-      {state.step === 'verify' ? <VerifyStep state={state} dispatch={dispatch} /> : null}
       {state.step === 'import' ? <ImportStep state={state} dispatch={dispatch} /> : null}
       {state.step === 'pin' ? (
         <PinStep
@@ -74,6 +75,9 @@ export default function Onboarding() {
               : 'Deriving your keys and enrolling them. This takes a moment.'}
           </p>
         </Card>
+      ) : null}
+      {state.step === 'recovery-kit' ? (
+        <RecoveryKitStep state={state} dispatch={dispatch} onContinue={enterVault} />
       ) : null}
 
       {canGoBack(state) ? (
@@ -98,6 +102,7 @@ function OriginStep({ dispatch }: { dispatch: Dispatch }) {
 
   function startSignUp() {
     dispatch({ type: 'choose-origin', origin: 'generate', wordCount });
+    dispatch({ type: 'mnemonic-ready', mnemonic: generateMnemonic(wordCount) });
   }
 
   // Sign-in takes the phrase on this same screen: a tab that only offers a
@@ -146,8 +151,8 @@ function OriginStep({ dispatch }: { dispatch: Dispatch }) {
         {signingUp ? (
           <>
             <p className="text-compact text-ink-soft">
-              We will generate a recovery phrase for you. Write it down — it is the only way back
-              into your vault.
+              We will generate a recovery phrase for you and give you a recovery kit to keep
+              offline — it is the only way back into your vault.
             </p>
 
             <div className="flex gap-2">
@@ -190,98 +195,98 @@ function OriginStep({ dispatch }: { dispatch: Dispatch }) {
   );
 }
 
-function BackupStep({
+function RecoveryKitStep({
   state,
   dispatch,
+  onContinue,
 }: {
   state: OnboardingState;
   dispatch: Dispatch;
+  onContinue: () => void;
 }) {
-  const mnemonic = useMemo(
-    () => state.mnemonic ?? generateMnemonic(state.wordCount),
-    [state.mnemonic, state.wordCount],
-  );
-  const phrase = mnemonicSentence(mnemonic);
+  const [preparing, setPreparing] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [revealed, setRevealed] = useState(false);
 
+  const mnemonic = state.mnemonic ?? '';
+  const username = state.username ?? '';
+  const phrase = mnemonicSentence(mnemonic);
+  const saved = state.recoveryKitSaved === true;
+
+  async function downloadKit() {
+    setPreparing(true);
+    setFailed(false);
+
+    try {
+      const { buildRecoveryKitPdf, recoveryKitFileName } = await import('@/lib/recovery-kit');
+      const bytes = await buildRecoveryKitPdf({ username, mnemonic, createdAt: new Date() });
+      offerDownload(recoveryKitFileName(username), bytes);
+      dispatch({ type: 'recovery-kit-saved' });
+    } catch {
+      setFailed(true);
+    } finally {
+      setPreparing(false);
+    }
+  }
+
   return (
-    <Card title="Write down your recovery phrase">
+    <Card title={RECOVERY_KIT_STEP_COPY.title} subtitle={RECOVERY_KIT_STEP_COPY.subtitle}>
       <div className="space-y-4">
-        <Notice tone="warning">{SEED_WARNING}</Notice>
+        <Notice tone="warning">{RECOVERY_KIT_STEP_COPY.warning}</Notice>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant={saved ? 'secondary' : 'primary'}
+            disabled={preparing}
+            onClick={() => void downloadKit()}
+          >
+            {preparing
+              ? RECOVERY_KIT_STEP_COPY.preparing
+              : saved
+                ? RECOVERY_KIT_STEP_COPY.downloadAgain
+                : RECOVERY_KIT_STEP_COPY.download}
+          </Button>
+
+          {revealed ? null : (
+            <Button variant="secondary" onClick={() => setRevealed(true)}>
+              {RECOVERY_KIT_STEP_COPY.reveal}
+            </Button>
+          )}
+        </div>
 
         {revealed ? (
-          <div className="space-y-3">
-            <p className="rounded-xl border border-line bg-raised px-4 py-3 font-mono text-sm leading-relaxed break-words text-ink">
-              {phrase}
-            </p>
-            <CopyButton value={phrase} label="Copy phrase" copiedLabel="Copied to clipboard" />
-          </div>
-        ) : (
-          <Button variant="secondary" onClick={() => setRevealed(true)}>
-            Reveal my phrase
-          </Button>
-        )}
+          <p className="rounded-xl border border-line bg-raised px-4 py-3 font-mono text-sm leading-relaxed break-words text-ink">
+            {phrase}
+          </p>
+        ) : null}
+
+        {failed ? <Notice tone="danger">{RECOVERY_KIT_STEP_COPY.failed}</Notice> : null}
 
         <Button
-          disabled={!revealed}
-          onClick={() => {
-            dispatch({ type: 'mnemonic-ready', mnemonic });
-            dispatch({ type: 'backup-confirmed' });
-          }}
+          variant={saved ? 'primary' : 'secondary'}
+          disabled={!canEnterVault(state)}
+          onClick={onContinue}
         >
-          I have written it down
+          {RECOVERY_KIT_STEP_COPY.continue}
         </Button>
       </div>
     </Card>
   );
 }
 
-function VerifyStep({
-  state,
-  dispatch,
-}: {
-  state: OnboardingState;
-  dispatch: Dispatch;
-}) {
-  const mnemonic = state.mnemonic ?? '';
-  const indices = useMemo(() => buildVerificationChallenge(mnemonic, 3), [mnemonic]);
-  const [answers, setAnswers] = useState<string[]>(() => indices.map(() => ''));
-  const [wrong, setWrong] = useState(false);
-
-  return (
-    <Card title="Check your backup" subtitle="Type the words at these positions.">
-      <div className="space-y-4">
-        {indices.map((index, position) => (
-          <Field
-            key={index}
-            label={`Word ${index + 1}`}
-            value={answers[position]}
-            autoComplete="off"
-            onChange={(event) =>
-              setAnswers((current) =>
-                current.map((value, slot) => (slot === position ? event.target.value : value)),
-              )
-            }
-          />
-        ))}
-
-        {wrong ? <Notice tone="danger">That does not match. Check your written copy.</Notice> : null}
-
-        <Button
-          onClick={() => {
-            if (verifyBackup(mnemonic, indices, answers)) {
-              setWrong(false);
-              dispatch({ type: 'backup-confirmed' });
-            } else {
-              setWrong(true);
-            }
-          }}
-        >
-          Continue
-        </Button>
-      </div>
-    </Card>
+function offerDownload(name: string, bytes: Uint8Array): void {
+  const url = URL.createObjectURL(
+    new Blob([bytes as unknown as BlobPart], { type: 'application/pdf' }),
   );
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  URL.revokeObjectURL(url);
 }
 
 function ImportStep({ state, dispatch }: { state: OnboardingState; dispatch: Dispatch }) {

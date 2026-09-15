@@ -13,6 +13,11 @@ import { ApiError, TokenStore, userMessageFor } from '@/lib/api';
 import { signOut as dropToken } from '@/lib/auth';
 import { createSeedVault, hasSeedVault, wipeSeedVault } from '@/lib/pin';
 import { SessionKeystore } from '@/lib/session';
+import {
+  fingerprintPinOptions,
+  sealLegacyFingerprintPins,
+  wipeFingerprintPins,
+} from '@/lib/sharing';
 import { requestSession, serveSession } from '@/lib/session/handoff';
 import type { AuthedContext } from '@/lib/context';
 import type { AccountRecord } from '@/lib/users';
@@ -34,13 +39,18 @@ export type UnlockOutcome =
   | { status: 'no-vault' }
   | { status: 'failed'; message: string };
 
+export type EnrolOutcome =
+  | { status: 'enrolled'; username: string }
+  | { status: 'failed'; message: string };
+
 interface CrypleValue {
   phase: AppPhase;
   account?: AccountRecord;
   paranoid: boolean;
   context?: AuthedContext;
   unlock(pin: string): Promise<UnlockOutcome>;
-  enrol(mnemonic: string, pin: string, paranoid: boolean): Promise<UnlockOutcome>;
+  enrol(mnemonic: string, pin: string, paranoid: boolean): Promise<EnrolOutcome>;
+  enterVault(): void;
   refreshAccount(): Promise<void>;
   reportError(error: unknown): string;
   lock(): void;
@@ -128,6 +138,13 @@ export function CrypleProvider({ children }: { children: ReactNode }) {
     [phase, session, tokens, paranoid],
   );
 
+  useEffect(() => {
+    if (context === undefined) {
+      return;
+    }
+    void sealLegacyFingerprintPins(fingerprintPinOptions(context)).catch(() => undefined);
+  }, [context]);
+
   const unlock = useCallback(
     async (pin: string): Promise<UnlockOutcome> => {
       const opened = await session.unlock(pin);
@@ -163,7 +180,7 @@ export function CrypleProvider({ children }: { children: ReactNode }) {
   );
 
   const enrol = useCallback(
-    async (mnemonic: string, pin: string, wantParanoid: boolean): Promise<UnlockOutcome> => {
+    async (mnemonic: string, pin: string, wantParanoid: boolean): Promise<EnrolOutcome> => {
       try {
         // The PIN goes to the keystore in both modes, but `paranoid` decides
         // whether it is also sent as the server's second factor.
@@ -182,8 +199,7 @@ export function CrypleProvider({ children }: { children: ReactNode }) {
         writeModeHint(booted.account.has_password);
 
         setAccount(booted.account);
-        setPhase('ready');
-        return { status: 'ready' };
+        return { status: 'enrolled', username: booted.account.username };
       } catch (error) {
         session.lock();
         return { status: 'failed', message: describe(error) };
@@ -191,6 +207,14 @@ export function CrypleProvider({ children }: { children: ReactNode }) {
     },
     [session, tokens],
   );
+
+  const enterVault = useCallback(() => {
+    if (session.isUnlocked) {
+      setPhase('ready');
+      return;
+    }
+    setPhase(hasSeedVault() ? 'locked' : 'onboarding');
+  }, [session]);
 
   const refreshAccount = useCallback(async () => {
     if (context === undefined) {
@@ -218,6 +242,7 @@ export function CrypleProvider({ children }: { children: ReactNode }) {
     dropToken(tokens, session);
     wipeSeedVault();
     clearModeHint();
+    wipeFingerprintPins();
     setPhase('onboarding');
   }, [session, tokens]);
 
@@ -229,12 +254,25 @@ export function CrypleProvider({ children }: { children: ReactNode }) {
       context,
       unlock,
       enrol,
+      enterVault,
       refreshAccount,
       reportError,
       lock,
       logOut,
     }),
-    [phase, account, paranoid, context, unlock, enrol, refreshAccount, reportError, lock, logOut],
+    [
+      phase,
+      account,
+      paranoid,
+      context,
+      unlock,
+      enrol,
+      enterVault,
+      refreshAccount,
+      reportError,
+      lock,
+      logOut,
+    ],
   );
 
   return <CrypleContext.Provider value={value}>{children}</CrypleContext.Provider>;

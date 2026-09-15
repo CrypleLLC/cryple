@@ -190,6 +190,13 @@ recoverable from two messages under one nonce, which lets an attacker forge tags
 in the table above is a tag. `chunks.test.ts` pins the construction; **nothing outside `lib/files`
 uses it**, and secrets, notes, documents and `wrapped_dek` must keep random IVs.
 
+The test that pins it: two `uploadFile` calls on the same bytes produce different DEKs, and so
+different ciphertext. It must stay.
+
+**Spilling sealed chunks to OPFS was rejected, not deferred.** It solves what the derived IV and the
+single pass solve without touching the API or the crypto, at the cost of a temporary encrypted copy
+of the file on disk. It stays written down as the fallback if the derived IV is ever reverted.
+
 Three smaller things:
 
 - **A one-chunk file is a single `PUT`, not a multipart upload.** The ticket's `multipart` flag says

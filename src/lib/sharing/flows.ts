@@ -1,4 +1,3 @@
-import { base64ToBytes } from '@/lib/encoding';
 import { getPublicKeys, resolveUsername } from '@/lib/users';
 import { getSecret, vaultKekDekWrapper } from '@/lib/secrets';
 import { getNote } from '@/lib/notes';
@@ -6,11 +5,11 @@ import { getDocument } from '@/lib/documents';
 import { decryptStream, getFileDownload, openManifest, type FileManifest } from '@/lib/files';
 import { openText } from '@/lib/sealed';
 import type { AuthedContext } from '@/lib/context';
-import type { RecipientKeys } from '@/lib/pqxdh';
 import {
   createConnectionKey,
   keyFingerprint,
   openConnectionKey,
+  publishedRecipientKeys,
   sealConnectionKey,
   unwrapUnderConnection,
   wrapUnderConnection,
@@ -23,6 +22,8 @@ import {
   type ConnectionRecord,
   type ItemType,
 } from './api';
+import { fingerprintPinOptions, pinFingerprint } from './pins';
+import { assertConnectionTrusted } from './verify';
 
 export class UnknownRecipientError extends Error {
   constructor(username: string) {
@@ -43,16 +44,6 @@ export interface InvitationDraft {
   fingerprint: string;
 }
 
-function recipientKeys(record: {
-  encryption_public_key_x25519: string;
-  encryption_public_key_mlkem: string;
-}): RecipientKeys {
-  return {
-    x25519PublicKey: base64ToBytes(record.encryption_public_key_x25519),
-    mlkemPublicKey: base64ToBytes(record.encryption_public_key_mlkem),
-  };
-}
-
 export async function inviteByUsername(
   context: AuthedContext,
   username: string,
@@ -63,7 +54,7 @@ export async function inviteByUsername(
   }
 
   const published = await getPublicKeys(context, resolved.uuid);
-  const keys = recipientKeys(published);
+  const keys = publishedRecipientKeys(published);
 
   const connectionKey = createConnectionKey();
   try {
@@ -83,7 +74,12 @@ export async function inviteByUsername(
       senderWrappedKey,
     });
 
-    return { connection, fingerprint: await keyFingerprint(keys) };
+    const fingerprint = await keyFingerprint(keys);
+    await pinFingerprint(connection.id, fingerprint, fingerprintPinOptions(context)).catch(
+      () => undefined,
+    );
+
+    return { connection, fingerprint };
   } finally {
     connectionKey.fill(0);
   }
@@ -118,6 +114,15 @@ export async function connectionKeyFor(
 }
 
 export async function shareItem(
+  context: AuthedContext,
+  connection: ConnectionRecord,
+  item: { type: ItemType; id: string; dek: Uint8Array },
+): Promise<void> {
+  await assertConnectionTrusted(context, connection);
+  await sendUnderConnection(context, connection, item);
+}
+
+async function sendUnderConnection(
   context: AuthedContext,
   connection: ConnectionRecord,
   item: { type: ItemType; id: string; dek: Uint8Array },
@@ -197,9 +202,11 @@ export async function shareItemById(
   itemType: ItemType,
   itemId: string,
 ): Promise<void> {
+  await assertConnectionTrusted(context, connection);
+
   const dek = await itemDek(context, itemType, itemId);
   try {
-    await shareItem(context, connection, { type: itemType, id: itemId, dek });
+    await sendUnderConnection(context, connection, { type: itemType, id: itemId, dek });
   } finally {
     dek.fill(0);
   }

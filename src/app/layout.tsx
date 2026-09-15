@@ -17,6 +17,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Cryple - Secure Your Data",
   description: "Securely store and manage your sensitive data with Cryple.",
+  other: { google: "notranslate" },
 };
 
 export default function RootLayout({
@@ -27,7 +28,7 @@ export default function RootLayout({
   const isStaging = process.env.NEXT_PUBLIC_ENV === "development";
 
   return (
-    <html lang="en" data-staging={isStaging ? "" : undefined}>
+    <html lang="en" translate="no" data-staging={isStaging ? "" : undefined}>
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}
       >
