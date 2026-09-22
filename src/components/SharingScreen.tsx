@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   acceptInvitation,
+  AlreadyConnectedError,
   displayName,
   editAddressBook,
   loadAddressBook,
@@ -90,13 +91,21 @@ export default function SharingScreen() {
     setNotice(undefined);
 
     try {
-      const draft = await inviteByUsername(context, claim);
+      const draft = await inviteByUsername(context, claim, [
+        ...groups.accepted,
+        ...groups.awaitingMe,
+        ...groups.awaitingThem,
+      ]);
       setClaim('');
       setNotice(SHARING_COPY.inviteSent(draft.connection.username));
       await refresh();
     } catch (error) {
       setMessage(
-        error instanceof UnknownRecipientError ? SHARING_COPY.inviteUnknown : reportError(error),
+        error instanceof UnknownRecipientError
+          ? SHARING_COPY.inviteUnknown
+          : error instanceof AlreadyConnectedError
+            ? SHARING_COPY.inviteExists
+            : reportError(error),
       );
     } finally {
       setBusy(false);

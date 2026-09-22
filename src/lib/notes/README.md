@@ -7,8 +7,10 @@ which is derived from the Go implementation and is the wire contract this module
 ## Why this is not `lib/secrets`
 
 A note is structurally what a secret is — a `ciphertext`, a `wrapped_dek`, a `version` — and it
-uses the **same vault KEK and the same sealed-blob codec**, imported from
-[`lib/secrets`](../secrets/README.md) rather than re-derived here.
+uses the same sealed-blob codec, with its DEK wrapped under the **`notes` scope KEK** of the
+current generation ([`lib/keyrings`](../keyrings/README.md)). An edit keeps the DEK; if the note
+was written under an older generation, the same DEK is re-wrapped under the current one, because
+the server refuses a write under any other.
 
 One thing separates them: **notes get edited.** `POST /secrets` is create-or-return and there is
 no `PUT /secrets`, because a seed phrase is written once. A letter is revised. `PUT /notes/{id}`
@@ -164,7 +166,7 @@ exported separately for any caller that only needs the index.
 | `hashReceivedCiphertext` | — | Hash what you received, not `ciphertext_sha256` |
 
 `NotesContext` extends `AuthedContext` with the same optional `dek: DekWrapper` test seam
-`SecretsContext` has; omitted, it is `vaultKekDekWrapper(context.session.vaultKek)`.
+`SecretsContext` has; omitted, it is `scopeDekWrapper(context, 'notes')`.
 
 ## Rules inherited from the wire contract
 
@@ -188,7 +190,7 @@ reaches the wire and that create/edit carry no signature or password; the code-p
 count and both limits; canonical-id enforcement on every path; the `openNote` round trip; the
 DEK-reuse contract on edit in both directions; version carry-forward; cursor following including
 the short-page case; the bounded full-note fetch; and for delete, that the signature verifies
-over `note-delete:<id>`, fails for a different id, and carries `password` only in Paranoid Mode.
+over `note-delete:<id>` with this device's key, fails for a different id, and carries no password or PIN proof in either mode.
 
 For `deleteNotes`: that the whole selection goes in one request under one signature; that ids are
 sorted and de-duplicated on the wire *and* in the signed payload; that a signature over the

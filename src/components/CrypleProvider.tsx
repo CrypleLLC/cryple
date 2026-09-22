@@ -36,7 +36,6 @@ import {
 } from '@/lib/account';
 import { AuthRejectedError } from '@/lib/auth';
 import { browserDeviceStore } from '@/lib/device/store';
-import { discardLegacyState } from '@/lib/pin';
 import type { Scope } from '@/lib/scopes';
 import { SessionKeystore } from '@/lib/session';
 import { requestSession, serveSession } from '@/lib/session/handoff';
@@ -138,7 +137,6 @@ export function CrypleProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    discardLegacyState();
 
     const boot = async () => {
       const offer = await requestSession();

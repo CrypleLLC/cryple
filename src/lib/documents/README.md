@@ -48,9 +48,11 @@ no gain.
 
 Deltas and snapshots are **binary**, so they use `sealBlob` / `openBlob` from
 [`lib/sealed`](../sealed/README.md) directly — not `sealText`, which is what `lib/notes` uses.
-The DEK is per document and wrapped under the vault KEK by the shared
-`vaultKekDekWrapper` ([`lib/secrets/dek.ts`](../secrets/README.md)), the same seam every other
-domain uses.
+The DEK is per document and wrapped under the current `documents` scope KEK, with the row's
+`key_generation`, by `scopeDekWrapper` ([`lib/keyrings`](../keyrings/README.md)), the same seam
+every item domain uses. `PUT /documents/{id}/key` is also how a document is re-wrapped under a
+newer generation. `createDocumentFromSnapshot` creates a document from a snapshot, which is how a
+shared document is copied into the recipient's account.
 
 **One DEK seals the snapshot and every delta**, so one wrapped key covers the whole log however
 long it grows. It is also why rotating a document's DEK means re-encrypting everything — compact

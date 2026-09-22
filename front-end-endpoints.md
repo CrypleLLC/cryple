@@ -1274,8 +1274,10 @@ never holds a key to any of it. All routes require the JWT.
 
 ### The shape, in one paragraph
 
-A **connection** is the authorisation object: one per ordered pair of accounts, `pending` until the
-recipient accepts, carrying the PQXDH blob that establishes the pair's session key. Everything else
+A **connection** is the authorisation object: **one per pair of accounts, whoever invited**,
+`pending` until the invitee accepts, carrying the PQXDH blob that establishes the pair's session
+key. **Once accepted it carries shares both ways**: either side may share over it, and each
+receives what the other sends. Everything else
 hangs off it. A **share** carries one re-wrapped DEK per item — **the ciphertext is never copied**,
 so the recipient reads the owner's row.
 
@@ -1331,7 +1333,7 @@ Read the recipient's current generation and keys from `GET /users/{uuid}/public-
 
 **Errors:** `400 BAD_REQUEST` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (no account uses that
 username **right now** — only a current username resolves; or the device lacks `sharing`) ·
-`409 CONFLICT` (a connection between the pair already exists) · `409 STALE_KEY_GENERATION` (either
+`409 CONFLICT` (a connection between the pair already exists, in either direction) · `409 STALE_KEY_GENERATION` (either
 generation is not current: re-read and re-encapsulate).
 
 ### `GET /connections`
@@ -1377,7 +1379,8 @@ Either side may delete. Body is the signed action alone. **`204 No Content`.**
 
 ### `POST /shares`
 
-Shares one item over an **accepted** connection. `id` is optional and client-generated.
+Shares one item over an **accepted** connection, **from either side of it**: the inviter and the
+invitee both share over the same connection. `id` is optional and client-generated.
 
 ```json
 {
@@ -1403,8 +1406,8 @@ already shared on that connection) · `422 BAD_REQUEST` (the connection has not 
 
 ### `GET /shares`
 
-The inbox: what arrived, paginated. Each row carries the share, its `wrapped_dek`, and the sender's
-current username.
+The inbox: what the **other side** of each of this account's connections shared, paginated. Each
+row carries the share, its `wrapped_dek`, and the sharer's current username.
 
 ### `GET /shares/{id}`
 
@@ -1625,7 +1628,7 @@ base64 (44 characters). The OPRF is RFC 9497, base mode, `ristretto255-SHA512`.
 | `DELETE /oprf/devices/{id}` | 🔒 its device, or a full device | → `204` |
 
 - `proof` is Ed25519, under the `device-confirm` key, over
-  `"Cryple-PIN-v2|device-confirm|<registration_id>|<attempt_id>"`.
+  `"Cryple-PIN-v1|device-confirm|<registration_id>|<attempt_id>"`.
 - **Confirm every successful unlock**: a confirmation gives every attempt back.
 - **`404` on `evaluate` means the registration is gone.** The attempts ran out or the device was
   removed. Ask for the seed and re-enrol; do not ask for the PIN again.

@@ -11,10 +11,7 @@ import {
   type DeviceX25519,
 } from './keys';
 
-export const DEVICE_RECORD_VERSION = 2;
-
 export interface DeviceRecord {
-  v: typeof DEVICE_RECORD_VERSION;
   device_id: string;
   registration_id: string;
   salt: string;
@@ -47,7 +44,6 @@ export async function sealDeviceRecord(options: {
   try {
     const sealed = await sealBytes(material, options.wrapKey);
     return {
-      v: DEVICE_RECORD_VERSION,
       device_id: keys.deviceId,
       registration_id: options.registrationId,
       salt: bytesToBase64(options.salt),
@@ -136,7 +132,6 @@ export function isDeviceRecord(value: unknown): value is DeviceRecord {
   }
   const record = value as Partial<DeviceRecord>;
   return (
-    record.v === DEVICE_RECORD_VERSION &&
     typeof record.device_id === 'string' &&
     typeof record.registration_id === 'string' &&
     typeof record.salt === 'string' &&

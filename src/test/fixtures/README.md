@@ -29,8 +29,13 @@ For the well-known all-`abandon` BIP39 mnemonic (test values only — never a re
 | `identity_key_p256` | [`lib/keys`](../../lib/keys/README.md), [`lib/encoding`](../../lib/encoding/README.md) |
 | `x25519_key`, `mlkem768_key` | [`lib/keys`](../../lib/keys/README.md) |
 | `vault_kek`, `sealed_blob` | [`lib/keys`](../../lib/keys/README.md), [`lib/secrets`](../../lib/secrets/README.md) |
-| `server_auth_token` | [`lib/pin`](../../lib/pin/README.md) |
 | `pqxdh` | [`lib/pqxdh`](../../lib/pqxdh/README.md) |
+| `pin_oprf` | [`lib/oprf`](../../lib/oprf/README.md) |
+| `device_keys` | [`lib/chain`](../../lib/chain/README.md), [`lib/keyrings`](../../lib/keyrings/README.md) |
+
+`rfc9497-ristretto255-sha512-oprf.json` beside it is RFC 9497's own base-mode vector set for
+`ristretto255-SHA512`, extracted from `cloudflare/circl`'s `oprf/testdata/rfc9497.json` (the
+library the server uses). `lib/oprf` checks it before `pin_oprf`.
 
 ### Refreshing the copy
 
@@ -41,19 +46,3 @@ npm test
 
 If the suite goes red after a refresh, do not adjust this client until you know which
 backend constant moved and why.
-
-**A refresh that only *adds* objects is the good case** — `vault_kek` / `sealed_blob` arrived that
-way with Decision A/B, leaving every pre-existing value byte-identical. A refresh that *changes* an
-existing value is the breaking one.
-
-**The 2026-09-04 refresh was a breaking one, deliberately.** `heir_label_key` and
-`sealed_label_blob` were removed with digital inheritance, and the PQXDH vector's `usage` moved
-from `succession-dek` to `recovery-share` — which changes the `info` string, and therefore the
-session key and the recorded wire blob. Everything else is byte-identical.
-
-**One more breaking refresh is expected, and it is not a bug when it lands.** Guardian recovery
-left the product later the same day, so `recovery-share` names a flow that no longer exists.
-It is kept because the vector pins the PQXDH *combiner*, and the usage is only an input to the
-`info` string. Task 102 (private sharing) assigns the real label and moves this vector one last
-time, together with `crypto/pqxdh.md`, `PQXDH_USAGES` and the generator. Until that commit,
-`lib/pqxdh` has no caller and this fixture is the only thing exercising it.

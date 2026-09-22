@@ -20,7 +20,7 @@ import {
 } from './index';
 
 const mnemonic = vectors.seed_and_user_address.mnemonic;
-const pin = vectors.server_auth_token.pin;
+const pin = vectors.pin_oprf.pin;
 
 function run(events: Parameters<typeof onboardingReducer>[1][]): OnboardingState {
   return events.reduce(onboardingReducer, INITIAL_ONBOARDING);

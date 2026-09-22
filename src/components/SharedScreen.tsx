@@ -252,7 +252,7 @@ function SharedTile({
         </span>
         {item.problem !== undefined ? (
           <span className="w-full text-caption normal-case tracking-normal text-danger">
-            {item.stale === true ? SHARING_COPY.staleConnection : item.problem}
+            {item.problem}
           </span>
         ) : null}
       </button>

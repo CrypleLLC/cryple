@@ -23,7 +23,7 @@ uncompressed point where the API expects SPKI.
 
 ### Hex
 
-`bytesToHex` emits **lowercase** — `user_address`, `Server_Auth_Token` and every signed
+`bytesToHex` emits **lowercase** — `user_address`, event hashes and every signed
 payload argument are specified as lowercase hex, so this is a correctness property, not a
 style choice. `hexToBytes` accepts either case and rejects odd-length or non-hex input
 rather than silently truncating.
@@ -37,8 +37,8 @@ the wire this way: X25519 → 44 chars, ML-KEM-768 → 1580 chars.
 ### UTF-8
 
 `utf8ToBytes` / `bytesToUtf8`. Note that `utf8ToBytes` is what produces the **64-byte**
-`Server_Auth_Token` salt from the 64-character `user_address` string — see
-[`lib/pin`](../pin/README.md) for why that distinction matters.
+account-PIN Argon2id salt from the 64-character `user_address` string, not the 32 raw bytes it
+encodes — see [`lib/oprf`](../oprf/README.md).
 
 ### P-256 point encodings
 

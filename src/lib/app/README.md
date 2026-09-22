@@ -7,8 +7,11 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | Module | What it owns |
 | --- | --- |
 | `onboarding.ts` | The onboarding state machine, PIN/mnemonic validation copy, the recovery kit step |
-| `boot.ts` | Sign-in when the mode is not known yet, and account enrolment |
-| `mode-hint.ts` | The locally remembered Standard/Paranoid hint |
+| `unlock.ts` | The unlock screen's sentences: attempts left, a forgotten browser, offline, rate limited |
+| `second-factor.ts` | Paranoid mode's copy, and when to suggest waiting after refused account PINs |
+| `devices.ts` | The devices screen's rows and copy |
+| `sign-out.ts` | Lock and *Remove this browser* |
+| `transfers.ts` | Uploads in flight, including a queue paused by `429` |
 | `vault.ts` | The vault index view model, received-ciphertext integrity check, and the local secret name/value format |
 | `notes.ts` | The notes file-grid view model — title, thumbnail, selection, character budget and autosave state |
 | `icon-size.ts` | The four-step size scale shared by all three grids, the columns each draws, and the remembered choice per screen |
@@ -131,98 +134,57 @@ the kit prints the username, and the server picks that name during sign-up.
 - The phrase can be revealed but not copied — see
   [Copying a secret clears the clipboard](#copying-a-secret-clears-the-clipboard).
 
-`CrypleProvider.enrol` therefore no longer moves the app to `ready`. It returns the username, and
-`enterVault` opens the vault: straight after `enrolled` for a sign-in, and from the kit step's
-Continue for a sign-up. If the 15-minute idle lock fires while the kit step is open, the session
+`createAccount` does not move the app to `ready`. It returns the username, and `enterVault`
+opens the vault from the kit step's Continue. Adding a browser with an existing phrase goes
+straight in. If the 15-minute idle lock fires while the kit step is open, the session
 locks as it would anywhere else, and the kit can no longer be offered.
 
-### Every account has a PIN
+### Every browser has a PIN, and the mode is a separate choice
 
-`mode` and `pin` used to be two steps, and Standard skipped the second one entirely. That left a
-Standard account with **no local vault**, so the phrase had to be retyped on every reload and after
-every idle timeout, and Lock could not be offered at all — there was nothing to lock back to.
+The PIN step always sets **this browser's PIN**: it unlocks the device record
+([`lib/device`](../device/README.md)) through the server's OPRF, which rations every guess. The
+same step presents **Standard and Paranoid as a real choice**. Paranoid turns the same six digits
+into the **account PIN** too, which the phrase then needs for every root action. The one-way,
+no-reset warning (`MODE_COPY.oneWayDoor`) is shown **before** the account is created, and
+Standard is described as a deliberate choice, not a lesser one.
 
-Now the PIN is always set and the two steps are one. The checkbox on it decides one thing only:
-whether that same PIN is **also** the server's second factor.
+Signing in on a new browser is adding it with the phrase (`ENROL_STEP_COPY`): the copy says the
+browser does not keep the phrase (`PHRASE_NOT_KEPT`), that the phrase is in the page's memory
+while typed, and offers *I lost my other devices* with what it does and does not do.
 
-| | Standard | Paranoid |
-| --- | --- | --- |
-| Encrypts the local phrase | yes | yes |
-| Locks the app | yes | yes |
-| Required to sign in | no | yes |
+## Unlocking — `unlock.ts`
 
-This restores `auth/two-factor-PIN.md` § Local Seed Encryption, which specifies the local seed
-vault for **both** modes; the client had deliberately diverged from it, and that divergence is what
-produced the retype-your-phrase behaviour.
+| Outcome | Sentence |
+| --- | --- |
+| Wrong PIN | `wrongPinMessage(attemptsRemaining)`: the attempts left, and that at zero the browser forgets the account and the phrase is needed |
+| Registration gone (`404`) | `UNLOCK_COPY.forgotten`: too many wrong PINs, or removed from another device. The PIN is never asked for again |
+| Server unreachable | `UNLOCK_COPY.offline`: not a PIN error, and no attempt was used |
+| `429` | `rateLimitMessage`: when to try again, and that it is not about the account |
 
-**Deriving the token is not sending it.** `session.unlock(pin)` always derives a
-`Server_Auth_Token`, in both modes — it is only *sent* when the account is Paranoid, which
-`signInWithModeDetection` decides from `has_password`. A Standard account holding a derived token it
-never transmits is correct rather than a leak waiting to happen.
+## Paranoid — `second-factor.ts`
 
-## Signing in without knowing the mode
-
-Sending the `password` on a Standard account fails exactly as hard as omitting it on a Paranoid
-one, and both return the same anti-enumeration `404`. Since the mode lives in `has_password` on
-`GET /users/me`, which needs a token, there is a bootstrap problem on a fresh unlock.
-
-`signInWithModeDetection` resolves it: try the locally hinted mode, and on an `AuthRejectedError`
-try the other. **Each attempt builds its own `{challenge, timestamp, signature}`** — the challenge
-is consumed before the signature is checked, so the second attempt cannot reuse the first's.
-A test asserts the two challenges differ.
-
-Two things it deliberately does **not** do:
-
-- It does not treat the hint as the answer. After a successful sign-in it reads `has_password`
-  from `/users/me` and reports that — the hint is only an ordering optimisation, and
-  `writeModeHint` corrects it from the authoritative value.
-- It does not swallow real failures. Only `AuthRejectedError` triggers the fallback; a `500` or a
-  transport error propagates, so an outage is never mis-rendered as "wrong mode". A test pins this.
-
-The hint in `localStorage` is not a secret and not a credential — it is one of `standard` /
-`paranoid`, and an unrecognised value reads as absent.
-
-## Turning on the second factor
-
-`sessionExits` can only offer a PIN-locked session to an account that has a PIN, so the Security
-screen is where a Standard account gets one — `POST /users/second-factor`, the API's one supported
-mode transition ([`lib/users`](../users/README.md)).
-
-`checkUpgrade` validates the **phrase before the PIN**: a wrong phrase makes the PIN useless, and
-failing on the cheap half first is the better message. The copy reuses `MODE_COPY.oneWayDoor`
-verbatim rather than paraphrasing it — the one-way-door warning must read identically wherever it
-appears, and a test pins that.
-
-Why the screen asks for the recovery phrase at all: a Standard account keeps nothing on the device,
-so the upgrade has to create the local vault, and that needs the phrase. The keystore does not
-retain it ([`lib/session` § Never](../session/README.md)), so it is asked for. It is checked
-against the signed-in `user_address` **before** anything is sent — wrapping the wrong seed under
-the right PIN would produce a vault that unlocks into a different account.
+A throttled account PIN gives no error: the evaluation still answers, the proof is simply wrong
+and the action is refused. `accountPinRefusal(n)` suggests waiting a few minutes after two
+refusals for a PIN the user is sure of, and nothing ever auto-retries: every evaluation is an
+attempt. `checkUpgrade` validates the phrase before the PIN, because a wrong phrase makes the
+PIN useless.
 
 ## Leaving a session
 
-There is no revocation endpoint, so ending a session is purely local
-([`lib/auth` § Sign-out](../auth/README.md)). The only real choice is **what the device keeps**,
-and `sessionExits(deviceRemembersPhrase)` is that choice as data:
-
-| | Keeps the local vault | Coming back needs |
+| | What happens | Coming back needs |
 | --- | --- | --- |
-| **Lock** | yes | the PIN |
-| **Log out** | no — the vault is wiped | the recovery phrase |
+| **Lock** | The keystore forgets its keys; the device stays | the PIN |
+| **Remove this browser** | A self `device-remove`: the server stops accepting this device at once, and the record is deleted | the recovery phrase |
 
-- **Lock is offered only when there is something to lock.** A Standard account stores nothing on
-  the device, so locking and logging out would be the same action under two names; that mode gets
-  one button. `hasSeedVault()` is the test, not `paranoid` — they agree today, but the vault is the
-  thing actually being kept.
-- **Only the erasing log-out confirms.** Wiping the device copy is worth a second look; ending a
-  session that stored nothing is not, and a confirmation there would train the reflex that makes
-  the real one useless.
-- The confirmation says the vault itself is **untouched**, because "log out and
-  erase this device" reads like account deletion and is not. Losing the local copy costs one
-  re-entry of the phrase.
-- Both exits run through the provider's `lock` / `logOut`; `logOut` is also what the `Unlock`
-  screen's "Log out of this device" and post-wipe "Start over" buttons call — one concept, three
-  entry points, no second implementation.
+Only removal confirms, and the confirmation says the vault is **untouched**, because "remove this
+browser" reads like account deletion and is not.
+
+## Uploads paused by the creation budget
+
+`POST /files` is limited per account. A `429` there **pauses** the upload
+(`creationPauseSeconds`, `pauseTransfer`) for `Retry-After` seconds and then carries on, with a
+tile that says nothing failed. It is never marked failed, and nothing is abandoned, because
+nothing was created.
 
 ## The vault index
 
@@ -240,10 +202,6 @@ written by another client cannot blank the whole vault; the caller decides what 
 do (this UI offers Delete but not Copy). Row size is measured from the ciphertext **received**,
 matching `checkIntegrity`'s stance rather than trusting `ciphertext_bytes`.
 
-Item bodies used to be unopenable — `unwrapDek` rejected with `KekNotSpecifiedError` until
-Decision A landed — and `VAULT_SEALED_NOTICE` / `isVaultSealed` existed so the UI said so rather
-than showing a crash. Both were removed once the seam stopped throwing; see
-[`lib/secrets`](../secrets/README.md) for the vault KEK that replaced the stub.
 
 ### The secret name/value format
 
