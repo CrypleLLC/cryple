@@ -13,14 +13,16 @@ export const SHARING_COPY = {
 
   inviteTitle: 'Invite someone',
   inviteHint:
-    'Ask them for their username and type it here. They have to accept before you can send ' +
-    'anything, and once they have, you can send as much as you like.',
+    'Ask them for their username and type it here. Once they accept, you can both send each ' +
+    'other items: one invitation connects you both ways.',
   inviteLabel: 'Their username',
   inviteSubmit: 'Send invitation',
   inviteSending: 'Sending…',
   inviteSent: (username: string) => `Invitation sent to ${username}.`,
   inviteUnknown: 'No account currently uses that username.',
-  inviteExists: 'You are already connected to that account.',
+  inviteExists:
+    'You are already connected to that account, or have an invitation pending with it. One ' +
+    'connection works in both directions.',
 
   pendingInbound: 'Waiting for you',
   pendingOutbound: 'Waiting for them',
@@ -64,10 +66,6 @@ export const SHARING_COPY = {
   open: 'Open',
   download: 'Download',
   opening: 'Opening…',
-  staleConnection:
-    'This connection was made by an older version of Cryple and its key exchange cannot be ' +
-    'reproduced. Disconnect and invite each other again — nothing that was sent through it can ' +
-    'be recovered.',
   lostConnection:
     'This connection is gone. To share again, send a new invitation and compare fingerprints ' +
     'again. A connection is never repaired by looking their username up again: the name may ' +

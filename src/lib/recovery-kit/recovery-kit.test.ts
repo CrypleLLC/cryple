@@ -43,7 +43,7 @@ describe('what the recovery kit carries', () => {
     expect(Object.keys(content).sort()).toEqual(
       ['appName', 'created', 'heading', 'intro', 'qrCaption', 'qrPayload', 'username', 'warning', 'words'],
     );
-    expect(JSON.stringify(content)).not.toContain(vectors.server_auth_token.pin);
+    expect(JSON.stringify(content)).not.toContain(vectors.pin_oprf.pin);
     expect(JSON.stringify(RECOVERY_KIT_COPY)).not.toMatch(/\bPIN\b/i);
   });
 

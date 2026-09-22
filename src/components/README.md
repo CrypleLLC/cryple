@@ -9,8 +9,8 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `CrypleProvider.tsx` | Session custody, phase machine, error translation, cross-tab handoff |
 | `AppProviders.tsx` | Mounts `CrypleProvider` in the root layout so every route shares one session |
 | `SessionGate.tsx` | The loading / onboarding / locked / ready switch, wrapped around each route |
-| `Onboarding.tsx` | Task 24 — phrase, PIN, mode, enrolment, recovery kit download |
-| `Unlock.tsx` | PIN unlock and the 3-attempt device wipe |
+| `Onboarding.tsx` | Sign up (phrase, PIN, Standard or Paranoid, recovery kit) and adding this browser with a phrase, including *I lost my devices* and the too-many-devices picker |
+| `Unlock.tsx` | PIN unlock through the server's OPRF, with the attempts left, and *I forgot this browser's PIN* |
 | `AppShell.tsx` | Task 25 — the sidebar shell and navigation registry |
 | `VaultScreen.tsx` | Vault index, add/delete secrets (Task 34) |
 | `VaultReveal.tsx` | The vault's global show/hide-values state and its top-bar button |
@@ -21,7 +21,10 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `DocumentsScreen.tsx` | The documents grid of page miniatures — opens each document in its own tab |
 | `DriveScreen.tsx` | The drive: file grid, drag-and-drop upload, progress, download, selection and delete |
 | `UsernameScreen.tsx` | The Settings **Username** tab — one panel, `UsernameCard` |
-| `PinScreen.tsx` | The Settings **PIN** tab — the mode when it is on, the one-way upgrade when it is not |
+| `PinScreen.tsx` | The Settings **PIN** tab — this browser's PIN, turning Paranoid on, changing the account PIN |
+| `DevicesScreen.tsx` | The Settings **Devices** tab — the account's devices, names, chain verification, removing another device with the phrase |
+| `AccountScreen.tsx` | The Settings **Account** tab — deleting the account with the phrase (and the account PIN on Paranoid) |
+| `SharingScreen.tsx`, `ConnectionInvitation.tsx`, `ShareItemDialog.tsx`, `SharedScreen.tsx` | Invitations and fingerprints, nicknames, sending, and what arrived with *Copy to my own account* ([`lib/sharing`](../lib/sharing/README.md)) |
 | `UsernameCard.tsx` | The rename panel: the current name, the claim, and what a rename does |
 | `StorageMeter.tsx` | The account's storage bar, in the sidebar corner — stored bytes solid, reservations behind them |
 | `documents/DocumentWorkspace.tsx` | The `/docs/[id]` page: title, toolbar, A4 sheet, counts, save status |
@@ -48,7 +51,7 @@ Navigation is one registry, `NAV_ITEMS` in `AppShell.tsx`. Each entry is
 its screen component — the sidebar, the mobile nav and the top-bar heading all render from the
 same array. Notes was added exactly that way, as one entry; Guardians was **removed** exactly that
 way on 2026-09-04, by deleting one. `actions` is the optional slot for a component rendered in the
-top bar beside Lock / Log out, for controls that belong to the whole screen rather than to one
+top bar beside Lock and the account menu, for controls that belong to the whole screen rather than to one
 panel; the Vault's global reveal toggle is the first of them. State shared between such a control
 and its screen lives in a provider wrapping the shell, as `VaultReveal.tsx` does, since the header
 sits outside the screen's tree.
@@ -71,9 +74,7 @@ rename, and clears the field only on success. The two sentences about what a ren
 rendered unconditionally, not behind a disclosure — they are the panel's reason for existing as
 much as the field is.
 
-The second factor is **not** re-prompted here. A Paranoid session already holds its
-`Server_Auth_Token` from the unlock, and `updateUsername` reads it the way `deleteAccount` and
-`rotateSecondFactor` do; a Standard account signs without one and the server accepts that.
+A rename is signed by this device's key, with no PIN, in either mode.
 
 ## The token layer
 
@@ -210,16 +211,15 @@ exercised is a mouse drag from inside the dialog to outside it.
 
 The sidebar holds the **places you keep things** — vault, notes, documents, drive. Everything about
 the account itself lives behind the avatar in the top right: clicking it opens a menu with
-**Settings** and **Log out**.
+**Settings** and **Remove this browser**.
 
 **Lock is not in that menu**, and that is deliberate. It sits as its own button immediately to the
 left of the avatar, because it is the one control a person reaches for in a hurry — someone walking
-up behind them. A control you need in two seconds does not belong two clicks deep. It also only
-exists when the device remembers the recovery phrase; `lockExit` returns nothing otherwise, and the
-button is simply absent rather than present and broken.
+up behind them. A control you need in two seconds does not belong two clicks deep. It is always
+there, because the device record survives a lock.
 
 **Settings is a modal with tabs**, `SETTINGS_TABS` in `lib/app/settings.ts`. Sharing, Username and
-PIN are the three, and it takes the `wide` variant to give them room. None of them is a place you
+Devices, Username, PIN and Account are the tabs (Sharing only on a device holding `sharing`), and it takes the `wide` variant to give them room. None of them is a place you
 keep things, so none earned a permanent seat in the sidebar.
 
 **The tabs are a vertical menu down the left edge of the modal, not a row across the top.** The
@@ -317,43 +317,45 @@ their copy; removing a share cannot un-read it) were cut on 2026-09-12 for the s
 
 ## Session custody
 
-`CrypleProvider` owns the one `SessionKeystore` and the one `TokenStore` for the app. Its phase is
-`loading → onboarding | locked → ready`, decided by whether a local seed vault exists.
+`CrypleProvider` owns the one `SessionKeystore`, the one `TokenStore` and the device record store
+(IndexedDB). Its phase is `loading → onboarding | locked → ready`: `locked` when a device record
+exists, `onboarding` when none does. The flows themselves are [`lib/account`](../lib/account/README.md);
+the provider maps their outcomes to sentences and phases.
 
-**Unlock once, sign from memory.** The 600k-iteration PIN stretch is paid at unlock; the derived
-signing key and `Server_Auth_Token` stay in the keystore for the session. Nothing prompts for the
-PIN per action.
+- **Unlock once, sign from memory.** The OPRF round trip and the Argon2id derivation are paid at
+  unlock; the device key and the scope KEKs stay in the keystore for the session.
+- **The token renews itself.** Five minutes before it expires, the device signs in again. A
+  `401 UNAUTHORIZED` from any call triggers the same silent sign-in; if that is refused, the
+  device was removed, the local record is forgotten and the phrase is asked for.
+- **A chain that does not verify** from the root key at unlock raises a danger notice across the
+  shell, and the devices screen refuses to remove anything until it does.
+- `holds(scope)` and `fullDevice` come from the session's scopes. The navigation hides a section
+  whose scope the device lacks, and delete buttons need a full device.
+- The provider subscribes to `session.onLock()`, so the idle lock drives the UI back to `locked`.
 
-The provider subscribes to `session.onLock()`, so the keystore's own idle timeout drives the UI
-back to `locked` rather than the two drifting apart.
-
-`reportError` is the single funnel for failures: it renders `userMessageFor(error)` — copy built
-client-side from the `code`, since the API sends no message — and drops the token on
-`401 UNAUTHORIZED`, which is the only 401 meaning "sign in again". `401 INVALID_CREDENTIALS`
-renders as one generic message, because a bad signature and a wrong PIN are indistinguishable by
-design.
-
-**Logout is deleting our own copy of the token.** There is no revocation endpoint, no session
-list, and no "sign out all devices" — none of that is rendered anywhere.
+`reportError` is the single funnel for failures: `userMessageFor(error, { deviceScopes })`,
+copy built client-side from the `code`.
 
 ## Onboarding
 
-`enrol` writes the local seed vault **after** `POST /sign-up` succeeds, so a rejected enrolment
-does not leave a vault for an account that was never created. On any failure the keystore is
-locked, zeroing what was derived.
+`createAccount` keeps the drafted genesis across a failed attempt, so a retry sends the same
+batch; it discards the draft after an authentication refusal. The phrase stays in onboarding
+state only until the recovery kit step is finished. `enrolBrowser` maps its outcomes to *no
+account uses this phrase* (with *Create an account with this phrase*), the too-many-devices
+picker, or a message.
 
-`enrol` does not open the vault. It returns the username the server assigned, and the component
-calls `enterVault` when onboarding is finished — immediately for a sign-in, and after the recovery
-kit has been downloaded for a sign-up ([`lib/app` § Onboarding](../lib/app/README.md#onboarding)).
-`enterVault` falls back to `locked` if the session locked in the meantime.
+Neither opens the vault on its own: the component calls `enterVault` immediately after adding a
+browser, and after the recovery kit has been downloaded for a sign-up
+([`lib/app` § Onboarding](../lib/app/README.md#onboarding)).
 
 The PDF is built by [`lib/recovery-kit`](../lib/recovery-kit/README.md), loaded with a dynamic
 `import()` on the first click so `pdf-lib` and the QR encoder stay out of every other page load.
 The download uses the same object-URL-and-anchor approach as the drive, and the URL is revoked
 straight after the click. The phrase can be revealed on the step but has no copy button.
 
-The mode step states the one-way door before either button. There is no "disable PIN" control and
-there never will be.
+The PIN step presents Standard and Paranoid as a real choice, and shows the one-way,
+no-reset warning as soon as Paranoid is picked, before the account is created. There is no
+"disable Paranoid" control and there never will be.
 
 ## Product boundaries this shell respects
 

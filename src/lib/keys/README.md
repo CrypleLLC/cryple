@@ -19,17 +19,25 @@ BIP39 mnemonic (12 or 24 words)
   │  PBKDF2-HMAC-SHA512(NFKD(mnemonic), "mnemonic"+passphrase, 2048, 64B) → seed
   │
   ├─ SHA-256(seed)                                                  → user_address (64-char lowercase hex)
-  ├─ SLIP-0010 P-256, m/9027'/0'/0'                                  → ECDSA P-256 (API auth + ERC-4337 signer)
-  ├─ HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|x25519",    L=32)  → X25519
-  ├─ HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|mlkem768",  L=64)  → ML-KEM-768 (d‖z for FIPS 203 keygen)
-  └─ HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|vault-kek", L=32)  → vault KEK (AES-256, symmetric)
+  ├─ SLIP-0010 P-256, m/9027'/0'/0'                                  → the ROOT signing key
+  ├─ HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|x25519",    L=32)  → X25519 (derived, reserved, not published)
+  ├─ HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|mlkem768",  L=64)  → ML-KEM-768 (derived, reserved, not published)
+  └─ HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|vault-kek", L=32)  → the ROOT WRAP key
 
   RESERVED, NEVER DERIVED:  m/44'/60'/…   — Cryple has no secp256k1 key and no EOA.
 ```
 
-The vault KEK leaf (Decision A) landed 2026-08-08, after the other four — it wraps the per-item
-DEK for [`lib/secrets`](../secrets/README.md) and nothing else. See that module's README for
-scope and the sealed-blob envelope it wraps into.
+**What the seed is for.** The seed is a cold root ([device-keys.md](../../../../api-general/.docs/crypto/device-keys.md)):
+it is typed only to sign up, to add a device, and for the account-level actions, and is never
+stored. Its P-256 key is the **root signing key**, stored by the server as the account's
+`public_key`; it signs the genesis, enrolments and root actions. The `vault-kek` leaf is the
+**root wrap key**: it seals every keyring generation for the root, so the seed alone can always
+reopen the account. Item DEKs are wrapped under scope KEKs (`lib/keyrings`), never under a seed
+leaf. The X25519 and ML-KEM leaves stay derived for the vectors; the account's sharing keys are
+random per generation instead.
+
+`deriveRootKeys(seed)` / `deriveRootKeysFromMnemonic(mnemonic)` return exactly what a root flow
+needs — `userAddress`, `signing`, `wrapKey` — and `zeroRootKeys` zeroes them.
 
 ## API
 
@@ -40,15 +48,11 @@ scope and the sealed-blob envelope it wraps into.
 | `deriveUserAddress(seed)` | `SHA-256(seed)` as lowercase hex. |
 | `deriveIdentityKey` / `deriveX25519Key` / `deriveMlKem768Key` / `deriveVaultKek` | Individual leaves. |
 | `zeroKeyTree(tree)` | Zeroes every private buffer in the tree in place. |
+| `deriveRootKeys` / `deriveRootKeysFromMnemonic` / `zeroRootKeys` | The root signing key, the root wrap key and the address, for one root flow |
 | `mnemonicToSeed` / `isValidMnemonic` / `generateMnemonic` | BIP39 layer, see below. |
 | `deriveHardenedPath` / `deriveMasterNode` / `deriveHardenedChild` | SLIP-0010 primitives. |
 
-`CrypleKeyTree` carries the private material *and* the wire encodings, so no call site has
-to remember which encoding an endpoint wants:
-
-- `identity.publicKeySpkiBase64` — the `public_key` field (124 chars)
-- `x25519.publicKeyBase64` — `encryption_public_key_x25519` (44 chars)
-- `mlkem768.publicKeyBase64` — `encryption_public_key_mlkem` (1580 chars)
+`CrypleKeyTree` carries the private material and its encodings; `identity.publicKeySpkiBase64` is the root `public_key` sent at sign-up (124 chars).
 
 ## The traps this module exists to avoid
 

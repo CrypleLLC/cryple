@@ -332,7 +332,7 @@ pressure. That is correct for a cache and the reason nothing here is a source of
 
 ## Download
 
-`openFile` resolves the row, unwraps the DEK under the vault KEK, opens the manifest and **runs the
+`openFile` resolves the row, unwraps the DEK under the `files` scope KEK of the row's `key_generation`, opens the manifest and **runs the
 layout check before anything is decrypted**. `downloadFile` streams the object through
 `decryptStream` and hands back plaintext.
 

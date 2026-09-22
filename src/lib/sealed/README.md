@@ -12,7 +12,9 @@ sealed(key, plaintext) =         0x01 ‖ iv(12) ‖ AES-256-GCM(key, iv, plaint
 | Consumer | Key | Plaintext | Encoding |
 | --- | --- | --- | --- |
 | `ciphertext` — [`lib/secrets`](../secrets/README.md) | that item's DEK | the item payload | base64 |
-| `wrapped_dek` — [`lib/secrets`](../secrets/README.md) | the vault KEK | the item DEK | base64 |
+| `wrapped_dek` — every item domain | the item scope's KEK of `key_generation` ([`lib/keyrings`](../keyrings/README.md)) | the item DEK | base64 |
+| a root keyring wrap, the sharing material, a stored share sub-key | the root wrap key, the `sharing` KEK, the item scope's KEK | a scope KEK, sharing keys, a sub-key | base64 |
+| the device record's `sealed` — [`lib/device`](../device/README.md) | the `device-wrap` PIN key | the device's ML-KEM seed | base64 |
 | the note and document payloads | that item's DEK | the item payload | base64 |
 | a drive chunk — [`lib/files`](../files/README.md) | that file's DEK | `u32be(index) ‖ u32be(count) ‖ payload` | **raw** |
 
@@ -36,9 +38,7 @@ and there is one implementation of it.
 at a proposal document; that proposal landed.
 
 It stayed a cross-client contract even though this is the only client today: the API takes these
-fields as opaque base64, so a divergent choice fails **silently, per item, forever**. A third
-row used to sit in that table — `encrypted_seed`, sealed under the recovery key — and it left
-with guardian recovery on 2026-09-04.
+fields as opaque base64, so a divergent choice fails **silently, per item, forever**.
 
 ## Why it exists as one module
 

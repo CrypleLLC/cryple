@@ -51,29 +51,36 @@ are encrypted.
 This is why "we cannot read your data" is checkable rather than a promise. The code that would do
 the reading is in this repository, and there is no key on the server side to do it with.
 
+### Your devices
+
+Your recovery phrase is not stored anywhere, not even in your browser. Each browser you use
+becomes one of your **devices**, with keys of its own that never leave it. You type the phrase
+only to create the account, to add a device, and for account-level actions such as removing a
+lost device or deleting the account. While you type it, it is in the page's memory; the rest of
+the time the browser holds only its own keys. For the best protection, use Brave with a profile
+that has no extensions.
+
+A device you lose can be removed from any other device. Removal changes every key it held, so it
+cannot read anything saved afterwards. It keeps whatever it had already copied: nothing can reach
+into a device that is gone.
+
 ### Unlocking a device
 
-Both modes use a 6-digit PIN, chosen once when you set up. It encrypts the copy of your phrase kept in
-this browser and locks the app, so day to day you come back with six digits instead of twenty-four
-words — on a reload, and after fifteen idle minutes. What you are choosing is what _else_ that PIN
-does:
+Each browser has a 6-digit PIN. It unlocks that browser on a reload and after fifteen idle
+minutes. The PIN never leaves the device: the server helps check it without ever seeing it, and
+allows only a limited number of wrong tries. After the last one, the browser forgets your account
+and your recovery phrase adds it back. Your vault is untouched either way.
 
-- **Standard** — the PIN never leaves the device. Signing in is your recovery phrase alone, so
-  forgetting the PIN costs you nothing: log out, sign back in with your phrase, set a new one.
-- **Paranoid** — the same PIN is _also_ checked by the server, so your phrase alone will not sign
-  you in anywhere. **Forgetting it ends the account.** There is no reset, by anyone, ever.
+You also choose a mode:
 
-Paranoid mode exists for one scenario: someone steals your recovery phrase. Without your PIN it is
-not enough. You can upgrade from Standard to Paranoid later, but **never the reverse** — a stolen
-phrase must not be able to switch protection off. The app has no button to remove a PIN and never
-will.
+- **Standard** — your recovery phrase alone can add a device. A deliberate choice: nothing but
+  losing your phrase can lock you out.
+- **Paranoid** — your phrase also needs an **account PIN** before it can add a device or delete
+  the account. Someone who steals your phrase still cannot get in. **Forgetting the account PIN
+  ends the account.** There is no reset, by anyone, ever.
 
-Turning a 6-digit PIN into a real encryption key takes deliberate effort — the app runs 600,000
-rounds of a slow key-derivation function, which is why unlocking pauses for a moment. That pause
-is the point: it makes guessing PINs expensive. It is paid once per session, not per action.
-
-**Three wrong PINs erase the copy on that device.** Your vault is untouched — you get back in with
-your recovery phrase.
+You can move from Standard to Paranoid later, but **never the reverse**: a stolen phrase must not
+be able to switch protection off.
 
 ### There is no account recovery, and that is the design
 

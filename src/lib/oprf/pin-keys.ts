@@ -6,8 +6,8 @@ export const OPRF_SUITE = 'ristretto255-SHA512';
 export const OPRF_HASH_TO_GROUP_DST = 'HashToGroup-OPRFV1-\x00-ristretto255-SHA512';
 export const OPRF_OUTPUT_BYTES = 64;
 export const ELEMENT_BYTES = 32;
-export const PIN_LEAF_PREFIX = 'Cryple-PIN-v2|';
-export const DEVICE_CONFIRM_PREFIX = 'Cryple-PIN-v2|device-confirm|';
+export const PIN_LEAF_PREFIX = 'Cryple-PIN-v1|';
+export const DEVICE_CONFIRM_PREFIX = 'Cryple-PIN-v1|device-confirm|';
 export const DEVICE_SALT_BYTES = 32;
 export const ARGON2ID_PARAMETERS = { m: 65536, t: 3, p: 1, dkLen: 32 } as const;
 

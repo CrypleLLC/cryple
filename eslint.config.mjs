@@ -33,8 +33,7 @@ const config = [
           name: 'localStorage',
           message:
             'Nothing secret lives in localStorage. The device record lives in IndexedDB through ' +
-            'src/lib/device; src/lib/pin only deletes what earlier versions left behind. See ' +
-            'src/lib/device/README.md.',
+            'src/lib/device. See src/lib/device/README.md.',
         },
         {
           name: 'indexedDB',
@@ -81,23 +80,19 @@ const config = [
     },
   },
 
-  // The third exemption, added 2026-09-11: src/lib/app/icon-size.ts persists one
+  // The one localStorage exemption: src/lib/app/icon-size.ts persists one
   // of four literal words naming how large the drive's icons are drawn. It is a
   // view preference with no bearing on secrets, and losing it on every reload is
   // the kind of small wrongness a user notices on every visit.
-  //
-  // src/lib/pin keeps its exemption on 2026-09-21 only to delete what the
-  // seed-vault client left behind: the encrypted seed, the mode hint and the
-  // sharing pins, which moved into the sealed address book on the server.
   {
-    files: ['src/lib/pin/**', 'src/lib/app/icon-size.ts'],
+    files: ['src/lib/app/icon-size.ts'],
     rules: {
       'no-restricted-globals': 'off',
       'no-restricted-properties': 'off',
     },
   },
 
-  // IndexedDB, 2026-09-21: the device record (src/lib/device/store.ts) holds
+  // IndexedDB: the device record (src/lib/device/store.ts) holds
   // this browser's non-extractable CryptoKeys, which only IndexedDB can store,
   // and its PIN-sealed material. src/lib/files/handles.ts keeps one
   // FileSystemFileHandle per unfinished upload.

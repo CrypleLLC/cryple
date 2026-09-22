@@ -29,6 +29,7 @@ import { createNote, getNote, openNote } from '@/lib/notes';
 import { createSecret, getSecret, openSecret } from '@/lib/secrets';
 import { SessionKeystore } from '@/lib/session';
 import {
+  AlreadyConnectedError,
   acceptInvitation,
   copySharedItem,
   editAddressBook,
@@ -152,12 +153,11 @@ describe('127.5 sign-up with the genesis, and 127.4 unlocking with the server', 
     expect((await getMe(ctx)).paranoid).toBe(false);
   });
 
-  it('keeps a v: 2 device record, with no seed, no phrase and no root key in it', async () => {
+  it('keeps a device record with no seed, no phrase and no root key in it', async () => {
     const record = await account.browser.store.read();
-    expect(record?.v).toBe(2);
+    expect(record?.device_id).toBe(account.browser.services.session.deviceId);
     const serialized = JSON.stringify(record);
     expect(serialized).not.toContain(account.mnemonic);
-    expect(serialized).not.toContain('encrypted_seed');
     const root = await deriveRootKeysFromMnemonic(account.mnemonic);
     expect(serialized).not.toContain(bytesToHex(root.signing.privateKey));
     expect(serialized).not.toContain(bytesToHex(root.wrapKey));
@@ -379,6 +379,23 @@ describe('127.11 sharing under the device model, 104.4 copies and 104.5 the addr
     expect(snapshotTitle(await openUpdate(document.ciphertext, document.dek))).toBe('Shared doc');
     const file = await openSharedFile(recipientCtx, connection, byType.file.id);
     expect(new TextDecoder().decode(file.bytes)).toBe('shared bytes');
+  });
+
+  it('lets the invitee share back over the same connection, and refuses a second invitation', async () => {
+    const ownerCtx = context(owner.browser);
+    const recipientCtx = context(recipient.browser);
+
+    await expect(inviteByUsername(recipientCtx, owner.username)).rejects.toBeInstanceOf(AlreadyConnectedError);
+
+    const backwards = await inboundFrom(recipientCtx, owner.username);
+    const { note } = await createNote(recipientCtx, '# From the invitee');
+    await shareItemById(recipientCtx, backwards, 'note', note.id);
+
+    const connection = await outboundTo(ownerCtx, recipient.username);
+    const arrived = (await listInbox(ownerCtx)).find((share) => share.item_id === note.id);
+    expect(arrived?.sender_username).toBe(recipient.username);
+    expect(await openSharedText(ownerCtx, connection, arrived!.id)).toBe('# From the invitee');
+    expect((await listConnections(ownerCtx)).filter((c) => c.username === recipient.username)).toHaveLength(1);
   });
 
   it('gives a third account holding the ciphertext nothing it can open', async () => {

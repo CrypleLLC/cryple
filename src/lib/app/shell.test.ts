@@ -21,7 +21,7 @@ import {
 
 describe("turning on the second factor", () => {
   const mnemonic = vectors.seed_and_user_address.mnemonic;
-  const pin = vectors.server_auth_token.pin;
+  const pin = vectors.pin_oprf.pin;
 
   it("accepts a valid phrase and PIN together", () => {
     expect(checkUpgrade(mnemonic, pin, pin)).toEqual({ ok: true });

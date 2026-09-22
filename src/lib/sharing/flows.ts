@@ -66,6 +66,13 @@ export class ScopeNotSharedError extends Error {
   }
 }
 
+export class AlreadyConnectedError extends Error {
+  constructor(username: string) {
+    super(`this account is already connected to "${username}"`);
+    this.name = 'AlreadyConnectedError';
+  }
+}
+
 export class NothingToCopyError extends Error {
   constructor() {
     super('the shared document has no saved snapshot yet, so there is nothing to copy');
@@ -153,14 +160,29 @@ async function encapsulateTo(
   }
 }
 
+export function connectionWith(
+  connections: readonly ConnectionRecord[],
+  username: string,
+): ConnectionRecord | undefined {
+  const wanted = username.trim().toLowerCase();
+  return connections.find((connection) => connection.username === wanted);
+}
+
 export async function inviteByUsername(
   context: AuthedContext,
   username: string,
+  existing: readonly ConnectionRecord[] = [],
 ): Promise<InvitationDraft> {
   context.session.requireScope('sharing');
+  if (connectionWith(existing, username) !== undefined) {
+    throw new AlreadyConnectedError(username);
+  }
   const resolved = await resolveUsername(context, username);
   if (!resolved) {
     throw new UnknownRecipientError(username);
+  }
+  if (connectionWith(existing, resolved.username) !== undefined) {
+    throw new AlreadyConnectedError(resolved.username);
   }
 
   let published = await fetchPublishedCounterparty(context, resolved.username);
@@ -176,6 +198,9 @@ export async function inviteByUsername(
   try {
     made = await encapsulateTo(context, published, resolved.username);
   } catch (error) {
+    if (error instanceof ApiError && error.status === 409 && error.code === 'CONFLICT') {
+      throw new AlreadyConnectedError(resolved.username);
+    }
     if (!(error instanceof ApiError && error.isStaleKeyGeneration)) {
       throw error;
     }

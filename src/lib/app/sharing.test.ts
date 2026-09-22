@@ -10,7 +10,7 @@ import {
   trustAlarm,
 } from './sharing';
 import { encodeSecretPayload, UNREADABLE_SECRET_NAME } from './vault';
-import type { ConnectionRecord, ConnectionTrust } from '@/lib/sharing';
+import { connectionWith, type ConnectionRecord, type ConnectionTrust } from '@/lib/sharing';
 
 function connection(over: Partial<ConnectionRecord>): ConnectionRecord {
   return {
@@ -148,5 +148,30 @@ describe('what a received text item shows when it is opened', () => {
       name: 'Title',
       body: '# Title\nbody',
     });
+  });
+});
+
+describe('one connection works both ways', () => {
+  it('says so where the invitation is made', () => {
+    expect(SHARING_COPY.inviteHint).toMatch(/both send each other/);
+    expect(SHARING_COPY.inviteExists).toMatch(/both directions/);
+  });
+
+  it('finds an existing connection with a username whoever invited, normalised as typed', () => {
+    const existing = [
+      connection({ id: 'a', direction: 'inbound', status: 'accepted', username: 'anacosta' }),
+      connection({ id: 'b', direction: 'outbound', status: 'pending', username: 'joaquim' }),
+    ];
+    expect(connectionWith(existing, '  AnaCosta ')?.id).toBe('a');
+    expect(connectionWith(existing, 'joaquim')?.id).toBe('b');
+    expect(connectionWith(existing, 'rui')).toBeUndefined();
+  });
+
+  it('offers an accepted connection for sending, whichever side invited', () => {
+    const sendable = sendableConnections([
+      connection({ id: 'invited-me', direction: 'inbound', status: 'accepted' }),
+      connection({ id: 'i-invited', direction: 'outbound', status: 'accepted' }),
+    ]);
+    expect(sendable.map((c) => c.id)).toEqual(['invited-me', 'i-invited']);
   });
 });

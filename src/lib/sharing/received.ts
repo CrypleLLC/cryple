@@ -3,7 +3,6 @@ import { openManifest } from '@/lib/files';
 import { openText } from '@/lib/sealed';
 import type { AuthedContext } from '@/lib/context';
 import { getSharedItem, type ConnectionRecord, type InboundShareRecord } from './api';
-import { MalformedPartyAddressError } from './keys';
 import { sharedItemDek } from './flows';
 
 export interface ReceivedItem {
@@ -15,7 +14,6 @@ export interface ReceivedItem {
   name: string;
   readable: boolean;
   problem?: string;
-  stale?: boolean;
   sizeBytes?: number;
   kind?: FileKind;
   text?: string;
@@ -85,9 +83,6 @@ export async function describeReceived(
 
     return { ...base, name: view.name, readable: true, text: view.body };
   } catch (error) {
-    if (error instanceof MalformedPartyAddressError) {
-      return { ...base, problem: error.message, stale: true };
-    }
 
     const reason = error instanceof Error ? error.message : String(error);
 
