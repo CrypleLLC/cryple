@@ -1,4 +1,8 @@
-import type { VaultStorage } from '@/lib/pin';
+export interface PreferenceStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
 
 export type IconGrid = 'drive' | 'notes' | 'documents';
 
@@ -108,7 +112,7 @@ export function miniatureTextPixels(size: IconSize, share: number): number {
   );
 }
 
-function defaultStorage(): VaultStorage | undefined {
+function defaultStorage(): PreferenceStorage | undefined {
   return typeof localStorage === 'undefined' ? undefined : localStorage;
 }
 

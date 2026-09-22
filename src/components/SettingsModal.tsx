@@ -2,6 +2,9 @@
 
 import { useState } from 'react';
 import { ACCOUNT_MENU_COPY, SETTINGS_TABS, type SettingsTabId } from '@/lib/app';
+import { useCryple } from './CrypleProvider';
+import AccountScreen from './AccountScreen';
+import DevicesScreen from './DevicesScreen';
 import PinScreen from './PinScreen';
 import SharingScreen from './SharingScreen';
 import UsernameScreen from './UsernameScreen';
@@ -9,12 +12,16 @@ import { Modal } from './ui';
 
 const PANELS: Record<SettingsTabId, () => React.JSX.Element> = {
   sharing: SharingScreen,
+  devices: DevicesScreen,
   username: UsernameScreen,
   pin: PinScreen,
+  account: AccountScreen,
 };
 
 export default function SettingsModal({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<SettingsTabId>('sharing');
+  const { holds } = useCryple();
+  const tabs = SETTINGS_TABS.filter((entry) => entry.id !== 'sharing' || holds('sharing'));
+  const [tab, setTab] = useState<SettingsTabId>(tabs[0].id);
   const Panel = PANELS[tab];
 
   return (
@@ -30,7 +37,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           aria-label={ACCOUNT_MENU_COPY.settingsTitle}
           className="flex shrink-0 gap-1 sm:w-44 sm:flex-col sm:border-r sm:border-line sm:pr-5"
         >
-          {SETTINGS_TABS.map((entry) => (
+          {tabs.map((entry) => (
             <button
               key={entry.id}
               type="button"

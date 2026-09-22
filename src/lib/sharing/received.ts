@@ -3,7 +3,8 @@ import { openManifest } from '@/lib/files';
 import { openText } from '@/lib/sealed';
 import type { AuthedContext } from '@/lib/context';
 import { getSharedItem, type ConnectionRecord, type InboundShareRecord } from './api';
-import { connectionKeyFor, MalformedPartyAddressError, unwrapUnderConnection } from './index';
+import { MalformedPartyAddressError } from './keys';
+import { sharedItemDek } from './flows';
 
 export interface ReceivedItem {
   shareId: string;
@@ -52,15 +53,11 @@ export async function describeReceived(
     return { ...base, problem: 'it arrived without a wrapped key' };
   }
 
-  let connectionKey: Uint8Array | undefined;
   let dek: Uint8Array | undefined;
-  let step = 'deriving the connection key';
+  let step = 'unwrapping the item key';
 
   try {
-    connectionKey = await connectionKeyFor(context, connection, connection.user_address);
-
-    step = 'unwrapping the item key';
-    dek = await unwrapUnderConnection(connectionKey, share.wrapped_dek);
+    dek = await sharedItemDek(context, connection, share);
 
     step = 'fetching the item';
     const shared = await getSharedItem(context, share.id);
@@ -80,7 +77,7 @@ export async function describeReceived(
     }
 
     if (share.item_type === 'document') {
-      return { ...base, name: 'Shared document', readable: false };
+      return { ...base, name: 'Shared document', readable: true };
     }
 
     const plaintext = await openText(shared.ciphertext, dek);
@@ -96,7 +93,6 @@ export async function describeReceived(
 
     return { ...base, problem: `${step}: ${reason || 'the payload did not open'}` };
   } finally {
-    connectionKey?.fill(0);
     dek?.fill(0);
   }
 }

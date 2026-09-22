@@ -24,7 +24,7 @@ const HKDF_SALT_LENGTH = 32;
 const HEADER_LENGTH = 1 + KEM_CIPHERTEXT_LENGTH + EPHEMERAL_PUBLIC_LENGTH + IV_LENGTH;
 const MIN_BLOB_LENGTH = HEADER_LENGTH + GCM_TAG_LENGTH;
 
-export const PQXDH_USAGES = ['item-share'] as const;
+export const PQXDH_USAGES = ['item-share', 'device-keyring'] as const;
 export type PqxdhUsage = (typeof PQXDH_USAGES)[number];
 
 export class UnsupportedPqxdhVersionError extends Error {
@@ -49,9 +49,26 @@ export interface RecipientKeys {
   mlkemPublicKey: Uint8Array;
 }
 
+export interface X25519Agreement {
+  deriveSharedSecret(peerPublicKey: Uint8Array): Promise<Uint8Array>;
+}
+
+export type X25519Secret = Uint8Array | X25519Agreement;
+
 export interface RecipientSecrets {
-  x25519PrivateKey: Uint8Array;
+  x25519PrivateKey: X25519Secret;
   mlkemSecretKey: Uint8Array;
+}
+
+export function deviceRecipientSlot(userAddress: string, deviceId: string): string {
+  return `${userAddress}/${deviceId}`;
+}
+
+async function agree(secret: X25519Secret, peerPublicKey: Uint8Array): Promise<Uint8Array> {
+  if (secret instanceof Uint8Array) {
+    return x25519.getSharedSecret(secret, peerPublicKey);
+  }
+  return secret.deriveSharedSecret(peerPublicKey);
 }
 
 export interface PqxdhContext {
@@ -173,7 +190,7 @@ export async function pqxdhUnwrap(
   let sessionKey: Uint8Array | undefined;
 
   try {
-    ecdhSecret = x25519.getSharedSecret(secrets.x25519PrivateKey, ephemeralPublicKey);
+    ecdhSecret = await agree(secrets.x25519PrivateKey, ephemeralPublicKey);
     kemSecret = ml_kem768.decapsulate(kemCiphertext, secrets.mlkemSecretKey);
 
     sessionKey = await deriveSessionKey(ecdhSecret, kemSecret, context);

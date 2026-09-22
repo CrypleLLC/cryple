@@ -29,7 +29,7 @@ type View = { mode: 'list' } | { mode: 'note'; id?: string };
 
 export default function NotesScreen() {
   const context = useAuthedContext();
-  const { reportError } = useCryple();
+  const { reportError, fullDevice } = useCryple();
 
   const [notes, setNotes] = useState<OpenedNote[]>();
   const [view, setView] = useState<View>({ mode: 'list' });
@@ -165,14 +165,16 @@ export default function NotesScreen() {
                 <Button variant="secondary" disabled={deleting} onClick={stopSelecting}>
                   Cancel
                 </Button>
-                <Button
-                  variant="danger"
-                  disabled={deleting || selected.length === 0}
-                  onClick={() => setConfirmingBatch(true)}
-                >
-                  <TrashIcon />
-                  {deleting ? 'Deleting…' : `Delete${selected.length > 0 ? ` (${selected.length})` : ''}`}
-                </Button>
+                {fullDevice ? (
+                  <Button
+                    variant="danger"
+                    disabled={deleting || selected.length === 0}
+                    onClick={() => setConfirmingBatch(true)}
+                  >
+                    <TrashIcon />
+                    {deleting ? 'Deleting…' : `Delete${selected.length > 0 ? ` (${selected.length})` : ''}`}
+                  </Button>
+                ) : null}
               </>
             ) : (
               <Button variant="secondary" onClick={() => setSelecting(true)}>

@@ -6,7 +6,7 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 
 | Module | What it owns |
 | --- | --- |
-| `onboarding.ts` | The onboarding state machine, PIN/mnemonic validation copy, backup verification |
+| `onboarding.ts` | The onboarding state machine, PIN/mnemonic validation copy, the recovery kit step |
 | `boot.ts` | Sign-in when the mode is not known yet, and account enrolment |
 | `mode-hint.ts` | The locally remembered Standard/Paranoid hint |
 | `vault.ts` | The vault index view model, received-ciphertext integrity check, and the local secret name/value format |
@@ -15,6 +15,89 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | `modal.ts` | A modal's keyboard contract, backdrop dismissal and scroll-lock counting |
 | `shell.ts` | `accountInitial`, the sidebar avatar's letter |
 | `username.ts` | The rename screen's validation and the copy that has to be on it |
+| `private-text.ts` | The attributes that stop the browser shipping typed text to a spelling, grammar or translation service |
+| `clipboard.ts` | Copying a secret, and clearing it off the clipboard afterwards |
+| `secret-field.ts` | Masking a secret while it is typed, without turning it into a password field |
+
+## Plaintext the browser would otherwise send away
+
+The app's own code never sends plaintext anywhere, and no dependency makes a request of its own
+(checked 2026-09-13, source and built bundle). **The browser does**, through features that run on
+any editable text unless the page opts out:
+
+| Feature | Where the text goes | What stops it |
+| --- | --- | --- |
+| Chrome *Enhanced spell check* | Google | `spellcheck="false"` |
+| Edge *Microsoft Editor* | Microsoft | `spellcheck="false"` |
+| Grammarly and similar extensions | The extension's vendor | `data-gramm`, `data-gramm_editor`, `data-enable-grammarly` |
+| Page translation | Google | `translate="no"` on `<html>` and `<meta name="google" content="notranslate">` |
+| Mobile autocorrect and capitalisation | The keyboard's learning model | `autocorrect="off"`, `autocapitalize="off"` |
+
+`PRIVATE_TEXT_PROPS` is the React spelling of that set and `PRIVATE_TEXT_ATTRIBUTES` the DOM one,
+derived from it so the two cannot drift — TipTap's `editorProps.attributes` takes raw attribute
+names. `Field` and `TextArea` apply the props **by default**, before the caller's own, so every
+field built from them is covered and a field that genuinely wants spellcheck has to say so. A raw
+`<input>`, `<textarea>` or `contentEditable` must spread them itself: the note surface, the
+document body, the document title and the link address all do.
+
+Spellcheck is off on the note and document editors, where users would normally expect it. That is
+the trade: the only spellcheck a page can keep while turning off the remote one is the browser's
+basic local dictionary, and a page cannot choose which one the user has enabled.
+
+**The tab title is not an input and leaks the same way.** It lands in browser history, which Chrome
+and Edge sync to their clouds, so `/docs/[id]` keeps the layout's fixed title rather than the
+document's name.
+
+## Copying a secret clears the clipboard
+
+The clipboard is not local to the device: Windows Cloud Clipboard, Apple's Universal Clipboard and
+every clipboard manager copy it elsewhere. `createSensitiveClipboard` writes the value, then writes
+an empty string after `CLIPBOARD_CLEAR_AFTER_MS` (30 s). `CopyButton` uses one instance for the
+whole tab and says so in its confirmation label.
+
+- **A page may only write the clipboard while it has focus.** A tab in the background at the
+  deadline cannot clear it, so the clear waits for the next `focus` event and runs then.
+- **The page cannot read the clipboard without a permission prompt**, so it cannot check the value
+  is still its own. Clearing may therefore wipe something the user copied elsewhere in the last
+  30 seconds. That is accepted: leaving a secret on a synced clipboard is the worse failure.
+- **A second copy restarts the window** and cancels any clear still waiting for focus, so an older
+  deadline never empties the newer value.
+- **The recovery phrase has no copy button.** The kit step shows it and downloads the PDF; the
+  phrase is the whole account, and the one place it should not pass through is a clipboard.
+
+## A secret is masked while it is typed
+
+The vault's *Value* field hides what is typed by default: the value is not readable over a shoulder,
+in a screen share or in a recording. A show/hide button next to it reveals the value, and the field
+hides again after each secret is added.
+
+**It is not `type="password"`, on purpose.** A password input is what makes the browser offer to
+save the value in its password manager — Google Password Manager, iCloud Keychain, Firefox's — and
+those sync to their vendors' clouds. Saving a vault secret there moves it out of Cryple's
+encryption and into someone else's, which is the class of leak this client exists to avoid.
+
+`secretInputAttributes(masked, cssMasking)` decides the attributes:
+
+| State | Input | Why |
+| --- | --- | --- |
+| masked, CSS masking available | `type="text"` + `-webkit-text-security: disc` | Drawn as dots, and a text field to every password-saving heuristic |
+| masked, CSS masking unavailable | `type="password"` | The only way left to mask. Only browsers older than Firefox 114 land here |
+| revealed | `type="text"` | |
+
+- **Every state carries** `autocomplete="off"` and the ignore attributes 1Password (`data-1p-ignore`),
+  LastPass (`data-lpignore`), Bitwarden (`data-bwignore`) and Dashlane-style detectors
+  (`data-form-type="other"`) honour. Browsers' own managers ignore `autocomplete="off"` on password
+  inputs, which is why the text input matters more than any attribute.
+- **Browser support** for `-webkit-text-security` (MDN browser-compat-data, checked 2026-09-13):
+  Chrome and Chrome Android from the start, Edge 79, Safari 3, Safari iOS 1, and **Firefox and
+  Firefox Android 114**. It is non-standard but not deprecated.
+- **`supportsTextSecurity` asks `CSS.supports('-webkit-text-security', 'disc')`** once per field, and
+  anything that throws or has no `CSS` object counts as unsupported — so the fallback masks rather
+  than shows.
+- **The masking class is a Tailwind arbitrary property**, `[-webkit-text-security:disc]`, because
+  React's `CSSProperties` has no key for the vendor property.
+- **Masking hides the characters and nothing else.** The value can still be selected and copied out
+  of the field by whoever is typing it, and the list's own *Show values* toggle is separate.
 
 ## Onboarding
 
@@ -22,12 +105,36 @@ The flow is a reducer, not scattered `useState` — every guard that matters is 
 rendering. Two branches, chosen by a tab rather than by two buttons:
 
 ```
-origin ─┬─ Sign up → backup → verify ─┐
-        └─ Sign in ─────────────────→ ┴→ pin → enrolling → done
+origin ─┬─ Sign up ─┐
+        └─ Sign in ─┴→ pin → enrolling ─┬─ Sign up → recovery-kit → done
+                                        └─ Sign in ─────────────────→ done
 ```
 
 The sign-in tab takes the phrase **on the tab itself**, so `origin` and `import` are one screen: a
 tab that offers only a Continue button is a step that asks nothing.
+
+### The recovery kit comes after enrolment
+
+Sign-up generates the phrase and goes straight to the PIN. The phrase is first shown on the
+`recovery-kit` step, next to the button that downloads the PDF built by
+[`lib/recovery-kit`](../recovery-kit/README.md). The step comes **after** `POST /sign-up` because
+the kit prints the username, and the server picks that name during sign-up.
+
+- `enrolled` carries the username the server assigned. It also clears `pin` from the state: the
+  keystore and the local vault already have what they need, and the kit step must never have a PIN
+  in reach.
+- `canEnterVault` is true only on the kit step after `recovery-kit-saved`, so the vault stays shut
+  until the kit has been downloaded at least once. Downloading again is always allowed.
+- There is no way back from the kit step: the account already exists, and going back to the PIN
+  would enrol it a second time.
+- Signing in with an existing phrase skips the step — the user already holds the phrase.
+- The phrase can be revealed but not copied — see
+  [Copying a secret clears the clipboard](#copying-a-secret-clears-the-clipboard).
+
+`CrypleProvider.enrol` therefore no longer moves the app to `ready`. It returns the username, and
+`enterVault` opens the vault: straight after `enrolled` for a sign-in, and from the kit step's
+Continue for a sign-up. If the 15-minute idle lock fires while the kit step is open, the session
+locks as it would anywhere else, and the kit can no longer be offered.
 
 ### Every account has a PIN
 
@@ -274,7 +381,7 @@ grid re-mounts every time.
 It refuses to replace a url it already holds, which is what keeps two racing fetches from leaking
 one of them, and it is the reason `forgetPreviews` revokes every url it hands back. Nothing calls
 that yet; the urls live for the session, bounded by the number of images in the drive. A cache that
-survives a reload is [109.8](../../../tasks/tasks.md#task-109-8), and it belongs on disk, encrypted.
+survives a reload is [the drive's encrypted cache](../files/README.md#the-cache-holds-ciphertext-and-that-is-the-whole-design), and it belongs on disk, encrypted.
 
 ### The save gate
 

@@ -4,6 +4,7 @@ export interface JwtClaims {
   exp?: number;
   iat?: number;
   user_address?: string;
+  device_id?: string;
 }
 
 export function decodeJwtClaims(token: string): JwtClaims | undefined {
@@ -27,6 +28,24 @@ export function jwtExpiresAt(token: string): Date | undefined {
 export function isJwtExpired(token: string, now: Date = new Date()): boolean {
   const expiresAt = jwtExpiresAt(token);
   return expiresAt !== undefined && expiresAt.getTime() <= now.getTime();
+}
+
+export interface SessionGrant {
+  access_token: string;
+  device_id: string;
+}
+
+export function assertSessionGrant(value: unknown, endpoint: string): SessionGrant {
+  const grant = value as Partial<SessionGrant> | undefined;
+  if (
+    typeof grant?.access_token !== 'string' ||
+    grant.access_token.length === 0 ||
+    typeof grant.device_id !== 'string' ||
+    grant.device_id.length === 0
+  ) {
+    throw new Error(`${endpoint} returned no access_token and device_id`);
+  }
+  return { access_token: grant.access_token, device_id: grant.device_id };
 }
 
 export class TokenStore {

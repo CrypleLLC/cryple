@@ -15,6 +15,8 @@ export const IDENTITY_PATH = [9027, 0, 0] as const;
 export const X25519_HKDF_INFO = 'Cryple-Key-v1|x25519';
 export const MLKEM768_HKDF_INFO = 'Cryple-Key-v1|mlkem768';
 export const VAULT_KEK_HKDF_INFO = 'Cryple-Key-v1|vault-kek';
+export const ROOT_SIGNING_PATH = IDENTITY_PATH;
+export const ROOT_WRAP_HKDF_INFO = VAULT_KEK_HKDF_INFO;
 
 const X25519_KEY_LENGTH = 32;
 const MLKEM768_SEED_LENGTH = 64;
@@ -126,6 +128,37 @@ export async function deriveKeyTree(
   passphrase = '',
 ): Promise<CrypleKeyTree> {
   return deriveKeyTreeFromSeed(await mnemonicToSeed(mnemonic, passphrase));
+}
+
+export interface RootKeys {
+  userAddress: string;
+  signing: IdentityKey;
+  wrapKey: Uint8Array;
+}
+
+export async function deriveRootKeys(seed: Uint8Array): Promise<RootKeys> {
+  const [userAddress, signing, wrapKey] = await Promise.all([
+    deriveUserAddress(seed),
+    deriveIdentityKey(seed),
+    deriveVaultKek(seed),
+  ]);
+  return { userAddress, signing, wrapKey };
+}
+
+export async function deriveRootKeysFromMnemonic(
+  mnemonic: string,
+  passphrase = '',
+): Promise<RootKeys> {
+  const seed = await mnemonicToSeed(mnemonic, passphrase);
+  try {
+    return await deriveRootKeys(seed);
+  } finally {
+    zeroBytes(seed);
+  }
+}
+
+export function zeroRootKeys(root: RootKeys): void {
+  zeroBytes(root.signing.privateKey, root.signing.chainCode, root.wrapKey);
 }
 
 export function zeroKeyTree(tree: CrypleKeyTree): void {

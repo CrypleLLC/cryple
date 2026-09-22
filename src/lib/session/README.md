@@ -108,24 +108,55 @@ even on the same origin, and that is the ordinary case now that documents open i
 
 Prompting for a PIN in every document tab would be the wrong answer twice over: it costs a
 600,000-iteration PBKDF2 each time, and it re-introduces the per-prompt design this module exists
-to avoid. So a fresh tab asks the tabs that are already unlocked:
+to avoid. So a tab the app opens asks **the tab that opened it**, and nobody else:
 
 ```ts
-serveSession(() => …)   // an unlocked tab answers requests, for as long as it is mounted
-await requestSession()  // a new tab asks, and gives up after HANDOFF_TIMEOUT_MS
+openWithSessionHandoff(url)  // the unlocked tab opens the window and remembers it
+serveSession(() => …)        // …and answers requests from windows it remembers, while mounted
+await requestSession()       // the new tab asks window.opener, and gives up after HANDOFF_TIMEOUT_MS
 ```
 
 The offer carries the **64-byte seed** (hex), the `Server_Auth_Token` and the current JWT.
 `adoptHandoff` rebuilds the tree with `deriveKeyTreeFromSeed` — no PBKDF2, no prompt. When nobody
 answers within the window, the app falls through to the normal `Unlock` screen unchanged.
 
-Two properties make this safe to do at all:
+### Why not a `BroadcastChannel`
 
-- **`BroadcastChannel` is same-origin.** Only pages on this origin can join, so the material never
-  crosses an origin boundary and never touches the network. This is the same blast radius an XSS
-  on this origin already has; it is not a new one.
-- **Nonce-matched.** A reply is accepted only against the `crypto.randomUUID()` the requester
-  broadcast, so a stale offer on the channel cannot be adopted.
+Until 2026-09-13 the handoff was a broadcast: an unlocked tab answered every `request` on a
+same-origin channel. That made the seed available to **any script running on the origin that
+asked** — an XSS, a compromised dependency, an extension's page script, or a `/docs` tab that was
+never unlocked — without the PIN, and Paranoid Mode did not help because the reply carries the
+second factor. "Same origin" was the whole boundary, and it is not one: one injection anywhere on
+the origin became the account, permanently, since keys do not rotate.
+
+### What the handoff checks now
+
+An offer is sent only when all of these hold, and each is tested in `handoff.test.ts`:
+
+- **The requester is a window this tab opened.** `HandoffServer.open` keeps the `WindowProxy` that
+  `window.open` returned, and a request is answered only when `event.source` is one of them. A
+  script in any other tab cannot make the unlocked tab open a window, so it has no request that
+  can be served — even if it holds a reference to the unlocked tab.
+- **The message comes from this origin**, and the reply is posted with this origin as the
+  `targetOrigin`, so it cannot be delivered anywhere else if the window navigated away.
+- **The requester accepts only its opener's reply, carrying its own nonce.** An offer from any
+  other window, or for another request, is ignored.
+- **A closed window is forgotten** the next time a request is checked.
+
+**The cost, accepted:** a `/docs/[id]` tab that was not opened from the grid — the URL typed or
+pasted, a bookmark, history, a tab restored after the browser restarts — asks for the PIN. A
+reloaded document tab keeps its opener and still recovers without one.
+
+**The document tab keeps a live `window.opener`.** That is what the handoff rides on, so
+`openWithSessionHandoff` does not pass `noopener`. The opener is always this same origin, and
+`Cross-Origin-Opener-Policy: same-origin` severs the relationship for any cross-origin page.
+
+**Handing off less than the seed would not help.** The vault KEK alone opens every item, so any
+material that lets the new tab work is the account.
+
+`HandoffServer` and `requestSessionFromOpener` take a `HandoffHost` rather than touching `window`,
+so the tests drive two fake windows through the whole exchange in the node environment.
+`browserHandoffHost` is the one adapter to the real `window`.
 
 The JWT in the offer is an optimization, not the authority. `adoptHandoffSession`
 ([`lib/app/boot.ts`](../app/README.md)) confirms the account with `GET /users/me` and falls back
@@ -151,3 +182,12 @@ matches the vector, that `lock()` actually zeroes the buffers a caller was hande
 re-unlocking zeroes the prior session, that the idle timer re-arms on access, and that the
 only thing written to storage is the vault record — asserting that the PIN, the token, the
 identity private key and the mnemonic appear nowhere in it.
+
+`handoff.test.ts` runs the exchange between fake windows:
+- A window the unlocked tab opened receives the offer.
+- A same-origin window it did not open gets nothing, even one holding a reference to it.
+- A foreign origin is ignored.
+- A locked or stopped server answers nothing.
+- A reply with another nonce is refused.
+- A window with no opener asks nobody and leaves no listener behind.
+- A closed window is forgotten.

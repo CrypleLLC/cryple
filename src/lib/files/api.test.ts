@@ -1,10 +1,8 @@
+import { newTestContext } from '@/test/session';
+import { spkiBase64ToUncompressedPoint } from '@/lib/encoding';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import vectors from '@/test/fixtures/test-vectors.json';
-import { ApiError, TokenStore } from '@/lib/api';
-import { SessionKeystore } from '@/lib/session';
+import { ApiError } from '@/lib/api';
 import { buildActionPayload, verifyPayload } from '@/lib/signing';
-import { deriveKeyTreeFromSeed } from '@/lib/keys';
-import { hexToBytes } from '@/lib/encoding';
 import type { AuthedContext } from '@/lib/context';
 import {
   abandonUpload,
@@ -21,8 +19,6 @@ import {
 import { fits, isInVault, isReplicated, remainingBytes } from './records';
 import { layoutFor } from './layout';
 
-const mnemonic = vectors.seed_and_user_address.mnemonic;
-const pin = '481937';
 
 interface FakeResponse {
   status: number;
@@ -51,11 +47,7 @@ function mockFetch(...responses: FakeResponse[]) {
 }
 
 async function newContext(paranoid = false): Promise<AuthedContext> {
-  const session = new SessionKeystore({ idleTimeoutMs: 0 });
-  await session.unlockWithMnemonic(mnemonic, pin);
-  const tokens = new TokenStore();
-  tokens.set('jwt-token');
-  return { session, tokens, paranoid };
+  return newTestContext(paranoid);
 }
 
 const ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
@@ -65,7 +57,7 @@ function row(overrides: Record<string, unknown> = {}) {
   return {
     id: ID,
     ciphertext: 'sealed',
-    wrapped_dek: 'wrapped',
+    wrapped_dek: 'wrapped', key_generation: 1,
     size_bytes: 65_573,
     ciphertext_sha256: SHA,
     version: 'v1',
@@ -93,7 +85,7 @@ describe('creating a file', () => {
 
     await createFile(context, {
       ciphertext: 'sealed',
-      wrapped_dek: 'wrapped',
+      wrapped_dek: 'wrapped', key_generation: 1,
       ...declaredLayoutFor(40_000)
     });
 
@@ -107,7 +99,7 @@ describe('creating a file', () => {
 
     await createFile(await newContext(), {
       ciphertext: 'sealed',
-      wrapped_dek: 'wrapped',
+      wrapped_dek: 'wrapped', key_generation: 1,
       ...declaredLayoutFor(40_000)
     });
 
@@ -120,13 +112,13 @@ describe('creating a file', () => {
   it('reports 201 as created and 200 as a replay', async () => {
     mockFetch({ status: 201, body: body(row()) });
     const created = await createFile(await newContext(), {
-      ciphertext: 'a', wrapped_dek: 'b', ...declaredLayoutFor(10)});
+      ciphertext: 'a', wrapped_dek: 'b', key_generation: 1, ...declaredLayoutFor(10)});
     expect(created.created).toBe(true);
 
     vi.unstubAllGlobals();
     mockFetch({ status: 200, body: body(row()) });
     const replayed = await createFile(await newContext(), {
-      id: ID, ciphertext: 'a', wrapped_dek: 'b', ...declaredLayoutFor(10)});
+      id: ID, ciphertext: 'a', wrapped_dek: 'b', key_generation: 1, ...declaredLayoutFor(10)});
     expect(replayed.created).toBe(false);
   });
 
@@ -145,7 +137,7 @@ describe('creating a file', () => {
     });
 
     const result = await createFile(await newContext(), {
-      id: ID, ciphertext: 'a', wrapped_dek: 'b', ...declaredLayoutFor(10)});
+      id: ID, ciphertext: 'a', wrapped_dek: 'b', key_generation: 1, ...declaredLayoutFor(10)});
 
     expect(result.created).toBe(false);
     expect(result.file.upload?.parts).toHaveLength(1);
@@ -157,7 +149,7 @@ describe('creating a file', () => {
 
     await createFile(await newContext(), {
       ciphertext: 'a',
-      wrapped_dek: 'b',
+      wrapped_dek: 'b', key_generation: 1,
       ...declaredLayoutFor(10),
     });
 
@@ -169,7 +161,7 @@ describe('creating a file', () => {
 
     await expect(
       createFile(await newContext(), {
-        id: ID.toUpperCase(), ciphertext: 'a', wrapped_dek: 'b', ...declaredLayoutFor(10)}),
+        id: ID.toUpperCase(), ciphertext: 'a', wrapped_dek: 'b', key_generation: 1, ...declaredLayoutFor(10)}),
     ).rejects.toThrow();
   });
 });
@@ -180,7 +172,7 @@ describe('the two error codes the drive introduced', () => {
 
     try {
       await createFile(await newContext(), {
-        ciphertext: 'a', wrapped_dek: 'b', ...declaredLayoutFor(10)});
+        ciphertext: 'a', wrapped_dek: 'b', key_generation: 1, ...declaredLayoutFor(10)});
       expect.unreachable();
     } catch (error) {
       const api = error as ApiError;
@@ -195,7 +187,7 @@ describe('the two error codes the drive introduced', () => {
 
     try {
       await createFile(await newContext(), {
-        ciphertext: 'a', wrapped_dek: 'b', ...declaredLayoutFor(10)});
+        ciphertext: 'a', wrapped_dek: 'b', key_generation: 1, ...declaredLayoutFor(10)});
       expect.unreachable();
     } catch (error) {
       const api = error as ApiError;
@@ -332,14 +324,14 @@ describe('deleting a file', () => {
     await deleteFile(context, ID);
 
     const sent = JSON.parse(String(calls[0].init.body));
-    const tree = await deriveKeyTreeFromSeed(hexToBytes(vectors.seed_and_user_address.seed_hex));
+    const devicePublicKey = spkiBase64ToUncompressedPoint(context.session.device.signingPublicKey);
     const payload = buildActionPayload(sent.challenge, sent.timestamp, 'file-delete', [ID]);
 
-    expect(verifyPayload(payload, sent.signature, tree.identity.publicKeyUncompressed)).toBe(true);
+    expect(verifyPayload(payload, sent.signature, devicePublicKey)).toBe(true);
     expect(calls[0].init.method).toBe('DELETE');
   });
 
-  it('omits the second factor on a Standard Mode account', async () => {
+  it('sends no PIN proof and no password on a Standard account', async () => {
     const calls = mockFetch({ status: 204 });
 
     await deleteFile(await newContext(false), ID);
@@ -347,12 +339,13 @@ describe('deleting a file', () => {
     expect(JSON.parse(String(calls[0].init.body)).password).toBeUndefined();
   });
 
-  it('attaches the second factor on a Paranoid account', async () => {
+  it('sends no PIN proof and no password on a Paranoid account either', async () => {
     const calls = mockFetch({ status: 204 });
 
     await deleteFile(await newContext(true), ID);
 
-    expect(typeof JSON.parse(String(calls[0].init.body)).password).toBe('string');
+    expect(JSON.parse(String(calls[0].init.body)).password).toBeUndefined();
+    expect(JSON.parse(String(calls[0].init.body)).pin_proof).toBeUndefined();
   });
 
   it('sends a body, because a DELETE without one is a 400', async () => {
@@ -374,11 +367,11 @@ describe('deleting a selection of files', () => {
     await deleteFiles(context, [ID, OTHER, ID]);
 
     const sent = JSON.parse(String(calls[0].init.body));
-    const tree = await deriveKeyTreeFromSeed(hexToBytes(vectors.seed_and_user_address.seed_hex));
+    const devicePublicKey = spkiBase64ToUncompressedPoint(context.session.device.signingPublicKey);
     const payload = buildActionPayload(sent.challenge, sent.timestamp, 'file-delete', [OTHER, ID]);
 
     expect(sent.ids).toEqual([OTHER, ID]);
-    expect(verifyPayload(payload, sent.signature, tree.identity.publicKeyUncompressed)).toBe(true);
+    expect(verifyPayload(payload, sent.signature, devicePublicKey)).toBe(true);
     expect(calls[0].url).toContain('/files');
     expect(calls[0].init.method).toBe('DELETE');
   });
@@ -406,12 +399,13 @@ describe('deleting a selection of files', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('attaches the second factor on a Paranoid account', async () => {
+  it('sends no PIN proof and no password on a Paranoid account either', async () => {
     const calls = mockFetch({ status: 200, body: { message: 'ok', data: { requested: 1, deleted: 1 } } });
 
     await deleteFiles(await newContext(true), [ID]);
 
-    expect(typeof JSON.parse(String(calls[0].init.body)).password).toBe('string');
+    expect(JSON.parse(String(calls[0].init.body)).password).toBeUndefined();
+    expect(JSON.parse(String(calls[0].init.body)).pin_proof).toBeUndefined();
   });
 });
 

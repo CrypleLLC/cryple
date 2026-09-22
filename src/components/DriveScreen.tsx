@@ -35,6 +35,9 @@ import {
   beginTransfer,
   dropTransfer,
   failTransfer,
+  creationPauseSeconds,
+  pauseTransfer,
+  pausedUploadNote,
   discardConfirmation,
   fileBatchDeleteConfirmation,
   fileBatchDeleteSummary,
@@ -105,7 +108,7 @@ interface DriveTile {
 
 export default function DriveScreen() {
   const context = useAuthedContext();
-  const { reportError } = useCryple();
+  const { reportError, fullDevice } = useCryple();
 
   const [tiles, setTiles] = useState<DriveTile[]>();
   const [message, setMessage] = useState<{ text: string; tone: 'info' | 'danger' }>();
@@ -238,18 +241,36 @@ export default function DriveScreen() {
         const preview = await deriveThumbnail(file);
         const thumbnailId = preview === undefined ? undefined : crypto.randomUUID();
 
+        const afterPauses = async <T,>(attempt: () => Promise<T>): Promise<T> => {
+          for (;;) {
+            try {
+              return await attempt();
+            } catch (error) {
+              const pause = creationPauseSeconds(error);
+              if (pause === undefined) {
+                throw error;
+              }
+              pauseTransfer(key, pausedUploadNote(pause));
+              await new Promise((resolve) => setTimeout(resolve, pause * 1000));
+              advanceTransfer(key, 'uploading', 0);
+            }
+          }
+        };
+
         try {
-          await uploadFile(context, file, {
-            id,
-            thumbnailId,
-            onProgress: ({ phase, doneBytes, totalBytes }) => {
-              stored = doneBytes;
-              advanceTransfer(key, phase, uploadPercent(doneBytes, totalBytes));
-            },
-          });
+          await afterPauses(() =>
+            uploadFile(context, file, {
+              id,
+              thumbnailId,
+              onProgress: ({ phase, doneBytes, totalBytes }) => {
+                stored = doneBytes;
+                advanceTransfer(key, phase, uploadPercent(doneBytes, totalBytes));
+              },
+            }),
+          );
 
           if (preview !== undefined && thumbnailId !== undefined) {
-            await uploadThumbnail(context, preview, thumbnailId);
+            await afterPauses(() => uploadThumbnail(context, preview, thumbnailId));
           }
 
           await forgetSource(id);
@@ -512,14 +533,16 @@ export default function DriveScreen() {
               <Button variant="secondary" disabled={busy} onClick={stopSelecting}>
                 Cancel
               </Button>
-              <Button
-                variant="danger"
-                disabled={busy || selected.length === 0}
-                onClick={() => setConfirmingBatch(true)}
-              >
-                <TrashIcon className="h-4 w-4" />
-                {busy ? 'Deleting…' : `Delete${selected.length > 0 ? ` (${selected.length})` : ''}`}
-              </Button>
+              {fullDevice ? (
+                <Button
+                  variant="danger"
+                  disabled={busy || selected.length === 0}
+                  onClick={() => setConfirmingBatch(true)}
+                >
+                  <TrashIcon className="h-4 w-4" />
+                  {busy ? 'Deleting…' : `Delete${selected.length > 0 ? ` (${selected.length})` : ''}`}
+                </Button>
+              ) : null}
             </>
           ) : (
             <>
@@ -606,7 +629,9 @@ export default function DriveScreen() {
                   setSelecting(true);
                   setSelected((current) => toggleFileSelection(current, tile.id));
                 }}
-                onDelete={() => setConfirming(tile)}
+                onDelete={
+                  fullDevice || tile.resume !== undefined ? () => setConfirming(tile) : undefined
+                }
                 onShare={() => setSharing(tile.id)}
                 onResume={() => void resume(tile)}
                 onDismiss={transfer === undefined ? undefined : () => dropTransfer(transfer.key)}
@@ -647,7 +672,7 @@ function DriveFile({
   selected: boolean;
   onOpen: () => void;
   onToggle: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
   onShare: () => void;
   onResume: () => void;
   onDismiss?: () => void;
@@ -725,7 +750,9 @@ function DriveFile({
               ? fileCaption(tile.status, tile.trueBytes)
               : transfer.phase === 'failed'
                 ? transfer.error
-                : transferLabel(transfer.phase, transfer.percent)}
+                : transfer.phase === 'paused'
+                  ? transfer.note
+                  : transferLabel(transfer.phase, transfer.percent)}
           </span>
         </span>
       </button>
@@ -786,7 +813,7 @@ function DriveFile({
             <UploadIcon className="h-3 w-3 shrink-0" />
           </button>
         )}
-        {tile.placeholder !== true && (
+        {tile.placeholder !== true && onDelete !== undefined && (
           <button
             type="button"
             aria-label={
@@ -864,6 +891,7 @@ async function toTile(
       ? {
           id: record.id,
           ciphertext: record.ciphertext,
+          key_generation: record.key_generation,
           wrapped_dek: record.wrapped_dek,
           size_bytes: record.size_bytes,
         }
@@ -871,7 +899,7 @@ async function toTile(
   };
 
   try {
-    const dek = await wrapper(context).unwrapDek(record.wrapped_dek);
+    const dek = await wrapper(context).unwrapDek(record);
     const manifest = await openManifest(record.ciphertext, dek);
 
     return {

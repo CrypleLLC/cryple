@@ -184,7 +184,7 @@ describe('user-facing copy is built client-side from code plus endpoint', () => 
       status: 401,
       endpoint: 'GET /users/me',
     });
-    expect(userMessageFor(expired)).toMatch(/expired/i);
+    expect(userMessageFor(expired)).toMatch(/signed out/i);
     expect(userMessageFor(credentials)).not.toBe(userMessageFor(expired));
   });
 });

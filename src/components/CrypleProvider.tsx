@@ -6,45 +6,91 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
-import { ApiError, TokenStore, userMessageFor } from '@/lib/api';
-import { signOut as dropToken } from '@/lib/auth';
-import { createSeedVault, hasSeedVault, wipeSeedVault } from '@/lib/pin';
+import {
+  ApiError,
+  DEVICE_REMOVED,
+  TokenStore,
+  isJwtExpired,
+  userMessageFor,
+} from '@/lib/api';
+import {
+  ChainNotVerifiedError,
+  DeviceRemovedError,
+  NoAccountForPhraseError,
+  TooManyDevicesError,
+  completeSignUp,
+  discardSignUpDraft,
+  draftSignUp,
+  enrolThisBrowser,
+  forgetThisBrowser,
+  removeThisBrowser,
+  renewSignIn,
+  unlockWithPin,
+  type AccountServices,
+  type DeviceSummary,
+  type SignUpDraft,
+} from '@/lib/account';
+import { AuthRejectedError } from '@/lib/auth';
+import { browserDeviceStore } from '@/lib/device/store';
+import { discardLegacyState } from '@/lib/pin';
+import type { Scope } from '@/lib/scopes';
 import { SessionKeystore } from '@/lib/session';
 import { requestSession, serveSession } from '@/lib/session/handoff';
 import type { AuthedContext } from '@/lib/context';
-import type { AccountRecord } from '@/lib/users';
+import { getMe, type AccountRecord } from '@/lib/users';
 import {
-  adoptHandoffSession,
-  clearModeHint,
-  enrolAccount,
-  readModeHint,
-  signInWithModeDetection,
-  writeModeHint,
+  DEVICES_COPY,
+  UNLOCK_COPY,
+  unlockRateLimited,
+  wrongPinMessage,
 } from '@/lib/app';
 
 export type AppPhase = 'loading' | 'onboarding' | 'locked' | 'ready';
 
 export type UnlockOutcome =
   | { status: 'ready' }
-  | { status: 'invalid-pin'; attemptsRemaining: number }
-  | { status: 'wiped' }
-  | { status: 'no-vault' }
+  | { status: 'failed'; message: string; tone: 'danger' | 'warning' }
+  | { status: 'forgotten'; message: string };
+
+export type CreateOutcome =
+  | { status: 'created'; username: string; paranoidMessage?: string }
   | { status: 'failed'; message: string };
+
+export type EnrolOutcome =
+  | { status: 'enrolled'; username: string }
+  | { status: 'no-account' }
+  | { status: 'too-many-devices'; devices: readonly DeviceSummary[] }
+  | { status: 'failed'; message: string };
+
+const TOKEN_RENEWAL_MARGIN_MS = 5 * 60 * 1000;
 
 interface CrypleValue {
   phase: AppPhase;
   account?: AccountRecord;
   paranoid: boolean;
   context?: AuthedContext;
+  fullDevice: boolean;
+  holds(scope: Scope): boolean;
+  chainProblem?: string;
+  notice?: string;
   unlock(pin: string): Promise<UnlockOutcome>;
-  enrol(mnemonic: string, pin: string, paranoid: boolean): Promise<UnlockOutcome>;
+  createAccount(mnemonic: string, pin: string, paranoid: boolean): Promise<CreateOutcome>;
+  enrolBrowser(
+    mnemonic: string,
+    pin: string,
+    options: { removeDeviceIds?: readonly string[] | 'all' },
+  ): Promise<EnrolOutcome>;
+  enterVault(): void;
   refreshAccount(): Promise<void>;
   reportError(error: unknown): string;
   lock(): void;
-  logOut(): void;
+  removeBrowser(): Promise<void>;
+  startOver(): Promise<void>;
+  services: AccountServices;
 }
 
 const CrypleContext = createContext<CrypleValue | undefined>(undefined);
@@ -68,39 +114,61 @@ export function useAuthedContext(): AuthedContext {
 export function CrypleProvider({ children }: { children: ReactNode }) {
   const session = useMemo(() => new SessionKeystore(), []);
   const tokens = useMemo(() => new TokenStore(), []);
+  const store = useMemo(() => browserDeviceStore(), []);
+  const services = useMemo<AccountServices>(() => ({ session, tokens, store }), [session, tokens, store]);
 
   const [phase, setPhase] = useState<AppPhase>('loading');
   const [account, setAccount] = useState<AccountRecord>();
+  const [chainProblem, setChainProblem] = useState<string>();
+  const [notice, setNotice] = useState<string>();
+  const [scopes, setScopes] = useState<readonly Scope[]>([]);
+  const draft = useRef<{ mnemonic: string; value: SignUpDraft } | undefined>(undefined);
+
+  const settle = useCallback(async () => {
+    const record = await store.read().catch(() => undefined);
+    setPhase(record === undefined ? 'onboarding' : 'locked');
+  }, [store]);
+
+  const becomeReady = useCallback(async () => {
+    const me = await getMe({ session, tokens, paranoid: false });
+    setAccount(me);
+    setScopes(session.scopes);
+    setPhase('ready');
+  }, [session, tokens]);
 
   useEffect(() => {
     let cancelled = false;
+    discardLegacyState();
 
-    const adopt = async () => {
+    const boot = async () => {
       const offer = await requestSession();
-
       if (offer !== undefined && !cancelled) {
         try {
-          const booted = await adoptHandoffSession({ session, tokens, offer, hint: readModeHint() });
+          session.adoptHandoff(offer.material);
+          if (offer.token !== undefined && !isJwtExpired(offer.token)) {
+            tokens.set(offer.token);
+          } else {
+            await renewSignIn(services);
+          }
           if (!cancelled) {
-            setAccount(booted.account);
-            setPhase('ready');
+            await becomeReady();
             return;
           }
         } catch {
+          tokens.clear();
           session.lock();
         }
       }
-
       if (!cancelled) {
-        setPhase(hasSeedVault() ? 'locked' : 'onboarding');
+        await settle();
       }
     };
 
-    void adopt();
+    void boot();
     return () => {
       cancelled = true;
     };
-  }, [session, tokens]);
+  }, [session, tokens, services, settle, becomeReady]);
 
   useEffect(
     () =>
@@ -116,110 +184,207 @@ export function CrypleProvider({ children }: { children: ReactNode }) {
     () =>
       session.onLock(() => {
         setAccount(undefined);
-        setPhase(hasSeedVault() ? 'locked' : 'onboarding');
+        setScopes([]);
+        void settle();
       }),
-    [session],
+    [session, settle],
   );
 
-  const paranoid = account?.has_password ?? false;
+  useEffect(() => {
+    if (phase !== 'ready') {
+      return;
+    }
+    const expiresAt = tokens.expiresAt;
+    if (expiresAt === undefined) {
+      return;
+    }
+    const delay = Math.max(expiresAt.getTime() - Date.now() - TOKEN_RENEWAL_MARGIN_MS, 1000);
+    const timer = setTimeout(() => {
+      void renewSignIn(services).catch(() => undefined);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [phase, tokens, services, account]);
+
+  const paranoid = account?.paranoid ?? false;
 
   const context = useMemo<AuthedContext | undefined>(
     () => (phase === 'ready' ? { session, tokens, paranoid } : undefined),
     [phase, session, tokens, paranoid],
   );
 
+  const describe = useCallback(
+    (error: unknown): string => {
+      if (error instanceof ApiError) {
+        return userMessageFor(error, { deviceScopes: session.isUnlocked ? session.scopes : undefined });
+      }
+      if (error instanceof DeviceRemovedError) {
+        return DEVICE_REMOVED;
+      }
+      if (
+        error !== null &&
+        typeof error === 'object' &&
+        'userMessage' in error &&
+        typeof error.userMessage === 'string'
+      ) {
+        return error.userMessage;
+      }
+      return error instanceof Error ? error.message : 'Something went wrong. Please try again.';
+    },
+    [session],
+  );
+
   const unlock = useCallback(
     async (pin: string): Promise<UnlockOutcome> => {
-      const opened = await session.unlock(pin);
-
-      if (opened.status === 'invalid-pin') {
-        return { status: 'invalid-pin', attemptsRemaining: opened.attemptsRemaining };
-      }
-      if (opened.status === 'wiped') {
-        clearModeHint();
-        setPhase('onboarding');
-        return { status: 'wiped' };
-      }
-      if (opened.status === 'no-vault') {
-        setPhase('onboarding');
-        return { status: 'no-vault' };
-      }
-
       try {
-        const booted = await signInWithModeDetection({
-          session,
-          tokens,
-          hint: readModeHint(),
-        });
-        setAccount(booted.account);
-        setPhase('ready');
-        return { status: 'ready' };
+        const outcome = await unlockWithPin(services, pin);
+        switch (outcome.status) {
+          case 'unlocked':
+            setChainProblem(
+              outcome.chainProblem === undefined ? undefined : DEVICES_COPY.chainBroken,
+            );
+            await becomeReady();
+            return { status: 'ready' };
+          case 'wrong-pin':
+            return {
+              status: 'failed',
+              tone: 'danger',
+              message: wrongPinMessage(outcome.attemptsRemaining),
+            };
+          case 'offline':
+            return { status: 'failed', tone: 'warning', message: UNLOCK_COPY.offline };
+          case 'rate-limited':
+            return {
+              status: 'failed',
+              tone: 'warning',
+              message: unlockRateLimited(outcome.retryAfterSeconds),
+            };
+          case 'forgotten':
+          case 'no-device':
+            setNotice(UNLOCK_COPY.forgotten);
+            setPhase('onboarding');
+            return { status: 'forgotten', message: UNLOCK_COPY.forgotten };
+          case 'removed':
+            setNotice(UNLOCK_COPY.removed);
+            setPhase('onboarding');
+            return { status: 'forgotten', message: UNLOCK_COPY.removed };
+        }
       } catch (error) {
         session.lock();
-        return { status: 'failed', message: describe(error) };
+        return { status: 'failed', tone: 'danger', message: describe(error) };
       }
     },
-    [session, tokens],
+    [services, session, becomeReady, describe],
   );
 
-  const enrol = useCallback(
-    async (mnemonic: string, pin: string, wantParanoid: boolean): Promise<UnlockOutcome> => {
+  const createAccount = useCallback(
+    async (mnemonic: string, pin: string, wantParanoid: boolean): Promise<CreateOutcome> => {
       try {
-        // The PIN goes to the keystore in both modes, but `paranoid` decides
-        // whether it is also sent as the server's second factor.
-        await session.unlockWithMnemonic(mnemonic, wantParanoid ? pin : undefined);
-        const booted = await enrolAccount({
-          session,
-          tokens,
+        if (draft.current?.mnemonic !== mnemonic) {
+          discardSignUpDraft(draft.current?.value);
+          draft.current = { mnemonic, value: await draftSignUp(mnemonic) };
+        }
+        const result = await completeSignUp(services, draft.current.value, {
+          pin,
           paranoid: wantParanoid,
         });
-
-        // Always. The PIN encrypts the local copy of the phrase in both modes
-        // (auth/two-factor-PIN.md § Local Seed Encryption), and without it there
-        // is nothing to lock the app back to — the session could only be ended,
-        // never paused.
-        await createSeedVault(mnemonic, pin);
-        writeModeHint(booted.account.has_password);
-
-        setAccount(booted.account);
-        setPhase('ready');
-        return { status: 'ready' };
+        draft.current = undefined;
+        const me = await getMe({ session, tokens, paranoid: false });
+        setAccount(me);
+        setScopes(session.scopes);
+        return {
+          status: 'created',
+          username: me.username,
+          paranoidMessage:
+            result.paranoidFailure === undefined ? undefined : describe(result.paranoidFailure),
+        };
       } catch (error) {
+        if (error instanceof AuthRejectedError || error instanceof ChainNotVerifiedError) {
+          discardSignUpDraft(draft.current?.value);
+          draft.current = undefined;
+        }
         session.lock();
         return { status: 'failed', message: describe(error) };
       }
     },
-    [session, tokens],
+    [services, session, tokens, describe],
   );
+
+  const enrolBrowser = useCallback(
+    async (
+      mnemonic: string,
+      pin: string,
+      options: { removeDeviceIds?: readonly string[] | 'all' },
+    ): Promise<EnrolOutcome> => {
+      try {
+        await enrolThisBrowser(services, { mnemonic, pin, removeDeviceIds: options.removeDeviceIds });
+        const me = await getMe({ session, tokens, paranoid: false });
+        setAccount(me);
+        setScopes(session.scopes);
+        return { status: 'enrolled', username: me.username };
+      } catch (error) {
+        session.lock();
+        if (error instanceof NoAccountForPhraseError) {
+          return { status: 'no-account' };
+        }
+        if (error instanceof TooManyDevicesError) {
+          return { status: 'too-many-devices', devices: error.devices };
+        }
+        return { status: 'failed', message: describe(error) };
+      }
+    },
+    [services, session, tokens, describe],
+  );
+
+  const enterVault = useCallback(() => {
+    if (session.isUnlocked) {
+      setPhase('ready');
+      return;
+    }
+    void settle();
+  }, [session, settle]);
 
   const refreshAccount = useCallback(async () => {
     if (context === undefined) {
       return;
     }
-    const { getMe } = await import('@/lib/users');
     setAccount(await getMe(context));
   }, [context]);
 
+  const startOver = useCallback(async () => {
+    await forgetThisBrowser(services).catch(() => undefined);
+    setPhase('onboarding');
+  }, [services]);
+
   const reportError = useCallback(
     (error: unknown): string => {
-      if (error instanceof ApiError && error.code === 'UNAUTHORIZED') {
-        dropToken(tokens, session);
+      if (error instanceof ApiError && error.isSessionOver && session.isUnlocked) {
+        void renewSignIn(services).then(
+          () => setNotice('Your session was renewed. Try that again.'),
+          (renewal: unknown) => {
+            if (renewal instanceof DeviceRemovedError) {
+              setNotice(DEVICE_REMOVED);
+              void startOver();
+            }
+          },
+        );
       }
       return describe(error);
     },
-    [session, tokens],
+    [session, services, describe, startOver],
   );
 
   const lock = useCallback(() => {
-    dropToken(tokens, session);
+    tokens.clear();
+    session.lock();
   }, [session, tokens]);
 
-  const logOut = useCallback(() => {
-    dropToken(tokens, session);
-    wipeSeedVault();
-    clearModeHint();
+  const removeBrowser = useCallback(async () => {
+    await removeThisBrowser(services);
     setPhase('onboarding');
-  }, [session, tokens]);
+  }, [services]);
+
+  const holds = useCallback((scope: Scope) => scopes.includes(scope), [scopes]);
+  const fullDevice = scopes.includes('admin');
 
   const value = useMemo<CrypleValue>(
     () => ({
@@ -227,30 +392,42 @@ export function CrypleProvider({ children }: { children: ReactNode }) {
       account,
       paranoid,
       context,
+      fullDevice,
+      holds,
+      chainProblem,
+      notice,
       unlock,
-      enrol,
+      createAccount,
+      enrolBrowser,
+      enterVault,
       refreshAccount,
       reportError,
       lock,
-      logOut,
+      removeBrowser,
+      startOver,
+      services,
     }),
-    [phase, account, paranoid, context, unlock, enrol, refreshAccount, reportError, lock, logOut],
+    [
+      phase,
+      account,
+      paranoid,
+      context,
+      fullDevice,
+      holds,
+      chainProblem,
+      notice,
+      unlock,
+      createAccount,
+      enrolBrowser,
+      enterVault,
+      refreshAccount,
+      reportError,
+      lock,
+      removeBrowser,
+      startOver,
+      services,
+    ],
   );
 
   return <CrypleContext.Provider value={value}>{children}</CrypleContext.Provider>;
-}
-
-function describe(error: unknown): string {
-  if (error instanceof ApiError) {
-    return userMessageFor(error);
-  }
-  if (
-    error !== null &&
-    typeof error === 'object' &&
-    'userMessage' in error &&
-    typeof error.userMessage === 'string'
-  ) {
-    return error.userMessage;
-  }
-  return error instanceof Error ? error.message : 'Something went wrong. Please try again.';
 }

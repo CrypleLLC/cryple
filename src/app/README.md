@@ -6,10 +6,20 @@ in [`src/components`](../components/README.md) and every testable decision in
 
 | File                 | Role                                                                                                                 |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `layout.tsx`         | The root layout, fonts, `metadata`, the shared `AppProviders`, and `StagingBanner`                                   |
+| `layout.tsx`         | The root layout, fonts, `metadata`, `translate="no"`, the shared `AppProviders`, and `StagingBanner`                 |
 | `page.tsx`           | The dashboard, behind `SessionGate`                                                                                  |
 | `docs/[id]/page.tsx` | One document, behind `SessionGate` — the editor route                                                                |
 | `globals.css`        | Tailwind import, the `brand` colour scale, light/dark surface tokens, `.cryple-prose`, the `.staging-banner` marquee |
+
+## The page is never translated, and every response carries security headers
+
+`<html translate="no">` and the `google: notranslate` metadata stop the browser offering to send
+the decrypted page to a translation service. The reasoning, and the matching attributes on each
+input, are in [`lib/app`](../lib/app/README.md#plaintext-the-browser-would-otherwise-send-away).
+
+`next.config.ts` attaches the headers built by
+[`lib/security-headers`](../lib/security-headers/README.md) to every route, including the
+Content Security Policy that decides which hosts the page may talk to.
 
 ## The staging banner
 
@@ -24,9 +34,9 @@ both need a session. `CrypleProvider` therefore mounts once in `layout.tsx` (via
 renders the loading / onboarding / locked screens and passes through only when the session is
 ready.
 
-A newly opened tab is always locked — key material lives in memory, per JS context. It recovers
-without a prompt by asking already-unlocked tabs over a same-origin `BroadcastChannel`; see
-[`lib/session`](../lib/session/README.md).
+A newly opened tab is always locked — key material lives in memory, per JS context. A document tab
+opened from the grid recovers without a prompt by asking the tab that opened it; any other tab asks
+for the PIN. See [`lib/session`](../lib/session/README.md#cross-tab-handoff--handoffts).
 
 The editor route is code-split: TipTap and Yjs load on `/docs/[id]` and, lazily, on the dashboard's
 Documents tab. The dashboard's own first load does not pay for them.

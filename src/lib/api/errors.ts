@@ -7,6 +7,11 @@ export const ERROR_CODES = [
   'NOT_FOUND',
   'METHOD_NOT_ALLOWED',
   'CONFLICT',
+  'INVALID_BATCH',
+  'STALE_KEY_GENERATION',
+  'TOO_MANY_DEVICES',
+  'TOO_MANY_REQUESTS',
+  'SERVICE_UNAVAILABLE',
   'INTERNAL_ERROR',
   'NOT_READY',
   'QUOTA_EXCEEDED',
@@ -22,12 +27,14 @@ export class ApiError extends Error {
   readonly status: number;
   readonly endpoint: string;
   readonly allow?: string;
+  readonly retryAfterSeconds?: number;
 
   constructor(params: {
     code: ApiErrorCode;
     status: number;
     endpoint: string;
     allow?: string;
+    retryAfterSeconds?: number;
   }) {
     super(`${params.code} (${params.status}) from ${params.endpoint}`);
     this.name = 'ApiError';
@@ -35,6 +42,7 @@ export class ApiError extends Error {
     this.status = params.status;
     this.endpoint = params.endpoint;
     this.allow = params.allow;
+    this.retryAfterSeconds = params.retryAfterSeconds;
   }
 
   get isSessionOver(): boolean {
@@ -47,6 +55,22 @@ export class ApiError extends Error {
 
   get isAuthEndpointRejection(): boolean {
     return this.status === 404 && this.code === 'NOT_FOUND';
+  }
+
+  get isRateLimited(): boolean {
+    return this.status === 429;
+  }
+
+  get isStaleKeyGeneration(): boolean {
+    return this.status === 409 && this.code === 'STALE_KEY_GENERATION';
+  }
+
+  get isTooManyDevices(): boolean {
+    return this.status === 409 && this.code === 'TOO_MANY_DEVICES';
+  }
+
+  get isInvalidBatch(): boolean {
+    return this.status === 400 && this.code === 'INVALID_BATCH';
   }
 
   get isQuotaExceeded(): boolean {

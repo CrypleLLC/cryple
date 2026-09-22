@@ -13,12 +13,12 @@ import {
 import { useAuthedContext, useCryple } from './CrypleProvider';
 import { useVaultReveal } from './VaultReveal';
 import { SharingIcon, TrashIcon, VaultIcon } from './icons';
-import { Button, Card, CopyButton, Empty, Field, Notice, PanelGrid, Spinner } from './ui';
+import { Button, Card, CopyButton, Empty, Field, Notice, PanelGrid, SecretField, Spinner } from './ui';
 import ShareItemDialog from './ShareItemDialog';
 
 export default function VaultScreen() {
   const context = useAuthedContext();
-  const { reportError } = useCryple();
+  const { reportError, fullDevice } = useCryple();
   const { revealed } = useVaultReveal();
 
   const [rows, setRows] = useState<VaultRow[]>();
@@ -28,6 +28,7 @@ export default function VaultScreen() {
 
   const [name, setName] = useState('');
   const [value, setValue] = useState('');
+  const [valueRevealed, setValueRevealed] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -60,6 +61,7 @@ export default function VaultScreen() {
       await createSecret(context, encodeSecretPayload({ name: name.trim(), value }));
       setName('');
       setValue('');
+      setValueRevealed(false);
       await load();
     } catch (error) {
       setMessage(reportError(error));
@@ -133,14 +135,16 @@ export default function VaultScreen() {
                           <SharingIcon />
                           Share
                         </Button>
-                        <Button
-                          variant="danger"
-                          disabled={busy}
-                          onClick={() => void removeSecret(row.id)}
-                        >
-                          <TrashIcon />
-                          Delete
-                        </Button>
+                        {fullDevice ? (
+                          <Button
+                            variant="danger"
+                            disabled={busy}
+                            onClick={() => void removeSecret(row.id)}
+                          >
+                            <TrashIcon />
+                            Delete
+                          </Button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -164,11 +168,12 @@ export default function VaultScreen() {
               autoComplete="off"
               onChange={(event) => setName(event.target.value)}
             />
-            <Field
+            <SecretField
               label="Value"
               value={value}
-              autoComplete="off"
-              onChange={(event) => setValue(event.target.value)}
+              onChange={setValue}
+              revealed={valueRevealed}
+              onRevealedChange={setValueRevealed}
             />
             <Button
               disabled={busy || name.trim().length === 0 || value.length === 0}

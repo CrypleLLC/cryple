@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { VaultStorage } from '@/lib/pin';
+import type { PreferenceStorage as VaultStorage } from './icon-size';
 import {
   DOCUMENT_MINIATURE_TEXT_SHARE,
   DOCUMENT_MINIATURE_TITLE_SHARE,

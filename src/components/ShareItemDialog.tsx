@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
+  ConnectionNotTrustedError,
   deleteShare,
   listConnections,
   listItemRecipients,
@@ -10,7 +11,7 @@ import {
   type ItemRecipientRecord,
   type ItemType,
 } from '@/lib/sharing';
-import { ITEM_LABELS, sendableConnections, SHARING_COPY } from '@/lib/app';
+import { ITEM_LABELS, sendableConnections, sendRefusal, SHARING_COPY } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
 import { Button, Empty, Modal, Notice, Select } from './ui';
 import { SharingIcon } from './icons';
@@ -25,7 +26,7 @@ export default function ShareItemDialog({
   onClose: () => void;
 }) {
   const context = useAuthedContext();
-  const { reportError } = useCryple();
+  const { reportError, fullDevice } = useCryple();
 
   const [connections, setConnections] = useState<ConnectionRecord[]>([]);
   const [recipients, setRecipients] = useState<ItemRecipientRecord[]>([]);
@@ -64,7 +65,9 @@ export default function ShareItemDialog({
       setChosen('');
       await refresh();
     } catch (error) {
-      setMessage(reportError(error));
+      setMessage(
+        error instanceof ConnectionNotTrustedError ? sendRefusal(error.trust) : reportError(error),
+      );
     } finally {
       setBusy(false);
     }
@@ -117,9 +120,11 @@ export default function ShareItemDialog({
               {recipients.map((recipient) => (
                 <li key={recipient.id} className="flex items-center justify-between gap-3">
                   <span className="font-mono text-compact text-ink">{recipient.username}</span>
-                  <Button variant="ghost" disabled={busy} onClick={() => revoke(recipient.id)}>
-                    Remove
-                  </Button>
+                  {fullDevice ? (
+                    <Button variant="ghost" disabled={busy} onClick={() => revoke(recipient.id)}>
+                      Remove
+                    </Button>
+                  ) : null}
                 </li>
               ))}
             </ul>

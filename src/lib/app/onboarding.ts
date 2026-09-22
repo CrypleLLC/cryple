@@ -3,14 +3,7 @@ import { validatePin, type PinRejection } from '@/lib/pin';
 
 export type OnboardingOrigin = 'generate' | 'import';
 
-export type OnboardingStep =
-  | 'origin'
-  | 'backup'
-  | 'verify'
-  | 'import'
-  | 'pin'
-  | 'enrolling'
-  | 'done';
+export type OnboardingStep = 'origin' | 'import' | 'pin' | 'enrolling' | 'recovery-kit' | 'done';
 
 export interface OnboardingState {
   step: OnboardingStep;
@@ -19,17 +12,19 @@ export interface OnboardingState {
   mnemonic?: string;
   pin?: string;
   paranoid?: boolean;
+  lostDevices?: boolean;
+  username?: string;
+  recoveryKitSaved?: boolean;
   error?: string;
 }
 
 export type OnboardingEvent =
   | { type: 'choose-origin'; origin: OnboardingOrigin; wordCount?: MnemonicWordCount }
-  | { type: 'mnemonic-ready'; mnemonic: string }
-  | { type: 'backup-confirmed' }
-  // One event, because mode and PIN are one decision on one screen: the PIN is
-  // always set, and `paranoid` only says whether it is also the server factor.
+  | { type: 'mnemonic-ready'; mnemonic: string; lostDevices?: boolean }
   | { type: 'pin-chosen'; pin: string; paranoid: boolean }
-  | { type: 'enrolled' }
+  | { type: 'enrolled'; username: string }
+  | { type: 'create-instead' }
+  | { type: 'recovery-kit-saved' }
   | { type: 'failed'; message: string }
   | { type: 'back' };
 
@@ -43,38 +38,76 @@ const PIN_REJECTION_COPY: Record<PinRejection, string> = {
   'descending-sequence': 'That PIN counts down. Choose a less predictable one.',
 };
 
+export const PHRASE_NOT_KEPT =
+  'This browser does not keep your recovery phrase. You type it again to add a device, to bring ' +
+  'this browser back if it forgets your account, and to remove a device you lost.';
+
 export const MODE_COPY = {
   standard: {
     title: 'Standard',
-    summary: 'Your recovery phrase alone proves who you are to Cryple.',
+    summary: 'Your recovery phrase alone can add a device and recover everything.',
     tradeoff:
-      'Your PIN stays on this device — it locks the app and encrypts the copy of your phrase ' +
-      'kept here, and Cryple never sees it.',
+      'Your PIN only unlocks this browser. The server rations every try without ever seeing the ' +
+      'PIN. Standard is a deliberate choice: with it, nothing but losing your phrase can lock ' +
+      'you out.',
   },
   paranoid: {
     title: 'Paranoid',
-    summary: 'Your PIN is also required to sign in, on top of your recovery phrase.',
+    summary:
+      'Your recovery phrase also needs an account PIN before it can add a device or delete the ' +
+      'account.',
     tradeoff:
-      'Someone who steals your phrase still cannot get in without the PIN. You will be asked ' +
-      'for it on every new device.',
+      'Someone who steals your phrase still cannot get in without the account PIN. The PIN you ' +
+      'choose here becomes your account PIN too.',
   },
   oneWayDoor:
-    'You can move from Standard to Paranoid later, but never back. There is no way to stop a ' +
-    'PIN being required once it is — that is what protects you if your recovery phrase is ever ' +
-    'stolen.',
+    'There is no way back to Standard, and no reset. If you forget your account PIN, your ' +
+    'account is lost for ever, even with your recovery phrase.',
 } as const;
 
 export const PIN_STEP_COPY = {
   title: 'Choose your 6-digit PIN',
   subtitle:
-    'It locks the app and encrypts the copy of your phrase kept on this device, so coming back ' +
-    'is just the PIN rather than 12 words. Three wrong tries erase that copy.',
-  signIn: 'Enter the PIN for this device.',
+    'It unlocks this browser. It never leaves this device: the server helps check it without ' +
+    'seeing it, and after too many wrong tries this browser forgets your account until you type ' +
+    'your recovery phrase again.',
+  signIn:
+    'Choose this browser’s PIN. If your account uses Paranoid mode, type your account PIN: it ' +
+    'is checked, and becomes this browser’s PIN too.',
 } as const;
 
-export const SEED_WARNING =
-  'Write these words down and store them offline. Anyone who has them has your vault, and nobody ' +
-  'can restore them for you if you lose them.';
+export const ENROL_STEP_COPY = {
+  title: 'Add this browser',
+  summary:
+    'Your recovery phrase adds this browser as one of your devices. ' + PHRASE_NOT_KEPT,
+  lostDevices: 'I lost my other devices: remove them all',
+  lostDevicesWarning:
+    'Every other device is removed in the same step and every key they held changes, so they ' +
+    'cannot read anything saved afterwards. They keep whatever they had already copied.',
+  noAccount:
+    'No account uses this recovery phrase yet. Check it, or create a new account with it.',
+  createInstead: 'Create an account with this phrase',
+  exposure:
+    'While you type your phrase, it is in this page’s memory. Type it only on a browser you ' +
+    'trust, ideally Brave with a profile that has no extensions.',
+} as const;
+
+export const RECOVERY_KIT_STEP_COPY = {
+  title: 'Save your recovery kit',
+  subtitle:
+    'A one-page PDF with your username, your recovery phrase and a QR code you can scan to sign ' +
+    'in from the mobile app.',
+  warning:
+    'Print it or keep it on storage that stays offline. Anyone who has your recovery phrase has ' +
+    'your vault, and nobody can restore it for you if you lose it. ' +
+    PHRASE_NOT_KEPT,
+  download: 'Download recovery kit',
+  downloadAgain: 'Download again',
+  preparing: 'Preparing your kit…',
+  reveal: 'Show my phrase',
+  failed: 'Your recovery kit could not be created. Try again.',
+  continue: 'Continue to my vault',
+} as const;
 
 export function describePinRejection(reason: PinRejection): string {
   return PIN_REJECTION_COPY[reason];
@@ -125,50 +158,12 @@ export function mnemonicSentence(mnemonic: string): string {
   return mnemonicWords(mnemonic).join(' ');
 }
 
-export function buildVerificationChallenge(
-  mnemonic: string,
-  count = 3,
-  pick: (max: number) => number = (max) => Math.floor(Math.random() * max),
-): number[] {
-  const total = mnemonicWords(mnemonic).length;
-  const chosen = new Set<number>();
-
-  while (chosen.size < Math.min(count, total)) {
-    chosen.add(pick(total));
-  }
-
-  return [...chosen].sort((a, b) => a - b);
-}
-
-export function verifyBackup(
-  mnemonic: string,
-  indices: readonly number[],
-  answers: readonly string[],
-): boolean {
-  const words = mnemonicWords(mnemonic);
-
-  return (
-    indices.length === answers.length &&
-    indices.every(
-      (index, position) =>
-        words[index] !== undefined &&
-        words[index] === answers[position].normalize('NFKD').trim().toLowerCase(),
-    )
-  );
-}
-
 export function previousStep(state: OnboardingState): OnboardingStep | undefined {
   switch (state.step) {
-    case 'backup':
     case 'import':
       return 'origin';
-    case 'verify':
-      return 'backup';
     case 'pin':
-      if (state.origin === undefined) {
-        return 'origin';
-      }
-      return state.origin === 'import' ? 'import' : 'verify';
+      return state.origin === 'import' ? 'import' : 'origin';
     default:
       return undefined;
   }
@@ -176,6 +171,10 @@ export function previousStep(state: OnboardingState): OnboardingStep | undefined
 
 export function canGoBack(state: OnboardingState): boolean {
   return previousStep(state) !== undefined;
+}
+
+export function canEnterVault(state: OnboardingState): boolean {
+  return state.step === 'recovery-kit' && state.recoveryKitSaved === true;
 }
 
 export function onboardingReducer(
@@ -186,7 +185,7 @@ export function onboardingReducer(
     case 'choose-origin':
       return {
         ...state,
-        step: event.origin === 'generate' ? 'backup' : 'import',
+        step: event.origin === 'generate' ? 'pin' : 'import',
         origin: event.origin,
         wordCount: event.wordCount ?? state.wordCount,
         error: undefined,
@@ -199,15 +198,11 @@ export function onboardingReducer(
       return {
         ...state,
         mnemonic: event.mnemonic,
-        step: state.origin === 'generate' ? state.step : 'pin',
+        lostDevices: event.lostDevices ?? false,
+        step: 'pin',
         error: undefined,
       };
     }
-
-    case 'backup-confirmed':
-      return state.step === 'backup'
-        ? { ...state, step: 'verify', error: undefined }
-        : { ...state, step: 'pin', error: undefined };
 
     case 'pin-chosen': {
       const feedback = checkPin(event.pin);
@@ -224,7 +219,22 @@ export function onboardingReducer(
     }
 
     case 'enrolled':
-      return { ...state, step: 'done', error: undefined };
+      return {
+        ...state,
+        step: state.origin === 'generate' ? 'recovery-kit' : 'done',
+        username: event.username,
+        mnemonic: state.origin === 'generate' ? state.mnemonic : undefined,
+        pin: undefined,
+        error: undefined,
+      };
+
+    case 'create-instead':
+      return state.mnemonic === undefined
+        ? state
+        : { ...state, origin: 'generate', step: 'pin', lostDevices: false, error: undefined };
+
+    case 'recovery-kit-saved':
+      return state.step === 'recovery-kit' ? { ...state, recoveryKitSaved: true } : state;
 
     case 'failed': {
       if (state.step !== 'enrolling') {

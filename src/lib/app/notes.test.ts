@@ -30,6 +30,7 @@ function record(id: string, updatedAt: string): NoteRecord {
     id,
     ciphertext: 'AXh4eHh4eHh4eHh4Y2lwaGVy',
     wrapped_dek: 'd3JhcHBlZA==',
+    key_generation: 1,
     version: 'v1',
     created_at: '2026-08-01T12:00:00Z',
     updated_at: updatedAt,

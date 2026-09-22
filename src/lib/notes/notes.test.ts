@@ -1,10 +1,7 @@
+import { openTestSession } from '@/test/session';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import vectors from '@/test/fixtures/test-vectors.json';
 import { TokenStore } from '@/lib/api';
-import { SessionKeystore } from '@/lib/session';
 import { buildActionPayload, verifyPayload } from '@/lib/signing';
-import { deriveKeyTreeFromSeed } from '@/lib/keys';
-import { hexToBytes } from '@/lib/encoding';
 import {
   createNote,
   deleteNote,
@@ -23,10 +20,8 @@ import {
   type NotesContext,
 } from './index';
 
-const mnemonic = vectors.seed_and_user_address.mnemonic;
-const pin = vectors.server_auth_token.pin;
-const tree = await deriveKeyTreeFromSeed(hexToBytes(vectors.seed_and_user_address.seed_hex));
-const publicKey = tree.identity.publicKeyUncompressed;
+const shared = await openTestSession();
+const publicKey = shared.devicePublicKey;
 
 const ID_A = '0c892e57-93cf-423a-a9e9-fee5a9f87681';
 const ID_B = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
@@ -65,8 +60,7 @@ function mockFetch(...specs: { status: number; body?: unknown }[]) {
 }
 
 async function newContext(options: { paranoid?: boolean } = {}): Promise<NotesContext> {
-  const session = new SessionKeystore({ idleTimeoutMs: 0 });
-  await session.unlockWithMnemonic(mnemonic, pin);
+  const { session } = shared.context;
   const tokens = new TokenStore();
   tokens.set('jwt-token');
   return { session, tokens, paranoid: options.paranoid ?? true };
@@ -76,6 +70,7 @@ const storedNote: NoteRecord = {
   id: ID_A,
   ciphertext: 'AXh4eHh4eHh4eHh4Y2lwaGVy',
   wrapped_dek: 'd3JhcHBlZA==',
+  key_generation: 1,
   version: 'v1',
   created_at: '2026-08-01T12:00:00Z',
   updated_at: '2026-08-01T12:00:00Z',
@@ -89,6 +84,7 @@ async function sealedRecord(context: NotesContext, plaintext: string): Promise<N
     ...storedNote,
     ciphertext: calls[0].body!.ciphertext as string,
     wrapped_dek: calls[0].body!.wrapped_dek as string,
+    key_generation: 1,
   };
 }
 
@@ -171,6 +167,7 @@ describe('POST /notes', () => {
       ...storedNote,
       ciphertext: calls[0].body!.ciphertext as string,
       wrapped_dek: calls[0].body!.wrapped_dek as string,
+      key_generation: 1,
     };
 
     expect(await openNote(context, echoed)).toBe('the real letter');
@@ -187,6 +184,7 @@ describe('PUT /notes/{id}', () => {
       ...storedNote,
       ciphertext: created[0].body!.ciphertext as string,
       wrapped_dek: created[0].body!.wrapped_dek as string,
+      key_generation: 1,
     };
 
     const edits = mockFetch({ status: 200, body: { data: stored } });
@@ -211,6 +209,7 @@ describe('PUT /notes/{id}', () => {
       ...storedNote,
       ciphertext: created[0].body!.ciphertext as string,
       wrapped_dek: created[0].body!.wrapped_dek as string,
+      key_generation: 1,
     };
 
     const edits = mockFetch({ status: 200, body: { data: beforeEdit } });
@@ -234,6 +233,7 @@ describe('PUT /notes/{id}', () => {
       version: 'v2',
       ciphertext: created[0].body!.ciphertext as string,
       wrapped_dek: created[0].body!.wrapped_dek as string,
+      key_generation: 1,
     };
 
     const edits = mockFetch({ status: 200, body: { data: stored } });
@@ -432,10 +432,11 @@ describe('DELETE /notes/{id}', () => {
     ).toBe(false);
   });
 
-  it('attaches password only on a Paranoid account', async () => {
+  it('never sends a password or a PIN proof, in either mode', async () => {
     const paranoid = mockFetch({ status: 204 });
     await deleteNote(await newContext({ paranoid: true }), ID_A);
-    expect(paranoid[0].body).toHaveProperty('password');
+    expect(paranoid[0].body).not.toHaveProperty('password');
+    expect(paranoid[0].body).not.toHaveProperty('pin_proof');
 
     const standard = mockFetch({ status: 204 });
     await deleteNote(await newContext({ paranoid: false }), ID_A);
@@ -538,10 +539,11 @@ describe('DELETE /notes (batch)', () => {
     });
   });
 
-  it('attaches password only on a Paranoid account', async () => {
+  it('never sends a password or a PIN proof, in either mode', async () => {
     const paranoid = mockFetch({ status: 200, body: { data: { requested: 1, deleted: 1 } } });
     await deleteNotes(await newContext({ paranoid: true }), [ID_A]);
-    expect(paranoid[0].body).toHaveProperty('password');
+    expect(paranoid[0].body).not.toHaveProperty('password');
+    expect(paranoid[0].body).not.toHaveProperty('pin_proof');
 
     const standard = mockFetch({ status: 200, body: { data: { requested: 1, deleted: 1 } } });
     await deleteNotes(await newContext({ paranoid: false }), [ID_A]);

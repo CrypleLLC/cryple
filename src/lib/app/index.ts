@@ -1,8 +1,8 @@
 export * from './onboarding';
-export * from './mode-hint';
-export * from './boot';
 export * from './sign-out';
 export * from './second-factor';
+export * from './unlock';
+export * from './devices';
 export * from './vault';
 export * from './notes';
 export * from './documents';
@@ -16,3 +16,6 @@ export * from './shell';
 export * from './username';
 export * from './sharing';
 export * from './settings';
+export * from './private-text';
+export * from './clipboard';
+export * from './secret-field';
