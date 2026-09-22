@@ -1,197 +1,152 @@
 import { describe, expect, it, vi } from 'vitest';
 import vectors from '@/test/fixtures/test-vectors.json';
+import { openTestSession } from '@/test/session';
 import { bytesToHex } from '@/lib/encoding';
-import { createSeedVault, SEED_VAULT_STORAGE_KEY, type VaultStorage } from '@/lib/pin';
-import { SessionKeystore } from './index';
+import { verifyPayload } from '@/lib/signing';
+import { signPayload } from '@/lib/signing';
+import { MissingGenerationError, ScopeNotHeldError, SessionKeystore } from './index';
 
-const mnemonic = vectors.seed_and_user_address.mnemonic;
-const userAddress = vectors.seed_and_user_address.user_address;
-const identityVector = vectors.identity_key_p256;
-const tokenVector = vectors.server_auth_token;
-const pin = tokenVector.pin;
+describe('what the keystore holds', () => {
+  it('holds the device key, the scope KEKs by generation and the current generation of each', async () => {
+    const { context, keks } = await openTestSession({ generations: { secrets: 3 } });
+    const { session } = context;
 
-function memoryStorage(): VaultStorage & { entries(): [string, string][] } {
-  const map = new Map<string, string>();
-  return {
-    getItem: (key) => map.get(key) ?? null,
-    setItem: (key, value) => void map.set(key, value),
-    removeItem: (key) => void map.delete(key),
-    entries: () => [...map.entries()],
-  };
-}
+    expect(session.currentGeneration('secrets')).toBe(3);
+    expect(session.currentGeneration('notes')).toBe(1);
+    expect(bytesToHex(session.kek('secrets', 2))).toBe(bytesToHex(keks.get('secrets:2')!));
+    expect(session.currentKek('secrets').generation).toBe(3);
+  });
 
-async function unlockedKeystore(idleTimeoutMs = 0) {
-  const storage = memoryStorage();
-  await createSeedVault(mnemonic, pin, storage);
-  const keystore = new SessionKeystore({ storage, idleTimeoutMs });
-  const result = await keystore.unlock(pin);
-  return { keystore, storage, result };
-}
-
-describe('session unlock', () => {
-  it('derives the whole key tree from one PIN entry', async () => {
-    const { keystore, result } = await unlockedKeystore();
-
-    expect(result).toEqual({ status: 'unlocked', userAddress });
-    expect(keystore.isUnlocked).toBe(true);
-    expect(keystore.userAddress).toBe(userAddress);
-    expect(bytesToHex(keystore.identityPrivateKey)).toBe(identityVector.private_key_hex);
-    expect(keystore.identityPublicKeySpkiBase64).toBe(identityVector.public_key_spki_base64);
-    expect(bytesToHex(keystore.x25519PrivateKey)).toBe(
-      vectors.x25519_key.private_key_or_seed_hex,
+  it('never holds the phrase, the seed or the root: nothing in it derives from them', async () => {
+    const { context } = await openTestSession();
+    const material = context.session.exportForHandoff();
+    const serialized = JSON.stringify(material, (_key, value) =>
+      value instanceof Uint8Array ? bytesToHex(value) : value,
     );
-    expect(bytesToHex(keystore.mlkem768PublicKey)).toBe(vectors.mlkem768_key.public_key_hex);
+
+    expect(serialized).not.toContain(vectors.seed_and_user_address.seed_hex);
+    expect(serialized).not.toContain(vectors.identity_key_p256.private_key_hex);
+    expect(serialized).not.toContain(vectors.vault_kek.vault_kek_hex);
+    expect(Object.keys(material)).not.toContain('seedHex');
+    expect(Object.keys(material)).not.toContain('mnemonic');
   });
 
-  it('holds the Server_Auth_Token so the PIN is never needed again', async () => {
-    const { keystore } = await unlockedKeystore();
-    expect(keystore.serverAuthToken()).toBe(tokenVector.server_auth_token_hex);
-    expect(keystore.serverAuthToken()).toBe(tokenVector.server_auth_token_hex);
+  it('signs with a device key that can never be exported', async () => {
+    const { context, devicePublicKey } = await openTestSession();
+    const signature = await signPayload('a:1', context.session.signer());
+    expect(verifyPayload('a:1', signature, devicePublicKey)).toBe(true);
+    await expect(crypto.subtle.exportKey('pkcs8', context.session.device.signingKey)).rejects.toThrow();
   });
 
-  it('exposes the three enrollment public keys in wire encoding', async () => {
-    const { keystore } = await unlockedKeystore();
-    expect(keystore.enrollmentPublicKeys).toEqual({
-      publicKey: identityVector.public_key_spki_base64,
-      encryptionPublicKeyX25519: vectors.x25519_key.public_key_base64,
-      encryptionPublicKeyMlkem: vectors.mlkem768_key.public_key_base64,
-    });
+  it('refuses a scope this device does not hold', async () => {
+    const { context } = await openTestSession({ scopes: ['notes'] });
+    expect(context.session.holds('notes')).toBe(true);
+    expect(context.session.holds('secrets')).toBe(false);
+    expect(context.session.isFullDevice).toBe(false);
+    expect(() => context.session.currentKek('secrets')).toThrow(ScopeNotHeldError);
   });
 
-  it('unlocks directly from a mnemonic for restore before a vault exists', async () => {
-    const keystore = new SessionKeystore({ storage: memoryStorage(), idleTimeoutMs: 0 });
-    expect(await keystore.unlockWithMnemonic(mnemonic, pin)).toBe(userAddress);
-    expect(keystore.serverAuthToken()).toBe(tokenVector.server_auth_token_hex);
+  it('reports a generation it holds no wrap of as a bug, not a silent failure', async () => {
+    const { context } = await openTestSession();
+    expect(() => context.session.kek('notes', 9)).toThrow(MissingGenerationError);
   });
 
-  it('unlocks from a mnemonic alone, holding no second factor — Standard Mode has no PIN', async () => {
-    const keystore = new SessionKeystore({ storage: memoryStorage(), idleTimeoutMs: 0 });
-
-    expect(await keystore.unlockWithMnemonic(mnemonic)).toBe(userAddress);
-    expect(keystore.isUnlocked).toBe(true);
-    expect(bytesToHex(keystore.identityPrivateKey)).toBe(identityVector.private_key_hex);
-    expect(keystore.serverAuthToken()).toBeUndefined();
+  it('opens the sharing material of a generation on demand, once', async () => {
+    const { context } = await openTestSession();
+    const first = await context.session.sharingKeys(1);
+    expect(await context.session.sharingKeys(1)).toBe(first);
+    expect(first.x25519PublicKey).toHaveLength(32);
   });
 
-  it('still refuses the token when locked, rather than reporting a missing second factor', async () => {
-    const keystore = new SessionKeystore({ storage: memoryStorage(), idleTimeoutMs: 0 });
-    await keystore.unlockWithMnemonic(mnemonic);
-    keystore.lock();
+  it('adds a rotated generation without dropping the ones before it', async () => {
+    const { context } = await openTestSession();
+    const next = crypto.getRandomValues(new Uint8Array(32));
+    context.session.addKeyrings([{ scope: 'secrets', generation: 2, kek: next }], { secrets: 2 });
 
-    expect(() => keystore.serverAuthToken()).toThrow(/locked/);
-  });
-
-  it('takes on a second factor when a Standard account enables one', async () => {
-    const keystore = new SessionKeystore({ storage: memoryStorage(), idleTimeoutMs: 0 });
-    await keystore.unlockWithMnemonic(mnemonic);
-
-    await keystore.rekeySecondFactor(pin);
-
-    expect(keystore.serverAuthToken()).toBe(tokenVector.server_auth_token_hex);
-  });
-
-  it('propagates the vault outcome without unlocking on a wrong PIN', async () => {
-    const storage = memoryStorage();
-    await createSeedVault(mnemonic, pin, storage);
-    const keystore = new SessionKeystore({ storage, idleTimeoutMs: 0 });
-
-    expect(await keystore.unlock('428194')).toEqual({
-      status: 'invalid-pin',
-      attemptsRemaining: 2,
-    });
-    expect(keystore.isUnlocked).toBe(false);
-    expect(() => keystore.userAddress).toThrow(/locked/);
-  });
-
-  it('reports a missing vault', async () => {
-    const keystore = new SessionKeystore({ storage: memoryStorage(), idleTimeoutMs: 0 });
-    expect(await keystore.unlock(pin)).toEqual({ status: 'no-vault' });
+    expect(context.session.currentGeneration('secrets')).toBe(2);
+    expect(context.session.hasKek('secrets', 1)).toBe(true);
+    expect(context.session.kek('secrets', 2)).toBe(next);
   });
 });
 
-describe('locking zeroes key material', () => {
-  it('zeroes every private value it held and refuses access afterwards', async () => {
-    const { keystore } = await unlockedKeystore();
+describe('locking', () => {
+  it('zeroes every KEK and the device material, and refuses access afterwards', async () => {
+    const { context } = await openTestSession();
+    const kek = context.session.kek('secrets', 1);
+    const mlkemSeed = context.session.device.mlkemSeed;
 
-    const identity = keystore.identityPrivateKey;
-    const x25519 = keystore.x25519PrivateKey;
-    const mlkem = keystore.mlkem768SecretKey;
+    context.session.lock();
 
-    keystore.lock();
-
-    expect(bytesToHex(identity)).toBe('00'.repeat(identity.length));
-    expect(bytesToHex(x25519)).toBe('00'.repeat(x25519.length));
-    expect(bytesToHex(mlkem)).toBe('00'.repeat(mlkem.length));
-
-    expect(keystore.isUnlocked).toBe(false);
-    expect(() => keystore.identityPrivateKey).toThrow(/locked/);
-    expect(() => keystore.serverAuthToken()).toThrow(/locked/);
+    expect(kek.every((byte) => byte === 0)).toBe(true);
+    expect(mlkemSeed.every((byte) => byte === 0)).toBe(true);
+    expect(context.session.isUnlocked).toBe(false);
+    expect(() => context.session.userAddress).toThrow(/locked/);
   });
 
-  it('notifies lock listeners exactly once per lock', async () => {
-    const { keystore } = await unlockedKeystore();
+  it('notifies lock listeners exactly once per lock, and not after unsubscribing', async () => {
+    const { context } = await openTestSession();
     const listener = vi.fn();
-    keystore.onLock(listener);
+    const stop = context.session.onLock(listener);
 
-    keystore.lock();
-    keystore.lock();
-
+    context.session.lock();
+    context.session.lock();
     expect(listener).toHaveBeenCalledTimes(1);
+
+    stop();
+    const again = await openTestSession();
+    again.context.session.onLock(listener);
+    again.context.session.lock();
+    expect(listener).toHaveBeenCalledTimes(2);
   });
 
-  it('stops notifying after unsubscribe', async () => {
-    const { keystore } = await unlockedKeystore();
-    const listener = vi.fn();
-    keystore.onLock(listener)();
-
-    keystore.lock();
-    expect(listener).not.toHaveBeenCalled();
-  });
-
-  it('zeroes the previous session when unlocked again', async () => {
-    const { keystore } = await unlockedKeystore();
-    const firstIdentity = keystore.identityPrivateKey;
-
-    await keystore.unlock(pin);
-
-    expect(bytesToHex(firstIdentity)).toBe('00'.repeat(firstIdentity.length));
-    expect(bytesToHex(keystore.identityPrivateKey)).toBe(identityVector.private_key_hex);
-  });
-});
-
-describe('idle timeout', () => {
-  it('locks after the idle window and re-arms on each access', async () => {
+  it('empties the keystore after the idle window, and re-arms on each access', async () => {
     vi.useFakeTimers();
     try {
-      const storage = memoryStorage();
-      await createSeedVault(mnemonic, pin, storage);
-      const keystore = new SessionKeystore({ storage, idleTimeoutMs: 1000 });
-      await keystore.unlock(pin);
+      const { context } = await openTestSession();
+      const source = context.session.exportForHandoff();
+      const session = new SessionKeystore({ idleTimeoutMs: 1000 });
+      session.adoptHandoff(source);
 
-      vi.advanceTimersByTime(900);
-      expect(keystore.userAddress).toBe(userAddress);
-
-      vi.advanceTimersByTime(900);
-      expect(keystore.isUnlocked).toBe(true);
-
-      vi.advanceTimersByTime(1100);
-      expect(keystore.isUnlocked).toBe(false);
+      vi.advanceTimersByTime(800);
+      expect(session.userAddress).toBe(source.userAddress);
+      vi.advanceTimersByTime(800);
+      expect(session.isUnlocked).toBe(true);
+      vi.advanceTimersByTime(1200);
+      expect(session.isUnlocked).toBe(false);
     } finally {
       vi.useRealTimers();
     }
   });
 });
 
-describe('storage discipline', () => {
-  it('writes nothing beyond the PIN-wrapped vault record', async () => {
-    const { storage } = await unlockedKeystore();
-    const keys = storage.entries().map(([key]) => key);
-    expect(keys).toEqual([SEED_VAULT_STORAGE_KEY]);
+describe('the handoff material', () => {
+  it('carries keys, never the phrase, and opens the same KEKs in the adopting tab', async () => {
+    const { context } = await openTestSession();
+    const adopted = new SessionKeystore({ idleTimeoutMs: 0 });
+    adopted.adoptHandoff(structuredClone(context.session.exportForHandoff()));
 
-    const serialized = storage.entries().map(([, value]) => value).join('');
-    expect(serialized).not.toContain(pin);
-    expect(serialized).not.toContain(tokenVector.server_auth_token_hex);
-    expect(serialized).not.toContain(identityVector.private_key_hex);
-    expect(serialized).not.toContain('abandon');
+    expect(adopted.deviceId).toBe(context.session.deviceId);
+    expect(bytesToHex(adopted.kek('files', 1))).toBe(bytesToHex(context.session.kek('files', 1)));
+    expect(bytesToHex(adopted.device.mlkemPublicKey)).toBe(
+      bytesToHex(context.session.device.mlkemPublicKey),
+    );
+  });
+
+  it('survives structured cloning with a non-extractable signing key that still signs', async () => {
+    const { context, devicePublicKey } = await openTestSession();
+    const adopted = new SessionKeystore({ idleTimeoutMs: 0 });
+    adopted.adoptHandoff(structuredClone(context.session.exportForHandoff()));
+
+    const signature = await signPayload('b:2', adopted.signer());
+    expect(verifyPayload('b:2', signature, devicePublicKey)).toBe(true);
+  });
+
+  it('hands over copies, so locking one tab does not zero the other', async () => {
+    const { context } = await openTestSession();
+    const adopted = new SessionKeystore({ idleTimeoutMs: 0 });
+    adopted.adoptHandoff(context.session.exportForHandoff());
+    context.session.lock();
+
+    expect(adopted.kek('secrets', 1).some((byte) => byte !== 0)).toBe(true);
   });
 });

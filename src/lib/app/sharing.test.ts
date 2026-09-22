@@ -19,6 +19,9 @@ function connection(over: Partial<ConnectionRecord>): ConnectionRecord {
     username: 'pedrosilva',
     user_address: 'a'.repeat(64),
     status: 'pending',
+    sender_key_generation: 1,
+    recipient_key_generation: 1,
+    keys: [],
     created_at: '2026-09-11T00:00:00Z',
     ...over,
   };
@@ -50,7 +53,8 @@ describe('grouping connections', () => {
 
 describe('what a connection check shows', () => {
   const refused: ConnectionTrust[] = [
-    { status: 'keys-changed', fingerprint: 'CCCC-DDDD', pinned: 'AAAA-BBBB' },
+    { status: 'root-changed', fingerprint: 'CCCC-DDDD', pinned: 'AAAA-BBBB' },
+    { status: 'proof-invalid', fingerprint: 'CCCC-DDDD' },
     { status: 'account-changed' },
     { status: 'unresolvable' },
     { status: 'unpinned', fingerprint: 'AAAA-BBBB' },
@@ -61,14 +65,25 @@ describe('what a connection check shows', () => {
     expect(trustAlarm({ status: 'unpinned', fingerprint: 'AAAA-BBBB' })).toBeUndefined();
   });
 
-  it('raises a danger alarm when the keys or the account behind a connection changed', () => {
+  it('raises a danger alarm when the root key, the proof path or the account changed', () => {
     expect(
-      trustAlarm({ status: 'keys-changed', fingerprint: 'CCCC-DDDD', pinned: 'AAAA-BBBB' }),
-    ).toEqual({ tone: 'danger', message: SHARING_COPY.fingerprintChanged });
-    expect(trustAlarm({ status: 'account-changed' })).toEqual({
-      tone: 'danger',
-      message: SHARING_COPY.fingerprintAccountChanged,
-    });
+      trustAlarm({ status: 'root-changed', fingerprint: 'CCCC-DDDD', pinned: 'AAAA-BBBB' }),
+    ).toEqual({ tone: 'danger', message: SHARING_COPY.fingerprintChanged, newInvitation: true });
+    expect(trustAlarm({ status: 'proof-invalid', fingerprint: 'CCCC-DDDD' })?.tone).toBe('danger');
+    expect(trustAlarm({ status: 'account-changed' })?.tone).toBe('danger');
+    expect(trustAlarm({ status: 'account-changed' })?.message).toContain(
+      SHARING_COPY.fingerprintAccountChanged,
+    );
+  });
+
+  it('offers a new invitation for a connection whose counterparty is gone, never a silent repair', () => {
+    for (const trust of [{ status: 'unresolvable' }, { status: 'account-changed' }] as const) {
+      const alarm = trustAlarm(trust);
+      expect(alarm?.newInvitation).toBe(true);
+      expect(alarm?.message).toContain(SHARING_COPY.lostConnection);
+    }
+    expect(SHARING_COPY.lostConnection).toMatch(/new invitation/);
+    expect(SHARING_COPY.lostConnection).toMatch(/never repaired/);
   });
 
   it('warns rather than alarms when the keys could not be checked', () => {

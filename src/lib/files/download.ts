@@ -48,7 +48,7 @@ export interface OpenedFile {
 
 export async function openFile(context: FilesContext, id: string): Promise<OpenedFile> {
   const record = await getFileDownload(context, id);
-  const dek = await wrapper(context).unwrapDek(record.wrapped_dek);
+  const dek = await wrapper(context).unwrapDek(record);
 
   try {
     const manifest = await openManifest(record.ciphertext, dek);

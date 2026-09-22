@@ -2,7 +2,10 @@
 
 import { useReducer, useState } from 'react';
 import { generateMnemonic, type MnemonicWordCount } from '@/lib/keys';
+import type { DeviceSummary } from '@/lib/account';
 import {
+  ENROL_STEP_COPY,
+  DEVICES_COPY,
   canEnterVault,
   canGoBack,
   checkMnemonic,
@@ -13,66 +16,111 @@ import {
   onboardingReducer,
   PIN_STEP_COPY,
   RECOVERY_KIT_STEP_COPY,
+  describeScopes,
   type OnboardingOrigin,
   type OnboardingState,
 } from '@/lib/app';
+import { parseScopeList } from '@/lib/scopes';
 import { useCryple } from './CrypleProvider';
 import { Button, Card, Field, Notice, TextArea } from './ui';
 
 export default function Onboarding() {
-  const { enrol, enterVault } = useCryple();
+  const { createAccount, enrolBrowser, enterVault, notice } = useCryple();
   const [state, dispatch] = useReducer(onboardingReducer, INITIAL_ONBOARDING);
   const [busy, setBusy] = useState(false);
+  const [noAccount, setNoAccount] = useState(false);
+  const [crowded, setCrowded] = useState<readonly DeviceSummary[]>();
+  const [warning, setWarning] = useState<string>();
 
-  async function finish(paranoid: boolean, pin: string) {
+  async function finish(pin: string, paranoid: boolean, removeDeviceIds?: readonly string[]) {
     if (state.mnemonic === undefined) {
       return;
     }
 
     setBusy(true);
-    const outcome = await enrol(state.mnemonic, pin, paranoid);
-    setBusy(false);
+    setNoAccount(false);
 
-    if (outcome.status === 'failed') {
-      dispatch({ type: 'failed', message: outcome.message });
-
+    if (state.origin === 'generate') {
+      const outcome = await createAccount(state.mnemonic, pin, paranoid);
+      setBusy(false);
+      if (outcome.status === 'failed') {
+        dispatch({ type: 'failed', message: outcome.message });
+        return;
+      }
+      setWarning(outcome.paranoidMessage);
+      dispatch({ type: 'enrolled', username: outcome.username });
       return;
     }
 
-    dispatch({ type: 'enrolled', username: outcome.username });
-    if (state.origin !== 'generate') {
-      enterVault();
+    const outcome = await enrolBrowser(state.mnemonic, pin, {
+      removeDeviceIds: removeDeviceIds ?? (state.lostDevices ? 'all' : undefined),
+    });
+    setBusy(false);
+
+    switch (outcome.status) {
+      case 'enrolled':
+        setCrowded(undefined);
+        dispatch({ type: 'enrolled', username: outcome.username });
+        enterVault();
+        return;
+      case 'no-account':
+        setNoAccount(true);
+        dispatch({ type: 'failed', message: ENROL_STEP_COPY.noAccount });
+        return;
+      case 'too-many-devices':
+        setCrowded(outcome.devices);
+        dispatch({ type: 'failed', message: DEVICES_COPY.tooMany });
+        return;
+      case 'failed':
+        dispatch({ type: 'failed', message: outcome.message });
     }
   }
+
+  const [pendingPin, setPendingPin] = useState<string>();
 
   function choosePin(pin: string, paranoid: boolean) {
     dispatch({ type: 'pin-chosen', pin, paranoid });
     if (checkPin(pin).ok) {
-      void finish(paranoid, pin);
+      setPendingPin(pin);
+      void finish(pin, paranoid);
     }
   }
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
+      {notice && state.step === 'origin' ? <Notice tone="warning">{notice}</Notice> : null}
       {state.error ? <Notice tone="danger">{state.error}</Notice> : null}
+      {warning ? <Notice tone="warning">{warning}</Notice> : null}
 
-      {state.step === 'origin' ? (
-        <OriginStep dispatch={dispatch} />
+      {noAccount ? (
+        <Button
+          variant="secondary"
+          onClick={() => {
+            setNoAccount(false);
+            dispatch({ type: 'create-instead' });
+          }}
+        >
+          {ENROL_STEP_COPY.createInstead}
+        </Button>
       ) : null}
-      {state.step === 'import' ? <ImportStep state={state} dispatch={dispatch} /> : null}
-      {state.step === 'pin' ? (
-        <PinStep
+
+      {crowded !== undefined && pendingPin !== undefined ? (
+        <TooManyDevices
+          devices={crowded}
           busy={busy}
-          signingUp={state.origin === 'generate'}
-          onSubmit={choosePin}
+          onRemove={(ids) => void finish(pendingPin, false, ids)}
         />
       ) : null}
+
+      {state.step === 'origin' ? <OriginStep dispatch={dispatch} /> : null}
+      {state.step === 'pin' ? (
+        <PinStep busy={busy} signingUp={state.origin === 'generate'} onSubmit={choosePin} />
+      ) : null}
       {state.step === 'enrolling' ? (
-        <Card title="Creating your vault">
+        <Card title={state.origin === 'generate' ? 'Creating your vault' : ENROL_STEP_COPY.title}>
           <p className="text-compact text-ink-soft">
-            {state.paranoid
-              ? 'Deriving your keys and enrolling them. This takes a moment — the PIN stretch is deliberately slow.'
-              : 'Deriving your keys and enrolling them. This takes a moment.'}
+            Generating this browser’s keys and checking your PIN with the server. This takes a
+            moment: checking a PIN is deliberately slow, so that guessing one is slow too.
           </p>
         </Card>
       ) : null}
@@ -94,9 +142,9 @@ type Dispatch = (event: Parameters<typeof onboardingReducer>[1]) => void;
 function OriginStep({ dispatch }: { dispatch: Dispatch }) {
   const [tab, setTab] = useState<OnboardingOrigin>('generate');
   const [wordCount, setWordCount] = useState<MnemonicWordCount>(12);
-
   const [phrase, setPhrase] = useState('');
   const [phraseError, setPhraseError] = useState<string>();
+  const [lostDevices, setLostDevices] = useState(false);
 
   const signingUp = tab === 'generate';
 
@@ -105,25 +153,20 @@ function OriginStep({ dispatch }: { dispatch: Dispatch }) {
     dispatch({ type: 'mnemonic-ready', mnemonic: generateMnemonic(wordCount) });
   }
 
-  // Sign-in takes the phrase on this same screen: a tab that only offers a
-  // Continue button is a step that asks nothing.
-  function startSignIn() {
+  function startEnrolment() {
     const checked = checkMnemonic(phrase);
     if (!checked.ok) {
       setPhraseError(checked.message);
-
       return;
     }
-
     setPhraseError(undefined);
     dispatch({ type: 'choose-origin', origin: 'import', wordCount });
-    dispatch({ type: 'mnemonic-ready', mnemonic: mnemonicSentence(phrase) });
+    dispatch({ type: 'mnemonic-ready', mnemonic: mnemonicSentence(phrase), lostDevices });
+    setPhrase('');
   }
 
   return (
-    <Card
-      subtitle="Your recovery phrase is the account. Nothing on our servers can replace it."
-    >
+    <Card subtitle="Your recovery phrase is the account. Nothing on our servers can replace it.">
       <div className="flex border-b border-line px-5">
         {(
           [
@@ -152,7 +195,7 @@ function OriginStep({ dispatch }: { dispatch: Dispatch }) {
           <>
             <p className="text-compact text-ink-soft">
               We will generate a recovery phrase for you and give you a recovery kit to keep
-              offline — it is the only way back into your vault.
+              offline. It is the only way back into your vault, and the only way to add a device.
             </p>
 
             <div className="flex gap-2">
@@ -169,10 +212,7 @@ function OriginStep({ dispatch }: { dispatch: Dispatch }) {
           </>
         ) : (
           <>
-            <p className="text-compact text-ink-soft">
-              Enter the recovery phrase you already have. Signing in on a new device works the
-              same way — there is no password to recover.
-            </p>
+            <p className="text-compact text-ink-soft">{ENROL_STEP_COPY.summary}</p>
 
             <TextArea
               label="Recovery phrase"
@@ -183,12 +223,164 @@ function OriginStep({ dispatch }: { dispatch: Dispatch }) {
               onChange={(event) => setPhrase(event.target.value)}
             />
 
+            <Notice tone="info">{ENROL_STEP_COPY.exposure}</Notice>
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-raised p-4">
+              <input
+                type="checkbox"
+                checked={lostDevices}
+                onChange={(event) => setLostDevices(event.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-brand-500"
+              />
+              <span>
+                <span className="block text-compact font-semibold text-ink">
+                  {ENROL_STEP_COPY.lostDevices}
+                </span>
+                <span className="mt-1 block text-compact text-ink-muted">
+                  {ENROL_STEP_COPY.lostDevicesWarning}
+                </span>
+              </span>
+            </label>
+
             {phraseError ? <Notice tone="danger">{phraseError}</Notice> : null}
           </>
         )}
 
-        <Button onClick={signingUp ? startSignUp : startSignIn}>
+        <Button onClick={signingUp ? startSignUp : startEnrolment}>
           {signingUp ? 'Create my recovery phrase' : 'Continue'}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function TooManyDevices({
+  devices,
+  busy,
+  onRemove,
+}: {
+  devices: readonly DeviceSummary[];
+  busy: boolean;
+  onRemove: (ids: readonly string[]) => void;
+}) {
+  const [chosen, setChosen] = useState<readonly string[]>([]);
+
+  return (
+    <Card title={DEVICES_COPY.removeTitle} subtitle={DEVICES_COPY.tooMany}>
+      <div className="space-y-4">
+        <ul className="space-y-2">
+          {devices.map((device) => (
+            <li key={device.id}>
+              <label className="flex cursor-pointer items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={chosen.includes(device.id)}
+                  onChange={(event) =>
+                    setChosen((current) =>
+                      event.target.checked
+                        ? [...current, device.id]
+                        : current.filter((id) => id !== device.id),
+                    )
+                  }
+                  className="h-4 w-4 accent-brand-500"
+                />
+                <span className="text-compact text-ink">
+                  {describeScopes(parseScopeList(device.scopes))} · added{' '}
+                  {new Date(device.createdAt).toLocaleDateString()}
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+        <Notice tone="warning">{DEVICES_COPY.removeWarning}</Notice>
+        <Button variant="danger" disabled={busy || chosen.length === 0} onClick={() => onRemove(chosen)}>
+          {busy ? DEVICES_COPY.removing : DEVICES_COPY.removeSubmit}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function PinStep({
+  busy,
+  signingUp,
+  onSubmit,
+}: {
+  busy: boolean;
+  signingUp: boolean;
+  onSubmit: (pin: string, paranoid: boolean) => void;
+}) {
+  const [pin, setPin] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [paranoid, setParanoid] = useState(false);
+  const [message, setMessage] = useState<string>();
+
+  return (
+    <Card
+      title={signingUp ? PIN_STEP_COPY.title : ENROL_STEP_COPY.title}
+      subtitle={signingUp ? PIN_STEP_COPY.subtitle : PIN_STEP_COPY.signIn}
+    >
+      <div className="space-y-4">
+        <Field
+          label="PIN"
+          type="password"
+          inputMode="numeric"
+          maxLength={6}
+          value={pin}
+          onChange={(event) => setPin(event.target.value)}
+        />
+        <Field
+          label="Confirm PIN"
+          type="password"
+          inputMode="numeric"
+          maxLength={6}
+          value={confirmation}
+          onChange={(event) => setConfirmation(event.target.value)}
+        />
+
+        {signingUp ? (
+          <fieldset className="space-y-3 rounded-xl border border-line bg-raised p-4">
+            <legend className="px-1 text-compact font-semibold text-ink">
+              How should your recovery phrase be protected?
+            </legend>
+            {(['standard', 'paranoid'] as const).map((mode) => (
+              <label key={mode} className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="radio"
+                  name="mode"
+                  checked={paranoid === (mode === 'paranoid')}
+                  onChange={() => setParanoid(mode === 'paranoid')}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-brand-500"
+                />
+                <span>
+                  <span className="block text-compact font-semibold text-ink">
+                    {MODE_COPY[mode].title} — {MODE_COPY[mode].summary}
+                  </span>
+                  <span className="mt-1 block text-compact text-ink-muted">
+                    {MODE_COPY[mode].tradeoff}
+                  </span>
+                </span>
+              </label>
+            ))}
+            {paranoid ? <p className="text-compact text-warning">{MODE_COPY.oneWayDoor}</p> : null}
+          </fieldset>
+        ) : null}
+
+        {message ? <Notice tone="danger">{message}</Notice> : null}
+
+        <Button
+          disabled={busy}
+          onClick={() => {
+            const result = checkPin(pin, confirmation);
+            if (!result.ok) {
+              setMessage(result.message);
+              return;
+            }
+            setMessage(undefined);
+            onSubmit(pin, signingUp && paranoid);
+          }}
+        >
+          {busy ? 'Opening your vault…' : signingUp ? 'Create my vault' : 'Add this browser'}
         </Button>
       </div>
     </Card>
@@ -287,125 +479,4 @@ function offerDownload(name: string, bytes: Uint8Array): void {
   link.remove();
 
   URL.revokeObjectURL(url);
-}
-
-function ImportStep({ state, dispatch }: { state: OnboardingState; dispatch: Dispatch }) {
-  const [text, setText] = useState(state.mnemonic ?? '');
-  const [message, setMessage] = useState<string>();
-
-  return (
-    <Card title="Enter your recovery phrase" subtitle="12 or 24 words, separated by spaces.">
-      <div className="space-y-4">
-        <TextArea
-          label="Recovery phrase"
-          value={text}
-          autoComplete="off"
-          spellCheck={false}
-          onChange={(event) => setText(event.target.value)}
-        />
-
-        {message ? <Notice tone="danger">{message}</Notice> : null}
-
-        <Button
-          onClick={() => {
-            const result = checkMnemonic(text);
-            if (!result.ok) {
-              setMessage(result.message);
-              return;
-            }
-            setMessage(undefined);
-            dispatch({ type: 'mnemonic-ready', mnemonic: text.trim().replace(/\s+/g, ' ') });
-          }}
-        >
-          Continue
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
-function PinStep({
-  busy,
-  signingUp,
-  onSubmit,
-}: {
-  busy: boolean;
-  signingUp: boolean;
-  onSubmit: (pin: string, paranoid: boolean) => void;
-}) {
-  const [pin, setPin] = useState('');
-  const [confirmation, setConfirmation] = useState('');
-  const [paranoid, setParanoid] = useState(false);
-  const [message, setMessage] = useState<string>();
-
-  return (
-    <Card
-      title={signingUp ? PIN_STEP_COPY.title : 'Your PIN'}
-      subtitle={signingUp ? PIN_STEP_COPY.subtitle : PIN_STEP_COPY.signIn}
-    >
-      <div className="space-y-4">
-        <Field
-          label="PIN"
-          type="password"
-          inputMode="numeric"
-          maxLength={6}
-          value={pin}
-          onChange={(event) => setPin(event.target.value)}
-        />
-        {signingUp ? (
-          <Field
-            label="Confirm PIN"
-            type="password"
-            inputMode="numeric"
-            maxLength={6}
-            value={confirmation}
-            onChange={(event) => setConfirmation(event.target.value)}
-          />
-        ) : null}
-
-        <div className="rounded-xl border border-line bg-raised p-4">
-          <label className="flex cursor-pointer items-start gap-3">
-            <input
-              type="checkbox"
-              checked={paranoid}
-              onChange={(event) => setParanoid(event.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 accent-brand-500"
-            />
-            <span>
-              <span className="block text-compact font-semibold text-ink">
-                {MODE_COPY.paranoid.title} mode — also require this PIN to sign in
-              </span>
-              <span className="mt-1 block text-compact text-ink-muted">
-                {paranoid ? MODE_COPY.paranoid.tradeoff : MODE_COPY.standard.tradeoff}
-              </span>
-            </span>
-          </label>
-
-          {signingUp && paranoid ? (
-            <p className="mt-3 text-compact text-warning">
-              {MODE_COPY.oneWayDoor}
-            </p>
-          ) : null}
-        </div>
-
-        {message ? <Notice tone="danger">{message}</Notice> : null}
-
-        <Button
-          disabled={busy}
-          onClick={() => {
-            const result = checkPin(pin, signingUp ? confirmation : undefined);
-            if (!result.ok) {
-              setMessage(result.message);
-
-              return;
-            }
-            setMessage(undefined);
-            onSubmit(pin, paranoid);
-          }}
-        >
-          {busy ? 'Opening your vault…' : signingUp ? 'Create my vault' : 'Sign in'}
-        </Button>
-      </div>
-    </Card>
-  );
 }

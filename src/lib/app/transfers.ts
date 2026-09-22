@@ -1,4 +1,7 @@
+import { ApiError, describeWait } from '@/lib/api';
 import type { UploadProgress } from '@/lib/files';
+
+export const DEFAULT_CREATION_PAUSE_SECONDS = 60;
 
 export interface Transfer {
   key: string;
@@ -7,8 +10,9 @@ export interface Transfer {
   mime: string;
   bytes: number;
   percent: number;
-  phase: UploadProgress['phase'] | 'failed';
+  phase: UploadProgress['phase'] | 'failed' | 'paused';
   error?: string;
+  note?: string;
 }
 
 export interface NewTransfer {
@@ -68,6 +72,32 @@ export function failTransfer(key: string, error: string): void {
     running.map((transfer) =>
       transfer.key === key ? { ...transfer, phase: 'failed', error } : transfer,
     ),
+  );
+}
+
+export function pauseTransfer(key: string, note: string): void {
+  if (!running.some((transfer) => transfer.key === key)) {
+    return;
+  }
+
+  publish(
+    running.map((transfer) =>
+      transfer.key === key ? { ...transfer, phase: 'paused', note } : transfer,
+    ),
+  );
+}
+
+export function creationPauseSeconds(error: unknown): number | undefined {
+  if (!(error instanceof ApiError) || !error.isRateLimited || error.endpoint !== 'POST /files') {
+    return undefined;
+  }
+  return error.retryAfterSeconds ?? DEFAULT_CREATION_PAUSE_SECONDS;
+}
+
+export function pausedUploadNote(seconds: number): string {
+  return (
+    'Paused: this account started many uploads in the last few minutes. Nothing failed, and ' +
+    `this one carries on by itself ${describeWait(seconds)}.`
   );
 }
 

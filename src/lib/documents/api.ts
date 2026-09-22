@@ -1,8 +1,10 @@
 import { assertCanonicalUuid, collectPages, request, type PageRequest } from '@/lib/api';
 import { requireToken, type AuthedContext } from '@/lib/context';
 import { normalizeActionArgs, signActionEnvelope } from '@/lib/signing';
-import { generateDek, vaultKekDekWrapper, type DekWrapper } from '@/lib/secrets';
+import { generateDek, type DekWrapper, type WrappedDek } from '@/lib/secrets';
+import { scopeDekWrapper, withCurrentGeneration } from '@/lib/keyrings';
 import { zeroBytes } from '@/lib/encoding';
+import { sealBlob } from '@/lib/sealed';
 import {
   DOCUMENT_MAX_BODY_BYTES,
   DOCUMENT_VERSION,
@@ -21,7 +23,7 @@ export interface DocumentsContext extends AuthedContext {
 }
 
 export function wrapper(context: DocumentsContext): DekWrapper {
-  return context.dek ?? vaultKekDekWrapper(context.session.vaultKek);
+  return context.dek ?? scopeDekWrapper(context, 'documents');
 }
 
 export interface CreateDocumentResult {
@@ -37,17 +39,46 @@ export async function createDocument(
   const dek = generateDek();
 
   try {
-    const wrapped_dek = await wrapper(context).wrapDek(dek);
-
-    const response = await request<DocumentRecord>({
-      method: 'POST',
-      path: '/documents',
-      token: requireToken(context),
-      timeoutMs: context.timeoutMs,
-      body: { id, wrapped_dek, version: DOCUMENT_VERSION },
-    });
+    const response = await withCurrentGeneration(context, async () =>
+      request<DocumentRecord>({
+        method: 'POST',
+        path: '/documents',
+        token: requireToken(context),
+        timeoutMs: context.timeoutMs,
+        body: { id, ...(await wrapper(context).wrapDek(dek)), version: DOCUMENT_VERSION },
+      }),
+    );
 
     return { document: response.data, created: response.status === 201 };
+  } finally {
+    zeroBytes(dek);
+  }
+}
+
+export async function createDocumentFromSnapshot(
+  context: DocumentsContext,
+  snapshot: Uint8Array,
+  options: { id?: string } = {},
+): Promise<DocumentRecord> {
+  const id = options.id === undefined ? crypto.randomUUID() : assertCanonicalUuid(options.id);
+  const dek = generateDek();
+
+  try {
+    const created = await withCurrentGeneration(context, async () =>
+      request<DocumentRecord>({
+        method: 'POST',
+        path: '/documents',
+        token: requireToken(context),
+        timeoutMs: context.timeoutMs,
+        body: { id, ...(await wrapper(context).wrapDek(dek)), version: DOCUMENT_VERSION },
+      }),
+    );
+
+    return await compactDocument(context, created.data.id, {
+      snapshot_ciphertext: await sealBlob(snapshot, dek),
+      through_seq: 0,
+      expected_revision: created.data.revision,
+    });
   } finally {
     zeroBytes(dek);
   }
@@ -169,7 +200,7 @@ export async function compactDocument(
 export async function rotateDocumentKey(
   context: DocumentsContext,
   id: string,
-  wrapped_dek: string,
+  wrapped: WrappedDek,
   expected_revision?: number,
 ): Promise<DocumentRecord> {
   const response = await request<DocumentRecord>({
@@ -177,7 +208,7 @@ export async function rotateDocumentKey(
     path: `/documents/${assertCanonicalUuid(id)}/key`,
     token: requireToken(context),
     timeoutMs: context.timeoutMs,
-    body: { wrapped_dek, expected_revision },
+    body: { ...wrapped, expected_revision },
   });
   return response.data;
 }
@@ -185,15 +216,7 @@ export async function rotateDocumentKey(
 export async function deleteDocument(context: DocumentsContext, id: string): Promise<void> {
   const canonical = assertCanonicalUuid(id);
 
-  const envelope = signActionEnvelope(
-    'document-delete',
-    [canonical],
-    {
-      privateKey: context.session.identityPrivateKey,
-      serverAuthToken: context.session.serverAuthToken(),
-    },
-    { paranoid: context.paranoid },
-  );
+  const envelope = await signActionEnvelope('document-delete', [canonical], context.session.signer());
 
   await request<void>({
     method: 'DELETE',
@@ -216,15 +239,7 @@ export async function deleteDocuments(
   const canonical = ids.map((id) => assertCanonicalUuid(id));
   const normalized = normalizeActionArgs('document-delete', canonical);
 
-  const envelope = signActionEnvelope(
-    'document-delete',
-    normalized,
-    {
-      privateKey: context.session.identityPrivateKey,
-      serverAuthToken: context.session.serverAuthToken(),
-    },
-    { paranoid: context.paranoid },
-  );
+  const envelope = await signActionEnvelope('document-delete', normalized, context.session.signer());
 
   const response = await request<BatchDeleteDocumentsResult>({
     method: 'DELETE',

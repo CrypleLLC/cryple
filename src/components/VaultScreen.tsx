@@ -18,7 +18,7 @@ import ShareItemDialog from './ShareItemDialog';
 
 export default function VaultScreen() {
   const context = useAuthedContext();
-  const { reportError } = useCryple();
+  const { reportError, fullDevice } = useCryple();
   const { revealed } = useVaultReveal();
 
   const [rows, setRows] = useState<VaultRow[]>();
@@ -135,14 +135,16 @@ export default function VaultScreen() {
                           <SharingIcon />
                           Share
                         </Button>
-                        <Button
-                          variant="danger"
-                          disabled={busy}
-                          onClick={() => void removeSecret(row.id)}
-                        >
-                          <TrashIcon />
-                          Delete
-                        </Button>
+                        {fullDevice ? (
+                          <Button
+                            variant="danger"
+                            disabled={busy}
+                            onClick={() => void removeSecret(row.id)}
+                          >
+                            <TrashIcon />
+                            Delete
+                          </Button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>

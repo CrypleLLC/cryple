@@ -32,7 +32,7 @@ export interface DocumentTransport {
     id: string,
     body: { snapshot_ciphertext: string; through_seq: number; expected_revision?: number },
   ): Promise<DocumentRecord>;
-  unwrapDek(document: Pick<DocumentRecord, 'wrapped_dek'>): Promise<Uint8Array>;
+  unwrapDek(document: Pick<DocumentRecord, 'wrapped_dek' | 'key_generation'>): Promise<Uint8Array>;
   listMeta(): Promise<DocumentMetaRecord[]>;
 }
 

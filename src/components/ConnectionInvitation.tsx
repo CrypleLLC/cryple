@@ -1,13 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import {
-  fingerprintPinOptions,
-  ownKeyFingerprint,
-  pinFingerprint,
-  verifyConnection,
-  type ConnectionRecord,
-} from '@/lib/sharing';
+import { ownRootFingerprint, verifyConnection, type ConnectionRecord } from '@/lib/sharing';
 import { SHARING_COPY, trustAlarm, type TrustAlarm } from '@/lib/app';
 import { useAuthedContext } from './CrypleProvider';
 import { Button, Card, Notice } from './ui';
@@ -35,7 +29,7 @@ export default function ConnectionInvitation({
     void (async () => {
       try {
         const trust = await verifyConnection(context, connection);
-        const own = await ownKeyFingerprint(context);
+        const own = await ownRootFingerprint(context);
 
         if (!live) {
           return;
@@ -54,16 +48,8 @@ export default function ConnectionInvitation({
     };
   }, [context, connection, onError]);
 
-  async function accept() {
+  function accept() {
     if (theirs === undefined || alarm !== undefined) {
-      return;
-    }
-
-    const standing = await pinFingerprint(connection.id, theirs, fingerprintPinOptions(context)).catch(
-      () => theirs,
-    );
-    if (standing !== theirs) {
-      setAlarm({ tone: 'danger', message: SHARING_COPY.fingerprintChanged });
       return;
     }
     onAccept();
@@ -87,7 +73,7 @@ export default function ConnectionInvitation({
         </div>
 
         <div className="flex gap-3">
-          <Button onClick={() => void accept()} disabled={theirs === undefined || alarm !== undefined}>
+          <Button onClick={accept} disabled={theirs === undefined || alarm !== undefined}>
             {SHARING_COPY.fingerprintConfirm}
           </Button>
           <Button variant="ghost" onClick={onDecline}>

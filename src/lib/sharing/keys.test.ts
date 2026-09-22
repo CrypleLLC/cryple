@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { p256 } from '@noble/curves/nist.js';
+import vectors from '@/test/fixtures/test-vectors.json';
+import { base64ToBytes, bytesToHex, uncompressedPointToSpkiBase64 } from '@/lib/encoding';
 import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
 import { x25519 } from '@noble/curves/ed25519.js';
 import {
   CONNECTION_KEY_BYTES,
   ConnectionKeyError,
   createConnectionKey,
-  keyFingerprint,
+  rootFingerprint,
   MalformedPartyAddressError,
   openConnectionKey,
   sealConnectionKey,
@@ -164,29 +167,22 @@ describe('wrapping a DEK under a connection', () => {
   });
 });
 
-describe('the key fingerprint', () => {
-  it('is stable for one key pair and differs for another', async () => {
-    const first = recipientPair().keys;
-    const second = recipientPair().keys;
+describe('the fingerprint is of the root key, which never changes', () => {
+  const vectorRoot = vectors.device_keys.root_wrap.root_public_key;
 
-    expect(await keyFingerprint(first)).toBe(await keyFingerprint(first));
-    expect(await keyFingerprint(first)).not.toBe(await keyFingerprint(second));
+  it('is stable for one root key and differs for another', async () => {
+    const other = uncompressedPointToSpkiBase64(p256.getPublicKey(p256.utils.randomSecretKey(), false));
+    expect(await rootFingerprint(vectorRoot)).toBe(await rootFingerprint(vectorRoot));
+    expect(await rootFingerprint(vectorRoot)).not.toBe(await rootFingerprint(other));
   });
 
-  it('covers both keys, so swapping either one changes it', async () => {
-    const a = recipientPair().keys;
-    const b = recipientPair().keys;
-
-    const swappedMlkem = { x25519PublicKey: a.x25519PublicKey, mlkemPublicKey: b.mlkemPublicKey };
-    const swappedX25519 = { x25519PublicKey: b.x25519PublicKey, mlkemPublicKey: a.mlkemPublicKey };
-
-    expect(await keyFingerprint(swappedMlkem)).not.toBe(await keyFingerprint(a));
-    expect(await keyFingerprint(swappedX25519)).not.toBe(await keyFingerprint(a));
+  it('is SHA-256 over the SPKI DER bytes, the users.public_key the server stores', async () => {
+    const { sha256 } = await import('@noble/hashes/sha2.js');
+    const expected = bytesToHex(sha256(base64ToBytes(vectorRoot))).toUpperCase().slice(0, 24);
+    expect((await rootFingerprint(vectorRoot)).replace(/-/g, '')).toBe(expected);
   });
 
   it('reads as six groups of four, for a human to compare aloud', async () => {
-    const fingerprint = await keyFingerprint(recipientPair().keys);
-
-    expect(fingerprint).toMatch(/^[0-9A-F]{4}(-[0-9A-F]{4}){5}$/);
+    expect(await rootFingerprint(vectorRoot)).toMatch(/^[0-9A-F]{4}(-[0-9A-F]{4}){5}$/);
   });
 });

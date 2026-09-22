@@ -1,15 +1,15 @@
 'use client';
 
-import { useEffect, useState, type ComponentType } from 'react';
+import { useState, type ComponentType } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
-import { hasSeedVault } from '@/lib/pin';
+import type { Scope } from '@/lib/scopes';
 import {
   sessionExits,
   type SessionExit,
   type SessionExitId,
   lockExit,
-  logOutExit,
+  removeBrowserExit,
 } from '@/lib/app';
 import { useCryple } from './CrypleProvider';
 import NotesScreen from './NotesScreen';
@@ -47,11 +47,13 @@ interface NavItem {
   screen: ComponentType;
   actions?: ComponentType;
   miniatures?: boolean;
+  scope?: Scope;
 }
 
 const NAV_ITEMS = [
   {
     id: 'vault',
+    scope: 'secrets',
     label: 'Vault',
     description: 'Everything stored under your account.',
     icon: VaultIcon,
@@ -60,6 +62,7 @@ const NAV_ITEMS = [
   },
   {
     id: 'notes',
+    scope: 'notes',
     label: 'Notes',
     description: 'Letters and instructions you write, encrypted before they leave this device.',
     icon: NotesIcon,
@@ -68,6 +71,7 @@ const NAV_ITEMS = [
   },
   {
     id: 'documents',
+    scope: 'documents',
     label: 'Documents',
     description: 'Long-form writing, encrypted here and synced across your devices.',
     icon: DocumentsIcon,
@@ -84,6 +88,7 @@ const NAV_ITEMS = [
   },
   {
     id: 'drive',
+    scope: 'files',
     label: 'Drive',
     description: 'Files, encrypted on this device before they are stored.',
     icon: DriveIcon,
@@ -96,22 +101,23 @@ type TabId = (typeof NAV_ITEMS)[number]['id'];
 
 const EXIT_ICONS: Record<SessionExitId, ComponentType<IconProps>> = {
   lock: LockSessionIcon,
-  'log-out': LogOutIcon,
+  'remove-browser': LogOutIcon,
 };
 
 export default function AppShell() {
-  const { account, paranoid, lock, logOut } = useCryple();
-  const [tab, setTab] = useState<TabId>('vault');
-  const [remembersPhrase, setRemembersPhrase] = useState(false);
+  const { account, lock, removeBrowser, holds, chainProblem, notice, reportError } = useCryple();
+  const navItems: readonly NavItem[] = NAV_ITEMS.filter(
+    (item: NavItem) => item.scope === undefined || holds(item.scope),
+  );
+  const [tab, setTab] = useState<TabId>(navItems[0]?.id as TabId);
   const [confirming, setConfirming] = useState<SessionExit>();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [exitError, setExitError] = useState<string>();
 
-  useEffect(() => setRemembersPhrase(hasSeedVault()), [paranoid]);
-
-  const exits = sessionExits(remembersPhrase);
+  const exits = sessionExits();
   const lockable = lockExit(exits);
-  const leave = logOutExit(exits);
-  const current: NavItem = NAV_ITEMS.find((item) => item.id === tab) ?? NAV_ITEMS[0];
+  const leave = removeBrowserExit(exits);
+  const current: NavItem = navItems.find((item) => item.id === tab) ?? navItems[0];
   const Screen = current.screen;
   const ScreenActions = current.actions;
   const measure = current.miniatures === true ? 'max-w-none' : 'max-w-6xl';
@@ -125,7 +131,7 @@ export default function AppShell() {
     if (exit.id === 'lock') {
       lock();
     } else {
-      logOut();
+      void removeBrowser().catch((error: unknown) => setExitError(reportError(error)));
     }
   }
 
@@ -135,16 +141,16 @@ export default function AppShell() {
         <aside className="sticky top-[var(--staging-banner-h)] hidden h-[calc(100vh-var(--staging-banner-h))] w-64 shrink-0 flex-col border-r border-line bg-surface px-3 py-5 md:flex">
           <BrandMark />
           <nav className="mt-8 flex flex-1 flex-col gap-1">
-            {NAV_ITEMS.map((item) => (
+            {navItems.map((item) => (
               <NavButton
                 key={item.id}
                 item={item}
                 active={tab === item.id}
-                onSelect={() => setTab(item.id)}
+                onSelect={() => setTab(item.id as TabId)}
               />
             ))}
           </nav>
-          <StorageMeter />
+          {holds('files') ? <StorageMeter /> : null}
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
@@ -163,13 +169,13 @@ export default function AppShell() {
               </div>
             </div>
             <nav className="flex gap-1 overflow-x-auto px-3 pb-3">
-              {NAV_ITEMS.map((item) => (
+              {navItems.map((item) => (
                 <NavButton
                   key={item.id}
                   item={item}
                   active={tab === item.id}
                   compact
-                  onSelect={() => setTab(item.id)}
+                  onSelect={() => setTab(item.id as TabId)}
                 />
               ))}
             </nav>
@@ -195,6 +201,9 @@ export default function AppShell() {
           </header>
 
           <main className={`mx-auto w-full ${measure} flex-1 space-y-8 p-4 md:p-6`}>
+            {chainProblem ? <Notice tone="danger">{chainProblem}</Notice> : null}
+            {notice ? <Notice tone="info">{notice}</Notice> : null}
+            {exitError ? <Notice tone="danger">{exitError}</Notice> : null}
             {confirming?.confirm !== undefined ? (
               <Notice tone="warning">
                 <p>{confirming.confirm}</p>

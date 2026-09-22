@@ -14,6 +14,8 @@ import {
   onboardingReducer,
   PIN_STEP_COPY,
   RECOVERY_KIT_STEP_COPY,
+  PHRASE_NOT_KEPT,
+  ENROL_STEP_COPY,
   type OnboardingState,
 } from './index';
 
@@ -365,14 +367,29 @@ describe('going back a step', () => {
   });
 
   it('says the mode choice is a one-way door, and never offers to remove a PIN', () => {
-    expect(MODE_COPY.oneWayDoor).toMatch(/never back/);
+    expect(MODE_COPY.oneWayDoor).toMatch(/no way back to Standard/);
+    expect(MODE_COPY.oneWayDoor).toMatch(/lost for ever/);
     expect(JSON.stringify(MODE_COPY)).not.toMatch(/disable|remove the PIN|turn off/i);
   });
 
-  it('describes the PIN as local in Standard and as a sign-in factor in Paranoid', () => {
-    expect(MODE_COPY.standard.tradeoff).toMatch(/stays on this device/);
-    expect(MODE_COPY.paranoid.summary).toMatch(/required to sign in/);
-    expect(PIN_STEP_COPY.subtitle).toMatch(/encrypts the copy of your phrase kept on this device/);
+  it('presents Standard as a deliberate choice and Paranoid as a PIN on the phrase itself', () => {
+    expect(MODE_COPY.standard.tradeoff).toMatch(/only unlocks this browser/);
+    expect(MODE_COPY.standard.tradeoff).toMatch(/deliberate choice/);
+    expect(MODE_COPY.paranoid.summary).toMatch(/add a device/);
+    expect(PIN_STEP_COPY.subtitle).toMatch(/never leaves this device/);
+  });
+
+  it('says the browser does not keep the phrase, what it is needed for, and how a lost device goes', () => {
+    expect(PHRASE_NOT_KEPT).toMatch(/does not keep your recovery phrase/);
+    expect(PHRASE_NOT_KEPT).toMatch(/add a device/);
+    expect(PHRASE_NOT_KEPT).toMatch(/remove a device you lost/);
+    expect(RECOVERY_KIT_STEP_COPY.warning).toContain(PHRASE_NOT_KEPT);
+    expect(ENROL_STEP_COPY.summary).toContain(PHRASE_NOT_KEPT);
+  });
+
+  it('states phase 1 honestly: a typed phrase is in the page’s memory', () => {
+    expect(ENROL_STEP_COPY.exposure).toMatch(/memory/);
+    expect(ENROL_STEP_COPY.exposure).toMatch(/Brave/);
   });
 });
 

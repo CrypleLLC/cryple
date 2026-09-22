@@ -10,6 +10,7 @@ export interface FileRecord {
   id: string;
   ciphertext: string;
   wrapped_dek: string;
+  key_generation: number;
   size_bytes: number;
   ciphertext_sha256: string;
   version: string;

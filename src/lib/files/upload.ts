@@ -2,6 +2,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, zeroBytes } from '@/lib/encoding';
 import { generateDek } from '@/lib/secrets';
 import { completeUpload, createFile, getUploadState, wrapper, type FilesContext } from './api';
+import { withCurrentGeneration } from '@/lib/keyrings';
 import { assertManifestMatchesRow, buildManifest, openManifest, sealManifest } from './manifest';
 import { sealChunk } from './chunks';
 import { layoutFor, payloadBytesFor } from './layout';
@@ -102,15 +103,17 @@ export async function uploadFile(
       thumbnailId: options.thumbnailId,
     });
     const ciphertext = await sealManifest(manifest, dek);
-    const wrapped_dek = await wrapper(context).wrapDek(dek);
+    const id = options.id ?? crypto.randomUUID();
 
-    const { file: created } = await createFile(context, {
-      id: options.id,
-      ciphertext,
-      wrapped_dek,
-      size_bytes: layout.storedBytes,
-      chunk_count: layout.chunkCount,
-    });
+    const { file: created } = await withCurrentGeneration(context, async () =>
+      createFile(context, {
+        id,
+        ciphertext,
+        ...(await wrapper(context).wrapDek(dek)),
+        size_bytes: layout.storedBytes,
+        chunk_count: layout.chunkCount,
+      }),
+    );
 
     if (created.upload === undefined) {
       throw new MissingUploadTicketError(created.id);
@@ -153,6 +156,7 @@ export interface ResumableFile {
   id: string;
   ciphertext: string;
   wrapped_dek: string;
+  key_generation: number;
   size_bytes: number;
 }
 
@@ -162,7 +166,7 @@ export async function resumeUpload(
   file: UploadFile,
   options: UploadOptions = {},
 ): Promise<FileRecord> {
-  const dek = await wrapper(context).unwrapDek(row.wrapped_dek);
+  const dek = await wrapper(context).unwrapDek(row);
 
   try {
     const manifest = await openManifest(row.ciphertext, dek);

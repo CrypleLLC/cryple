@@ -82,8 +82,9 @@ written.
 - **Anything unreadable is no pins, never an error.** That covers a damaged record, a blob sealed
   by another account, and an unknown version. An invitation must still render; the cost is that it
   cannot alarm.
-- **Logging out wipes them**, together with the seed vault. They are unreadable without that
-  account's seed anyway, and a device handed on should not keep even their size.
+- **Logging out wipes them**, together with the seed vault, and so does the wipe after three failed
+  PIN attempts. They are unreadable without that account's seed anyway, and a device handed on
+  should not keep even their size.
 
 **What this does not fix.** The pins are still per device. On a new device, or after a log-out,
 there is nothing to compare against, and accepting pins whatever is shown then. Something with

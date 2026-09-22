@@ -8,12 +8,25 @@ This describes the API **as implemented**, not as specified. Where the implement
 
 Section numbers are **not contiguous** — they are the original numbering from before this file was split out of the guide, kept so that every `§N` reference in `.docs/` and the module READMEs still resolves. §1, §2, §5 and §14 live in the guide. §12 (Notes) and §16 (Documents) were added after the split and took free numbers rather than topical ones, for the same reason: renumbering would break every existing reference. §10 and §11 held recovery and PIN reset, and are kept as a single removal notice rather than reused.
 
-> **This file is a synced copy.** The authoritative original is
-> `front-end-endpoints.md` in the `api-general` repository, which is where the API is
-> implemented. The only differences between the two copies are relative link prefixes —
-> a path that reads `.docs/…` there reads `../api-general/.docs/…` here. Re-sync by
-> copying the file across and rewriting those prefixes. **Check them by hand** — the script
-> that used to catch a prefix that did not get rewritten was removed on 2026-09-06.
+> **2026-09-21: the device model and the PIN OPRF** ([.docs/crypto/device-keys.md](../api-general/.docs/crypto/device-keys.md),
+> [.docs/auth/pin-oprf.md](../api-general/.docs/auth/pin-oprf.md)). **Every client must be rebuilt against this
+> version.**
+> - **The seed is a cold root.** `/sign-up` carries a genesis batch.
+> - **Each device has its own key.** `/sign-in` names a `device_id` and is signed by that device.
+>   The JWT names the device, and **a removed device's token is `401 UNAUTHORIZED` at once**.
+> - **Scopes.** A device only reaches the routes of the scopes it holds (`404` otherwise).
+>   Deletes need a full device (one holding `admin`).
+> - **Key generations.** Every `wrapped_dek` write carries `key_generation`: `409
+>   STALE_KEY_GENERATION` when it is not the scope's current one.
+> - **No `password` anywhere.** Paranoid mode's PIN is a proof over an OPRF, only on the routes
+>   the root signs (§8, §19, §20).
+> - **New sections:** §19 (devices and keyrings) and §20 (the PIN).
+
+> **This file has a synced copy** in the `web-app` repository. The only differences are
+> relative link prefixes — a path that reads `.docs/…` here reads `../api-general/.docs/…`
+> there. When you change this file, copy it across and rewrite those prefixes. **Check them by
+> hand** — the script in that repo that used to catch a prefix that did not get rewritten was
+> removed on 2026-09-06.
 
 ---
 
@@ -31,6 +44,9 @@ Section numbers are **not contiguous** — they are the original numbering from 
 - [12. Notes Endpoints](#12-notes-endpoints)
 - [16. Documents Endpoints](#16-documents-endpoints)
 - [17. Files Endpoints](#17-files-endpoints)
+- [18. Sharing Endpoints](#18-sharing-endpoints)
+- [19. Devices and Keyrings Endpoints](#19-devices-and-keyrings-endpoints)
+- [20. PIN Endpoints (OPRF)](#20-pin-endpoints-oprf)
 
 ---
 
@@ -149,26 +165,31 @@ path** is not in that category — see `405` below — and does return the envel
 | 400  | `INVALID_BODY`        | Body is absent, unreadable, or not valid JSON.                                                                                                                                                                                                                                     |
 | 400  | `BAD_REQUEST`         | Body parsed, but a field is missing/invalid, or a business rule rejected it.                                                                                                                                                                                                       |
 | 400  | `INVALID_PARAM`       | An id — in the path **or** in the body — is not a canonical lowercase hyphenated UUID ([§5.1](./front-end-guide.md#51-identity-values)), or a query parameter is missing/malformed: an out-of-range `limit`, an unrecognised `cursor` ([§3.1](#31-pagination)), or a `fields` value other than `meta`. |
-| 401  | `UNAUTHORIZED`        | Missing, malformed, expired or invalid `Authorization: Bearer` token.                                                                                                                                                                                                              |
-| 401  | `INVALID_CREDENTIALS` | Second factor (`password`) wrong, an action signature failed to verify, **or the JWT is valid but its account no longer exists**.                                                                                                                                                  |
-| 404  | `NOT_FOUND`           | Resource does not exist, is not yours, **or** authentication failed on an auth endpoint.                                                                                                                                                                                           |
+| 400  | `INVALID_BATCH`       | §7 sign-up and §19 only: a device batch or genesis broke a chain or completeness rule. The message says which. Only callers who already proved the root, or who hold a device JWT, can reach it. |
+| 401  | `UNAUTHORIZED`        | Missing, malformed, expired or invalid `Authorization: Bearer` token, **or a valid token whose device has been removed**. Start over: sign in with another device, or re-enrol with the seed. |
+| 401  | `INVALID_CREDENTIALS` | A device signature or a root signature failed to verify, a PIN proof was wrong or missing, **or the JWT is valid but its account no longer exists**. |
+| 404  | `NOT_FOUND`           | Resource does not exist or is not yours; **the calling device lacks the route's scope, or is not full on a delete**; **or** authentication failed on an auth endpoint. |
 | 405  | `METHOD_NOT_ALLOWED`  | The path exists but does not accept this verb.                                                                                                                                                                                                                                     |
 | 409  | `CONFLICT`            | The resource is not in a state that accepts the request.                                                                                                                                                                                                                                                                                                                               |
+| 409  | `STALE_KEY_GENERATION` | A `wrapped_dek` (or a sharing sub-key or address book) sealed under a generation that is not the scope's current one. Re-read `GET /keyrings`, re-wrap under the current generation, and retry. |
+| 409  | `TOO_MANY_DEVICES`    | §19 only: the account already has `DEVICES_MAX_PER_ACCOUNT` active devices. |
 | 413  | `BAD_REQUEST`         | `POST /files` only ([§17](#17-files-endpoints)): the declared object exceeds `FILES_MAX_OBJECT_BYTES`. **Note the code is `BAD_REQUEST`, not a code of its own** — branch on the status, not the code, to tell this from an ordinary field rejection.                                                                                                                                    |
+| 429  | `TOO_MANY_REQUESTS`   | Four budgets. Per client address: one shared by the public routes (`/sign-up`, `/sign-in`, `/auth/verify`, `/users/lookup`, `/devices/enrol`, `/devices/enrol/chain`, `/oprf/account/evaluate`), one on the device PIN routes (`/oprf/devices/{id}/evaluate`, `/confirm`), and one shared by `PUT /users/username` and `GET /users/resolve`. Per account: one on `POST /files`. The address or account sent more requests than that budget allows in the current window. `Retry-After` is the number of seconds to wait. **It says nothing about the account** — do not show it as an authentication failure, and do not retry before `Retry-After`. |
 | 500  | `INTERNAL_ERROR`      | Unexpected server/database failure. Safe to retry once.                                                                                                                                                                                                                            |
+| 503  | `SERVICE_UNAVAILABLE` | The per-address budgets above only — `POST /files` lets the request through instead: the rate limiter could not reach its store, so the request was refused rather than let through unmetered. Retry after a short wait. |
 | 503  | `NOT_READY`           | `GET /ready` only ([§6](#6-service-endpoints)): a dependency did not answer. Never returned by any other endpoint.                                                                                                                                                                 |
 | 507  | `QUOTA_EXCEEDED`      | `POST /files` only ([§17](#17-files-endpoints)): the account has no storage left for this upload. The only `5xx` in this file that is **not** a server fault and must not be retried unchanged.                                                                                     |
 
 Codes defined but not currently emitted by any handler: `DATABASE_ERROR`, `EMPTY_BODY`, `FORBIDDEN`.
 
 `USER_NOT_FOUND` is a fifth: it exists only in a defensive branch of
-`DELETE /users` that cannot fire, because both the second-factor check and the
-account lookup fail first with `401 INVALID_CREDENTIALS`. Earlier versions of
+`DELETE /users` that cannot fire, because the root verification fails first with
+`401 INVALID_CREDENTIALS`. Earlier versions of
 this guide listed it as a `DELETE /users` response — **do not branch on it.** A
 delete that cannot find the account answers `401 INVALID_CREDENTIALS`, the same
 code as a wrong PIN.
 
-> **`401 INVALID_CREDENTIALS` is reachable on every protected route, including plain `GET`s that take no body.** Almost every protected handler starts by resolving the JWT's `user_address` back to an account row, and a failure there is reported as `INVALID_CREDENTIALS`, never `UNAUTHORIZED`. That is not hypothetical: the token outlives the account (`DELETE /users` does not revoke it — see [§5.5](./front-end-guide.md#55-jwt-usage)), so a client that deletes an account and keeps using the token sees this code everywhere. The per-endpoint tables below list it wherever it applies; treat it as always possible on a `🔒` route and handle it as "start over from sign-in", distinct from a `401 UNAUTHORIZED` expiry. The only protected route without this path is `GET /users/{uuid}/public-keys`, which looks up the _subject_, not the caller.
+> **`401 INVALID_CREDENTIALS` is reachable on every protected route, including plain `GET`s that take no body.** Almost every protected handler starts by resolving the JWT's `user_address` back to an account row, and a failure there is reported as `INVALID_CREDENTIALS`, never `UNAUTHORIZED`. Since 2026-09-21 a deleted account's tokens fail earlier, with `401 UNAUTHORIZED`, because its devices are gone. `INVALID_CREDENTIALS` on a plain `GET` now means only a race with that deletion. The per-endpoint tables below list it wherever it applies; treat it as always possible on a `🔒` route and handle it as "start over from sign-in", distinct from a `401 UNAUTHORIZED` expiry. The only protected route without this path is `GET /users/{uuid}/public-keys`, which looks up the _subject_, not the caller.
 
 **`405` always carries an `Allow` header** with the verbs that path does accept, as one comma-separated value:
 
@@ -222,7 +243,7 @@ Public. Like every public endpoint, both are **timing-padded to at least 350 ms*
 
 ### `POST /sign-up`
 
-Creates an account. **If the `user_address` already exists, this behaves exactly like `/sign-in`** (the extra key fields are ignored) — so it is safe to call idempotently from an onboarding flow. The status code tells the two apart: **`201` means the account was just created**, `200` means it already existed. Branch on that to decide whether to run first-time onboarding.
+Creates the account and its **genesis**, signed by the **root**: the seed's P-256 key at `m/9027'/0'/0'`. The format of the batch is [device-keys.md](../api-general/.docs/crypto/device-keys.md).
 
 **Request**
 
@@ -230,75 +251,75 @@ Creates an account. **If the `user_address` already exists, this behaves exactly
 {
   "user_address": "3f1c…64 hex chars…",
   "public_key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE…",
-  "encryption_public_key_x25519": "base64…",
-  "encryption_public_key_mlkem": "base64…",
   "challenge": "7f3b…64 hex chars…",
   "timestamp": 1785000000,
-  "signature": "base64 of 64 raw bytes",
-  "password": "optional 64-hex Server_Auth_Token"
+  "signature": "base64 of 64 raw bytes, by the root over challenge:timestamp",
+  "batch": {
+    "events": [
+      { "statement": "Cryple-Chain-v1|<user_address>|1|000…0|device-add|<device_id>|<signing spki>|<x25519>|<mlkem>|admin,passwords,secrets,notes,documents,files,sharing", "signer": "root", "signature": "…" },
+      { "statement": "Cryple-Chain-v1|<user_address>|2|<hash 1>|sharing-keys|1|<x25519>|<mlkem>", "signer": "root", "signature": "…" },
+      { "statement": "Cryple-Chain-v1|<user_address>|3|<hash 2>|keyring-rotate|passwords=1,secrets=1,notes=1,documents=1,files=1,sharing=1", "signer": "root", "signature": "…" }
+    ],
+    "wraps": [
+      { "scope": "secrets", "generation": 1, "recipient": "root", "wrapped_key": "sealed(root wrap key, KEK)" },
+      { "scope": "secrets", "generation": 1, "recipient": "<device_id>", "wrapped_key": "PQXDH device-keyring blob" }
+    ],
+    "materials": [ { "scope": "sharing", "generation": 1, "sealed_material": "sealed(sharing KEK, x25519 priv ‖ mlkem seed)" } ]
+  }
 }
 ```
 
-| Field                          | Required | Notes                                                              |
-| ------------------------------ | -------- | ------------------------------------------------------------------ |
-| `user_address`                 | ✅       | 64 lowercase hex.                                                  |
-| `public_key`                   | ✅       | base64 DER SPKI, P-256. Must be the key that produced `signature`. |
-| `encryption_public_key_x25519` | ✅       | Stored as-is, for other accounts to fetch and encrypt to.          |
-| `encryption_public_key_mlkem`  | ✅       | Stored as-is.                                                      |
-| `challenge`                    | ✅       | 64 lowercase hex, single use.                                      |
-| `timestamp`                    | ✅       | Unix seconds, within ±300s.                                        |
-| `signature`                    | ✅       | Over `challenge:timestamp`.                                        |
-| `password`                     | ❌       | Present ⇒ account is created in Paranoid Mode.                     |
+| Field | Required | Notes |
+| --- | --- | --- |
+| `user_address` | ✅ | 64 lowercase hex. |
+| `public_key` | ✅ | The **root** key, base64 DER SPKI, P-256. Must be the key that produced `signature` and every genesis event. |
+| `challenge`, `timestamp`, `signature` | ✅ | The root over `challenge:timestamp`, single use, within ±300 s. |
+| `batch` | ✅ | Exactly three events: `device-add` (the first device, which must hold `admin`), `sharing-keys` generation 1, `keyring-rotate` of every keyring scope to 1. Plus a wrap of every generation to the root and to the device for each scope it holds, and the `sharing` material. |
 
-**`201 Created`** — the account did not exist and was registered:
+**There is no second factor at sign-up.** Paranoid mode is turned on afterwards (§20).
+
+**`201 Created`**
 
 ```json
 {
   "message": "Account created",
-  "data": { "access_token": "eyJhbGciOiJIUzI1NiIs…" }
+  "data": { "access_token": "eyJhbGciOiJIUzI1NiIs…", "device_id": "<the genesis device>" }
 }
 ```
 
-**`200 OK`** — the address already had an account, so this was a sign-in:
-
-```json
-{
-  "message": "Authentication successful",
-  "data": { "access_token": "eyJhbGciOiJIUzI1NiIs…" }
-}
-```
-
-Both carry a usable token — treat either as a successful authentication and read `data.access_token` the same way. Only `/sign-up` can return `201`; `/sign-in` and `/auth/verify` always answer `200`.
+**`200 OK`**: the address already had an account, the root signature verified against the **stored** key, and the batch's first `device_id` is already a device of that account. This is a retry. Nothing is written, and the token is for that device.
 
 **Errors**
 
-| Status | `code`           | Cause                                                                                                                             |
-| ------ | ---------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| 400    | `INVALID_BODY`   | Empty/invalid JSON, or a required field missing (struct validation).                                                              |
-| 404    | `NOT_FOUND`      | Bad address format, stale/replayed challenge, invalid signature, malformed `password`, or (existing account) wrong second factor. |
-| 500    | `INTERNAL_ERROR` | Hashing or database failure.                                                                                                      |
+| Status | `code` | Cause |
+| --- | --- | --- |
+| 400 | `INVALID_BODY` | Empty or invalid JSON, or a required field missing. |
+| 400 | `INVALID_BATCH` | The root signature verified, the address is new, but the genesis breaks a rule. The message names it. |
+| 404 | `NOT_FOUND` | Bad address format; stale or replayed challenge; invalid signature; an address that exists under another root key or whose retry names an unknown device. |
+| 500 | `INTERNAL_ERROR` | Database failure. |
 
 ### `POST /sign-in`
 
 ### `POST /auth/verify`
 
-Identical handlers — `/auth/verify` is an alias, keep using whichever your client already calls.
+Identical handlers. **A device signs in with its own key.** The seed and the root are not involved.
 
 **Request**
 
 ```json
 {
-  "user_address": "3f1c…",
+  "device_id": "<uuid>",
   "challenge": "7f3b…",
   "timestamp": 1785000000,
-  "signature": "base64…",
-  "password": "optional 64-hex Server_Auth_Token"
+  "signature": "base64 P1363, by the device's signing key over challenge:timestamp"
 }
 ```
 
-**`200 OK`** — same envelope as `/sign-up`.
+**`200 OK`**: `{"access_token", "device_id"}`, the same envelope as `/sign-up`. The token names the device.
 
-**Errors** — same table as `/sign-up`. Unknown account, bad signature and wrong PIN are all `404 NOT_FOUND`; the client must show a single generic message.
+**Errors:** `400 INVALID_BODY` · `404 NOT_FOUND` for an unknown or removed device, a bad signature, or a stale or replayed challenge, all alike · `500`.
+
+**There is no PIN on sign-in.** The device's PIN unlocks its local keys, and the server rations it through the device's OPRF registration (§20). The account PIN of a Paranoid account gates only what the root signs.
 
 ---
 
@@ -319,7 +340,7 @@ Your own account, as the API sees it. Takes no parameters: the account is the on
     "user_address": "3f1c…64 hex chars",
     "username": "3f1c8a2b9d4e",
     "uuid": "0c892e57-93cf-423a-a9e9-fee5a9f87681",
-    "has_password": false,
+    "paranoid": false,
     "created_at": "2026-07-26T12:00:00Z"
   }
 }
@@ -329,13 +350,13 @@ Your own account, as the API sees it. Takes no parameters: the account is the on
 | -------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `user_address` | The `SHA-256` of the seed you authenticated with. Useful to confirm the client derived the account you expected. |
 | `username`     | The account's **current** username ([§8](#8-users-endpoints)); this is how one account addresses another. Assigned automatically at sign-up and changeable through `PUT /users/username`. |
-| `uuid`         | Your public identifier — feed it to `GET /users/{uuid}/public-keys`.                                             |
-| `has_password` | **`true` = Paranoid Mode**, `false` = Standard Mode. Always present, never omitted.                              |
+| `uuid`         | Your public identifier — what a contact feeds to `GET /users/{uuid}/public-keys` (§19).                          |
+| `paranoid`     | **`true` = Paranoid Mode**, `false` = Standard Mode. Always present, never omitted.                              |
 | `created_at`   | Account creation.                                                                                                |
 
-**Call this on first launch after a restore.** `has_password` is the one fact a client cannot derive and cannot safely cache: it decides whether to prompt for a PIN, and a reinstall wipes local state. The alternative — probing `/sign-in` and reading the `404` — burns a challenge, costs the 350 ms floor, and returns the same `404` for a wrong PIN, a wrong seed and a nonexistent account. See [§5.4](./front-end-guide.md#54-standard-mode-vs-paranoid-mode).
+**Call this on first launch after a restore.** `paranoid` is the one fact a client cannot derive and cannot safely cache: it decides whether to prompt for a PIN, and a reinstall wipes local state. The alternative — probing `/sign-in` and reading the `404` — burns a challenge, costs the 350 ms floor, and returns the same `404` for a wrong PIN, a wrong seed and a nonexistent account. See [§5.4](./front-end-guide.md#54-standard-mode-vs-paranoid-mode).
 
-It is also how you confirm a `POST /users/second-factor` that timed out actually landed: that call's retry is ambiguous by design, and this is the read-back it was missing.
+It is also how you confirm a `POST /oprf/account/enable` that timed out actually landed.
 
 **Deliberately not here:** anything the account has configured. This endpoint answers "who am I", not "what have I set up".
 
@@ -375,15 +396,14 @@ switch back at any time by claiming it again — there is no separate reclaim ca
   "username": "pedrosilva",
   "challenge": "...",
   "timestamp": 1785000000,
-  "signature": "...",
-  "password": "..."
+  "signature": "..."
 }
 ```
 
 | Field | Notes |
 | --- | --- |
 | `username` | **Normalised before signing**: lowercased and trimmed. Must match `^[a-z0-9][a-z0-9._-]{1,62}[a-z0-9]$` — ASCII only |
-| signed action | `username-update`, one argument: the normalised username. Second factor required on Paranoid accounts |
+| signed action | `username-update`, one argument: the normalised username, signed by **the calling device**, which must be full (`404` otherwise) |
 
 ⚠️ **Sign the normalised form, not what the user typed.** The server normalises again before
 verifying the signature, so signing the raw input produces a well-formed request that fails with
@@ -391,8 +411,9 @@ verifying the signature, so signing the raw input produces a well-formed request
 
 **`204 No Content`** on success.
 
-**Errors:** `400 INVALID_PARAM` (fails the format) · `401 INVALID_CREDENTIALS` (signature or second
-factor) · **`422 USERNAME_UNAVAILABLE`**.
+**Errors:** `400 INVALID_PARAM` (fails the format) · `401 INVALID_CREDENTIALS` (device signature) ·
+`404 NOT_FOUND` (a limited device) · **`422 USERNAME_UNAVAILABLE`** · `429 TOO_MANY_REQUESTS` (the sweep budget shared with
+`GET /users/resolve`, below).
 
 ⚠️ **The `422` is the same answer whoever holds the name.** A name held by another account returns
 it identically whether that account currently displays it or merely reserved it by renaming away.
@@ -418,7 +439,7 @@ Resolves a username to an account. This is the direction safe sharing addresses 
 Returns the `uuid` and nothing else — not the `user_address`, not a public key, not anything the
 account has configured. Feed the `uuid` to `GET /users/{uuid}/public-keys`.
 
-**Errors:** `404 NOT_FOUND`.
+**Errors:** `404 NOT_FOUND` · `429 TOO_MANY_REQUESTS`.
 
 ⚠️ **Only the current username resolves**, and the `404` is deliberately ambiguous: a name nobody
 ever held, a malformed name, and a name someone renamed away from all return it. **Never render it
@@ -428,116 +449,47 @@ what stops an old name being used to confirm an account's new one.
 Floored by `AUTH_MIN_RESPONSE_MS` like `/users/lookup`, so a `404` is never measurably faster than a
 hit.
 
-### `GET /users/{uuid}/public-keys` — 🔒 protected
+⚠️ **This route and `PUT /users/username` share a per-address budget** — 30 requests an hour by
+default, counted across both, whichever account sends them. Resolve when the user submits a name,
+never as they type. A `429` carries `Retry-After`, which can be most of an hour: show when to try
+again rather than retrying.
 
-Fetches a user's hybrid encryption keys so the client can PQXDH-wrap a DEK for them.
+### Moved on 2026-09-21
 
-**No client calls this today.** Its two callers — heir DEK wrapping and guardian share wrapping — left with inheritance and with recovery. It is the endpoint private sharing (Task 102) is built on, and the reason `user_keys` is still written at sign-up.
-
-**Before sharing ships, note the gap:** these keys come from the server, and a client has no way today to distinguish an account's real keys from keys the server substituted. Task 104 owes at least a comparable fingerprint.
-
-**`200 OK`**
-
-```json
-{
-  "message": "Public keys retrieved successfully",
-  "data": {
-    "uuid": "0f5c8b1e-…",
-    "encryption_public_key_x25519": "base64…",
-    "encryption_public_key_mlkem": "base64…"
-  }
-}
-```
-
-**Errors:** `400 INVALID_PARAM` (not a canonical UUID) · `401 UNAUTHORIZED` · `404 NOT_FOUND`.
-
-### `POST /users/second-factor` — 🔒 protected
-
-Turns on Paranoid Mode for an account that does not yet have a second factor. The JWT is **not** enough on its own — the body carries an [action signature](./front-end-guide.md#53-action-signature-everything-destructive) over `challenge:timestamp:enable-second-factor:<new_password>`, signed with the account's own key.
-
-**Request**
-
-```json
-{
-  "new_password": "new 64-hex Server_Auth_Token",
-  "challenge": "7f3b…",
-  "timestamp": 1785000000,
-  "signature": "base64…"
-}
-```
-
-The signature must cover the exact token you are installing. That is what stops anything in the middle from keeping your signature and swapping in a token of its own — you would finish the upgrade with a second factor you don't know.
-
-**`204 No Content`** — no body. Every subsequent `/sign-in` for this account must now include `password`.
-
-**Errors**
-
-| Status | `code`                | Cause                                                                                                                |
-| ------ | --------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| 400    | `INVALID_BODY`        | Absent or unparseable body. Unlike the DELETEs, a body is **required** here.                                         |
-| 400    | `BAD_REQUEST`         | `new_password` is empty.                                                                                             |
-| 401    | `UNAUTHORIZED`        | Bad/missing JWT.                                                                                                     |
-| 401    | `INVALID_CREDENTIALS` | Signature failed/stale/replayed, `new_password` is not valid 64-hex, **or the account already has a second factor**. |
-| 500    | `INTERNAL_ERROR`      | Database failure.                                                                                                    |
-
-> The "already has a second factor" case returns the same `401` as a bad signature, so this endpoint is never an oracle for which mode an account is in. Changing an existing PIN needs `PUT /users/password` and the current token. **If you do not have the current token there is no path at all** — see §10–11.
-
-### `PUT /users/password` — 🔒 protected
-
-**Rotates** an existing second factor. Usable only by an account already in Paranoid Mode, presenting the _current_ token **and** a `rotate-second-factor` signature over `new_password`. To turn Paranoid Mode on in the first place, use [`POST /users/second-factor`](#post-userssecond-factor--protected).
-
-Signing `new_password` is the point, not ceremony: without it, anything between you and the server could keep your valid signature and substitute a token of its own choosing — the same reason `enable-second-factor` signs its token.
-
-**Request**
-
-```json
-{
-  "new_password": "new 64-hex token",
-  "password": "current 64-hex token",
-  "challenge": "64 lowercase hex characters",
-  "timestamp": 1737676800,
-  "signature": "base64 P1363 signature"
-}
-```
-
-**`204 No Content`** — no body.
-
-**Errors**
-
-| Status | `code`                | Cause                                                                                                               |
-| ------ | --------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| 400    | `INVALID_BODY`        | Empty or unparseable body.                                                                                          |
-| 400    | `BAD_REQUEST`         | `new_password` is empty.                                                                                            |
-| 401    | `UNAUTHORIZED`        | Bad/missing JWT.                                                                                                    |
-| 401    | `INVALID_CREDENTIALS` | `password` wrong, `new_password` is not a valid 64-hex `Server_Auth_Token`, **or the account is in Standard Mode**. |
-| 500    | `INTERNAL_ERROR`      | Database failure.                                                                                                   |
-
-> A Standard-Mode account calling this endpoint gets `401`, it does not get upgraded. Sending `new_password: ""` to drop back to Standard Mode is a `400`; there is no way to remove a second factor once set.
+- **`GET /users/{uuid}/public-keys`** is now answered by the devices domain, with a different
+  body: the root key, the current sharing generation and the proof path. See §19.
+- **`POST /users/second-factor` and `PUT /users/password` are gone.** Paranoid mode is turned on
+  and rotated under `/oprf/account/*` (§20), with an OPRF-derived proof key instead of a
+  `Server_Auth_Token`.
 
 ### `DELETE /users` — 🔒 protected
 
-Deletes the account and, by cascade, its secrets, notes and documents. **Irreversible.**
+Deletes the account and, by cascade, every device, keyring, event, PIN registration, item, connection and share. **Irreversible.** Needs a **full device** (`404` otherwise) **and the root**: the seed must be typed for this, so a stolen device cannot destroy the account.
 
-**Request** — the body is **required**; it carries the `account-delete` signature over your own `user_address`. Standard Mode omits `password` but still sends the three signature fields.
+**Request**
 
 ```json
 {
   "challenge": "64 lowercase hex characters",
   "timestamp": 1737676800,
-  "signature": "base64 P1363 signature",
-  "password": "64-hex token, Paranoid Mode only"
+  "signature": "base64 P1363, by the ROOT over challenge:timestamp:account-delete:<user_address>",
+  "pin_proof": "Paranoid accounts only: Ed25519 under the account-proof key over SHA-256 of that same payload"
 }
 ```
 
-**`204 No Content`** — no body.
+Getting a `pin_proof` means calling `POST /oprf/account/evaluate` first (§20). A Standard account sends none; sending one anyway is refused.
 
-**Errors:** `400 INVALID_BODY` (body present but not valid JSON) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` (missing/wrong token in Paranoid Mode, a token sent by a Standard-Mode account, a failed signature, **or an account the token outlived**) · `500 INTERNAL_ERROR`.
+**`204 No Content`**: no body. Every token of the account is `401 UNAUTHORIZED` from then on.
+
+**Errors:** `400 INVALID_BODY` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` (root signature, proof missing, wrong, or sent by a Standard account) · `404 NOT_FOUND` (a limited device) · `500 INTERNAL_ERROR`.
 
 ---
 
 ---
 
 ## 9. Secrets Endpoints
+
+> **Scope `secrets`.** Every route in this section needs a device holding `secrets` (`404` otherwise); deletes need a **full** device and are signed by it; every `wrapped_dek` write carries the current `key_generation` (`409 STALE_KEY_GENERATION` otherwise). Responses return `key_generation` beside `wrapped_dek`.
 
 🔒 All protected. A "secret" is one encrypted legacy item. The server stores three opaque strings and never decrypts anything.
 
@@ -552,6 +504,7 @@ Deletes the account and, by cascade, its secrets, notes and documents. **Irrever
   "id": "6b2f…-uuid, generated by you",
   "ciphertext": "base64 AES-256-GCM blob produced client-side",
   "wrapped_dek": "base64 DEK wrapped to the owner's key",
+  "key_generation": 1,
   "version": "v1"
 }
 ```
@@ -560,7 +513,8 @@ Deletes the account and, by cascade, its secrets, notes and documents. **Irrever
 | ------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `id`          | ❌ but **send it** | A canonical UUID you generate. This is what makes the call safe to retry. Omit it and the server generates one, and the call stops being idempotent. Non-canonical ⇒ `400 INVALID_PARAM`. |
 | `ciphertext`  | ✅                 | Opaque. Must be non-empty.                                                                                                                                                                |
-| `wrapped_dek` | ✅                 | Opaque. Must be non-empty.                                                                                                                                                                |
+| `wrapped_dek` | ✅                 | Opaque. Must be non-empty. Sealed under the `secrets` KEK of `key_generation`.                                                                                                                                                                |
+| `key_generation` | ✅              | The `secrets` generation `wrapped_dek` is sealed under. Must be the current one: `409 STALE_KEY_GENERATION` otherwise. |
 | `version`     | ❌                 | Omit or `""` ⇒ defaults to `"v1"`. Any other value is rejected.                                                                                                                           |
 
 **`201 Created`** when the item was stored — **`200 OK`** when you sent an `id`
@@ -573,6 +527,7 @@ that was already stored. Same body either way:
     "id": "6b2f…-uuid",
     "ciphertext": "base64…",
     "wrapped_dek": "base64…",
+    "key_generation": 1,
     "version": "v1",
     "created_at": "2026-07-26T12:00:00Z",
     "updated_at": "2026-07-26T12:00:00Z"
@@ -609,6 +564,7 @@ Returns every secret owned by the caller. **Always an array** — an empty vault
       "id": "…",
       "ciphertext": "…",
       "wrapped_dek": "…",
+      "key_generation": 1,
       "version": "v1",
       "created_at": "…",
       "updated_at": "…"
@@ -663,14 +619,13 @@ Like the full listing, this one is **not paginated** — it deliberately returns
 
 Signed with `secret-delete` over the path `{id}`.
 
-**Request** — the body is **required**; it carries the signature that authorizes the deletion. All four signature fields below are required; `password` only on Paranoid Mode accounts. See [§5.3](./front-end-guide.md#53-action-signature-everything-destructive).
+**Request** — the body is **required**; it carries the signature that authorizes the deletion. The three signature fields below are required, signed by **the calling device**, which must be full (`404` otherwise). See [§5.3](./front-end-guide.md#53-action-signature-everything-destructive).
 
 ```json
 {
   "challenge": "64 lowercase hex characters",
   "timestamp": 1737676800,
-  "signature": "base64 P1363 signature",
-  "password": "64-hex token, Paranoid Mode only"
+  "signature": "base64 P1363 signature"
 }
 ```
 
@@ -689,8 +644,7 @@ One `secret-delete` signature covering a whole set, so a multi-select delete cos
   "ids": ["3f6b…-uuid", "9b2e…-uuid"],
   "challenge": "64 lowercase hex characters",
   "timestamp": 1737676800,
-  "signature": "base64 P1363 signature",
-  "password": "64-hex token, Paranoid Mode only"
+  "signature": "base64 P1363 signature"
 }
 ```
 
@@ -723,8 +677,8 @@ Every route that was documented here is gone: `PUT /recovery/setup`, the four
 **What a client must do differently:**
 
 - There is **no account recovery of any kind**. A lost seed phrase is terminal,
-  and so is a forgotten PIN on a Paranoid account — `PUT /users/password` changes
-  a PIN the user still knows and is the only way a PIN ever changes.
+  and so is a forgotten PIN on a Paranoid account — `POST /oprf/account/rotate` (§20)
+  changes a PIN the user still knows and is the only way a PIN ever changes.
 - The client must say so **before** the PIN is set, not after. See
   [../tasks.md](../tasks.md), Tasks 95 and 105.
 - The nine signed actions these routes used (`recovery-setup`, `guardian-invite`,
@@ -739,6 +693,8 @@ The implementation of everything above is preserved and running in the
 
 ## 12. Notes Endpoints
 
+> **Scope `notes`.** Every route in this section needs a device holding `notes` (`404` otherwise); deletes need a **full** device and are signed by it; every `wrapped_dek` write carries the current `key_generation` (`409 STALE_KEY_GENERATION` otherwise). Responses return `key_generation` beside `wrapped_dek`.
+
 🔒 All protected. Editable encrypted plain text.
 
 ### `POST /notes`
@@ -752,6 +708,7 @@ Creates a note. **JWT only** — no challenge, no signature, no PIN.
   "id": "6b2f…-uuid, generated by you",
   "ciphertext": "base64 AES-256-GCM blob produced client-side",
   "wrapped_dek": "base64 DEK wrapped to the owner's key",
+  "key_generation": 1,
   "version": "v1"
 }
 ```
@@ -760,7 +717,8 @@ Creates a note. **JWT only** — no challenge, no signature, no PIN.
 | ------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `id`          | ❌ but **send it** | A canonical UUID you generate. This is what makes the call safe to retry. Omit it and the server generates one, and the call stops being idempotent. Non-canonical ⇒ `400 INVALID_PARAM`. |
 | `ciphertext`  | ✅                 | Opaque. Non-empty, at most 32,768 characters.                                                                                             |
-| `wrapped_dek` | ✅                 | Opaque. Must be non-empty.                                                                                                                |
+| `wrapped_dek` | ✅                 | Opaque. Must be non-empty. Sealed under the `notes` KEK of `key_generation`.                                                                                                                |
+| `key_generation` | ✅              | The current `notes` generation. `409 STALE_KEY_GENERATION` otherwise. |
 | `version`     | ❌                 | Omit or `""` ⇒ defaults to `"v1"`. Any other value is rejected.                                                                           |
 
 **`201 Created`** when the note was stored — **`200 OK`** when you sent an `id` that was already stored. Same body either way:
@@ -772,6 +730,7 @@ Creates a note. **JWT only** — no challenge, no signature, no PIN.
     "id": "6b2f…-uuid",
     "ciphertext": "base64…",
     "wrapped_dek": "base64…",
+    "key_generation": 1,
     "version": "v1",
     "created_at": "2026-08-11T12:00:00Z",
     "updated_at": "2026-08-11T12:00:00Z"
@@ -793,6 +752,7 @@ Replaces a note's payload. **JWT only** — no challenge, no signature, no PIN.
 {
   "ciphertext": "base64 AES-256-GCM blob produced client-side",
   "wrapped_dek": "base64 DEK wrapped to the owner's key",
+  "key_generation": 1,
   "version": "v1"
 }
 ```
@@ -854,8 +814,7 @@ Deletes a note. **Requires a `note-delete` signed action** — unlike create and
 {
   "challenge": "64 lowercase hex characters",
   "timestamp": 1737676800,
-  "signature": "base64 P1363 signature",
-  "password": "64-hex token, Paranoid Mode only"
+  "signature": "base64 P1363 signature"
 }
 ```
 
@@ -876,8 +835,7 @@ One `note-delete` signature covering a whole set, so a multi-select delete costs
   "ids": ["3f6b…-uuid", "9b2e…-uuid"],
   "challenge": "64 lowercase hex characters",
   "timestamp": 1737676800,
-  "signature": "base64 P1363 signature",
-  "password": "64-hex token, Paranoid Mode only"
+  "signature": "base64 P1363 signature"
 }
 ```
 
@@ -898,6 +856,8 @@ One `note-delete` signature covering a whole set, so a multi-select delete costs
 
 ## 16. Documents Endpoints
 
+> **Scope `documents`.** Every route in this section needs a device holding `documents` (`404` otherwise); deletes need a **full** device and are signed by it; every `wrapped_dek` write carries the current `key_generation` (`409 STALE_KEY_GENERATION` otherwise). Responses return `key_generation` beside `wrapped_dek`.
+
 🔒 All protected. A "document" is a rich-text document stored as a **Yjs CRDT**: one compacted encrypted snapshot plus an append-only log of encrypted deltas. Single user, multiple devices — there is no real-time collaboration, no presence, and no WebSocket.
 
 **You need a Yjs client.** The server never parses a delta, never merges, and never reads a document. It assigns sequence numbers, appends, and serves ranges. All merge logic lives in your editor.
@@ -915,7 +875,7 @@ One `note-delete` signature covering a whole set, so a multi-select delete costs
 
 Creates an empty document. **JWT only** — no signature.
 
-**Request:** `{ "id": "6b2f…-uuid, generated by you", "wrapped_dek": "base64", "version": "v1" }`
+**Request:** `{ "id": "6b2f…-uuid, generated by you", "wrapped_dek": "base64", "key_generation": 1, "version": "v1" }`
 
 `id` is optional but **send it** — same idempotency contract as `POST /notes`: a replay returns `200` with the stored row instead of creating a second document. Ids are scoped to your account.
 
@@ -927,6 +887,7 @@ Creates an empty document. **JWT only** — no signature.
   "data": {
     "id": "6b2f…-uuid",
     "wrapped_dek": "base64…",
+    "key_generation": 1,
     "snapshot_ciphertext": "",
     "snapshot_seq": 0,
     "revision": 1,
@@ -1023,7 +984,7 @@ Merges the log into a new snapshot and prunes what it replaces, in one transacti
 
 ### `PUT /documents/{id}/key`
 
-Rotates the document's wrapped DEK. **JWT only.** Guarded by `expected_revision` → `409 CONFLICT` on a stale write.
+Rotates the document's wrapped DEK. **JWT only.** Body: `{ "wrapped_dek", "key_generation", "expected_revision" }`. Guarded by `expected_revision` → `409 CONFLICT` on a stale write, and by the current `documents` generation → `409 STALE_KEY_GENERATION`. This is also how a document is re-wrapped under a new generation after a rotation.
 
 > **Rotating the DEK invalidates the whole log, not one blob.** Every delta and the snapshot are sealed under the same document DEK, so compact first and then rotate.
 
@@ -1031,7 +992,7 @@ Rotates the document's wrapped DEK. **JWT only.** Guarded by `expected_revision`
 
 Deletes a document and its entire update log. **Requires a `document-delete` signed action**, unlike create, edit and compact.
 
-**Request:** `{ "challenge": "…", "timestamp": 1737676800, "signature": "…", "password": "Paranoid Mode only" }`
+**Request:** `{ "challenge": "…", "timestamp": 1737676800, "signature": "…" }`
 
 **`204 No Content`** — no body.
 
@@ -1046,6 +1007,8 @@ One `document-delete` signature covering a whole set. **Sort the ids ascending a
 ---
 
 ## 17. Files Endpoints
+
+> **Scope `files`.** Every route in this section needs a device holding `files` (`404` otherwise); deletes need a **full** device and are signed by it; every `wrapped_dek` write carries the current `key_generation` (`409 STALE_KEY_GENERATION` otherwise). Responses return `key_generation` beside `wrapped_dek`.
 
 🔒 All protected. The drive. A "file" is an opaque encrypted object in Cloudflare R2 plus one row of metadata here — **no byte of file content passes through this API.** It issues presigned URLs and records rows; you `PUT` and `GET` the bytes directly against R2.
 
@@ -1114,6 +1077,7 @@ Checks the quota, mints the object key, writes the row at `r2_state: "pending"`,
   "id": "6b2f…-uuid, generated by you",
   "ciphertext": "base64 sealed manifest",
   "wrapped_dek": "base64",
+  "key_generation": 1,
   "size_bytes": 65573,
   "chunk_count": 1,
   "version": "v1"
@@ -1133,6 +1097,7 @@ Checks the quota, mints the object key, writes the row at `r2_state: "pending"`,
     "id": "6b2f…-uuid",
     "ciphertext": "base64…",
     "wrapped_dek": "base64…",
+    "key_generation": 1,
     "size_bytes": 65573,
     "ciphertext_sha256": "…",
     "version": "v1",
@@ -1154,7 +1119,9 @@ Checks the quota, mints the object key, writes the row at `r2_state: "pending"`,
 
 `expires_at` is one hour out by default (`FILES_UPLOAD_URL_TTL_SECONDS`). A large multipart that outlives it re-requests the ticket rather than failing the whole upload.
 
-**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (`id` is not a canonical UUID) · `400 BAD_REQUEST` (`size_bytes does not match chunk_count`, or an unsupported `version`) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · **`413 BAD_REQUEST`** (over `FILES_MAX_OBJECT_BYTES`, 5 GiB by default) · **`507 QUOTA_EXCEEDED`** · `500 INTERNAL_ERROR`.
+**Creation is rate limited per account** — 300 `POST /files` per 10 minutes by default, from whatever network. A thumbnail is its own `POST`, so a photo with a preview costs two, and **a replay with the same `id` counts too**: resume through `GET /files/{id}/upload`, which is not limited, instead of re-posting. Over the budget the answer is `429 TOO_MANY_REQUESTS` with `Retry-After`, and nothing was created — no row, no reservation. **Pause the upload queue for `Retry-After` seconds and carry on**; do not mark those files failed, and do not call `DELETE /files/{id}/upload` for an id that was never created.
+
+**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (`id` is not a canonical UUID) · `400 BAD_REQUEST` (`size_bytes does not match chunk_count`, or an unsupported `version`) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · **`413 BAD_REQUEST`** (over `FILES_MAX_OBJECT_BYTES`, 5 GiB by default) · **`507 QUOTA_EXCEEDED`** · **`429 TOO_MANY_REQUESTS`** (the per-account creation budget, above) · `500 INTERNAL_ERROR`.
 
 ### `GET /files/{id}/upload` — resume
 
@@ -1257,7 +1224,7 @@ The URL is scoped to one object and one method and lives **five minutes** by def
 
 **Requires a `file-delete` signed action** ([signed-actions.md](../api-general/.docs/auth/signed-actions.md)), plus the second factor on Paranoid accounts — unlike create and complete, which are JWT only.
 
-**Request:** `{ "challenge": "…", "timestamp": 1737676800, "signature": "…", "password": "Paranoid Mode only" }`
+**Request:** `{ "challenge": "…", "timestamp": 1737676800, "signature": "…" }`
 
 **`204 No Content`** — no body.
 
@@ -1271,7 +1238,7 @@ The URL is scoped to one object and one method and lives **five minutes** by def
 
 Deletes a set of files under **one** signature. **Requires a `file-delete` signed action** over the ids, plus the second factor on Paranoid accounts.
 
-**Request:** `{ "ids": ["…", "…"], "challenge": "…", "timestamp": 1737676800, "signature": "…", "password": "Paranoid Mode only" }`
+**Request:** `{ "ids": ["…", "…"], "challenge": "…", "timestamp": 1737676800, "signature": "…" }`
 
 The ids in the signed payload are **sorted ascending and de-duplicated**, exactly as for `secret-delete`, `note-delete` and `document-delete` — the server rebuilds the list its own way and a differently-ordered one verifies against nothing. Send `ids` in that same normalized order.
 
@@ -1296,6 +1263,15 @@ never holds a key to any of it. All routes require the JWT.
 
 **Read `internal/domain/sharing/README.md` for the design.** This section is the wire contract.
 
+> **Scopes and generations (2026-09-21).**
+> - Connection mutations need a device holding `sharing`.
+> - Shares and shared reads need the item's scope, and the inbox lists only the item types the
+>   device holds.
+> - Deleting a connection or a share needs a full device.
+> - A connection is made to **both sides' current `sharing` generations**, and each item scope
+>   gets its own sub-key of the connection key, stored per side with
+>   `PUT /connections/{id}/keys`.
+
 ### The shape, in one paragraph
 
 A **connection** is the authorisation object: one per ordered pair of accounts, `pending` until the
@@ -1318,11 +1294,15 @@ that rewrites a body cannot redirect a share. See
 
 | Route | `action` | Signed arguments, in order |
 | --- | --- | --- |
-| `POST /connections` | `connection-invite` | `recipient_username` (normalised), `pqxdh_blob` |
+| `POST /connections` | `connection-invite` | `recipient_username` (normalised), `pqxdh_blob`, `sender_key_generation`, `recipient_key_generation` |
 | `POST /connections/{id}/accept` | `connection-accept` | `connection_id` |
 | `DELETE /connections/{id}` | `connection-delete` | `connection_id` |
+| `PUT /connections/{id}/keys` | `connection-keys` | `connection_id`, hex SHA-256 of the lines `scope:key_generation:wrapped_key` joined by `\n`, in request order |
 | `POST /shares` | `share-create` | `connection_id`, `item_type`, `item_id` |
 | `DELETE /shares/{id}` | `share-delete` | `share_id` |
+| `PUT /sharing/address-book` | `address-book-update` | `expected_revision`, hex SHA-256 of `ciphertext` |
+
+Every one is signed by **the calling device's key**, with no PIN.
 
 ⚠️ **`share-create` is a signed-action label; `item-share` is the PQXDH usage label.** Different
 protocols — a signature payload and an HKDF `info` input. Never use one where the other belongs.
@@ -1336,16 +1316,23 @@ idempotent rather than a second row.
 {
   "id": "0e2a4c6e-8b0d-4f4a-8c8e-0b2d4f6a8c0e",
   "recipient_username": "pedrosilva",
-  "pqxdh_blob": "...",
-  "challenge": "...", "timestamp": 1785000000, "signature": "...", "password": "..."
+  "pqxdh_blob": "PQXDH item-share blob, to the recipient's current sharing keys",
+  "sender_wrapped_key": "the connection key sealed under the sender's current sharing KEK",
+  "sender_key_generation": 3,
+  "recipient_key_generation": 2,
+  "challenge": "...", "timestamp": 1785000000, "signature": "..."
 }
 ```
 
-**`201 Created`** → `{ id, direction, username, status, pqxdh_blob, created_at }`.
+Read the recipient's current generation and keys from `GET /users/{uuid}/public-keys` (§19), and
+**verify its proof path against the root key you pinned** before encapsulating.
+
+**`201 Created`** → `{ id, direction, username, status, pqxdh_blob, sender_key_generation, recipient_key_generation, keys: [], created_at }`.
 
 **Errors:** `400 BAD_REQUEST` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (no account uses that
-username **right now** — only a current username resolves) · `409 CONFLICT` (a connection between
-the pair already exists).
+username **right now** — only a current username resolves; or the device lacks `sharing`) ·
+`409 CONFLICT` (a connection between the pair already exists) · `409 STALE_KEY_GENERATION` (either
+generation is not current: re-read and re-encapsulate).
 
 ### `GET /connections`
 
@@ -1353,8 +1340,13 @@ Paginated, both directions. Each row carries `direction` (`inbound` / `outbound`
 counterparty's **current** username joined at read time, their `user_address`, and `status`.
 
 **Each side gets only the blob it can open**: `pqxdh_blob` goes to the recipient, whose keys it was
-encapsulated to, and `sender_wrapped_key` to the sender, who wrapped it under their own vault KEK.
-The sender cannot open what they encapsulated to the recipient, which is why there are two.
+encapsulated to, and `sender_wrapped_key` to the sender, who sealed it under their own `sharing` KEK
+of `sender_key_generation`. The sender cannot open what they encapsulated to the recipient, which is
+why there are two. **Both blobs are blanked for a device that does not hold `sharing`.**
+
+Each row also carries **`keys`**: this side's stored sub-keys, `[{ scope, key_generation,
+wrapped_key }]`, **only for the scopes the calling device holds**. A limited device opens a share
+with its scope's sub-key, and never needs the connection key.
 
 ⚠️ **`user_address` is on this row because the recipient cannot open anything without it.** The
 frozen PQXDH `info` binds both full addresses, so re-deriving the connection key means rebuilding
@@ -1394,12 +1386,13 @@ Shares one item over an **accepted** connection. `id` is optional and client-gen
   "item_type": "secret | note | document | file",
   "item_id": "...",
   "wrapped_dek": "...",
-  "challenge": "...", "timestamp": 1785000000, "signature": "...", "password": "..."
+  "challenge": "...", "timestamp": 1785000000, "signature": "..."
 }
 ```
 
-`wrapped_dek` is the item's **existing** DEK re-wrapped under the connection's session key — one
-AES-256-GCM wrap with a fresh random 96-bit IV, not a new PQXDH envelope. **Never a counter for the
+`wrapped_dek` is the item's **existing** DEK re-wrapped under the connection's **sub-key for the
+item's scope**, `HKDF-SHA256(connection_key, "Cryple-Share-v1|<scope>")` — one AES-256-GCM wrap
+with a fresh random 96-bit IV, not a new PQXDH envelope. **Never a counter for the
 IV**: one key protects many messages here.
 
 **`201 Created`** → the share.
@@ -1447,4 +1440,216 @@ DEK** — it is the owner's view of their own outbound shares.
 
 ⚠️ **The field is `username`, not `sender_username`.** This direction's counterparty is the
 recipient, so this listing has its own shape rather than reusing the inbox row.
+
+### `PUT /connections/{id}/keys`
+
+Stores this side's per-scope sub-keys of the connection key, so devices that do not hold `sharing`
+can open shares of the scopes they do hold. It needs a device holding `sharing` (to open the
+connection key) **and every scope it seals a sub-key under**. Either side of the connection may call
+it, pending or accepted. A later call replaces a scope's row, which is how a sub-key moves to a new
+generation.
+
+```json
+{
+  "keys": [
+    { "scope": "notes", "key_generation": 1, "wrapped_key": "sealed(notes KEK, HKDF(connection_key, \"Cryple-Share-v1|notes\"))" }
+  ],
+  "challenge": "...", "timestamp": 1785000000, "signature": "..."
+}
+```
+
+`scope` is one of `secrets`, `notes`, `documents`, `files`, each at most once; `key_generation` must
+be that scope's current one.
+
+**`204 No Content`.** **Errors:** `400 BAD_REQUEST` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND`
+(not a party to the connection, or a scope the device lacks) · `409 STALE_KEY_GENERATION`.
+
+### `GET /sharing/address-book` · `PUT /sharing/address-book`
+
+The owner's connection nicknames and **root-key pins**, as one sealed blob (Task 121). The layout
+inside is the client's. Both routes need `sharing`.
+
+`GET` → `200 { ciphertext, wrapped_dek, key_generation, revision, updated_at }`, or `404` before
+the first `PUT`.
+
+```json
+{
+  "ciphertext": "sealed(DEK, address book)",
+  "wrapped_dek": "sealed(sharing KEK, DEK)",
+  "key_generation": 2,
+  "expected_revision": 0,
+  "challenge": "...", "timestamp": 1785000000, "signature": "..."
+}
+```
+
+`expected_revision: 0` creates the book; `n` replaces revision `n` with `n+1`. Answers `200` with the
+stored book. **Errors:** `400 BAD_REQUEST` · `401 INVALID_CREDENTIALS` · `409 CONFLICT` (stale
+revision: read, merge, retry) · `409 STALE_KEY_GENERATION`.
+
+⚠️ **The pins are security state.** A pin is the counterparty's **root** key, which never changes;
+a rotated sharing key is accepted only if its proof path ends at the pinned root.
+
+---
+
+---
+
+## 19. Devices and Keyrings Endpoints
+
+The model is [device-keys.md](../api-general/.docs/crypto/device-keys.md): read it before building a client.
+
+**Statements and batches.** Every change to devices and keyrings is a **batch** of chain events,
+plus the wraps and sealed material they require, applied atomically:
+
+```
+statement = "Cryple-Chain-v1|<user_address>|<seq>|<prev hash>|<type>|<fields…>"
+signature = base64 P1363 over SHA-256(statement), by "root" or by a device
+event hash = hex SHA-256(statement + "|" + signer + "|" + signature)   — the next event's <prev hash>
+```
+
+| `type` | Fields |
+| --- | --- |
+| `device-add` | `device_id`, `signing_public_key` (SPKI P-256, 124 chars), `x25519` (32 bytes), `mlkem` (ML-KEM-768 encapsulation key), `scopes` (canonical order) |
+| `device-remove` | `device_id` |
+| `device-scopes` | `device_id`, narrowed `scopes` |
+| `keyring-rotate` | `scope=generation,…` in canonical order, each current + 1 |
+| `sharing-keys` | `generation`, `x25519`, `mlkem` |
+
+**Canonical scope order:** `admin,passwords,secrets,notes,documents,files,sharing`.
+
+**Batch rules:**
+
+- Removing another device, or narrowing one, must rotate every keyring it loses. Removing
+  yourself does not.
+- Rotating `sharing` needs a `sharing-keys` event for the same generation, and the sealed material.
+- Every generation a batch creates must be wrapped to `root` and to **exactly** the active devices
+  holding the scope.
+
+A batch that breaks any of these is `400 INVALID_BATCH`, and the message names the rule.
+
+### `POST /devices/enrol/chain` — public, root-signed
+
+The chain an enrolment builds on. **A device about to enrol has no JWT**, so this is how it learns the
+`seq` and head its `device-add` must name, and which devices a "lost my devices" enrolment removes.
+
+```json
+{
+  "user_address": "…",
+  "challenge": "…", "timestamp": 1785000000,
+  "signature": "the ROOT over challenge:timestamp:chain-read:<user_address>",
+  "pin_proof": "Paranoid accounts only (§20)"
+}
+```
+
+**`200 OK`** → `{ chain: [events], devices: [ same rows as GET /devices ] }`. **Verify the chain from
+the root key before building on it.**
+
+**Errors:** `400 INVALID_BODY` · `404 NOT_FOUND` (any root or proof failure, uniform) · `429`.
+
+### `POST /devices/enrol` — public, root-signed
+
+Enrols a device **with the seed**. The batch starts with its `device-add` and may go on to remove
+devices and rotate: the root always wins against a stolen device.
+
+```json
+{
+  "user_address": "…",
+  "challenge": "…", "timestamp": 1785000000,
+  "signature": "the ROOT over challenge:timestamp:device-enrol:<user_address>:<hex SHA-256 of the batch statements joined by \\n>",
+  "pin_proof": "Paranoid accounts only (§20)",
+  "batch": { "events": [ … ], "wraps": [ … ], "materials": [ … ] }
+}
+```
+
+**`201 Created`** → `{ access_token, device_id, chain: [events], root_keyrings: { current, generations: [{ scope, generation, wrapped_key, sealed_material? }] } }`.
+
+The root wraps let the new device open each generation with the root wrap key, which it holds only
+while the seed is typed. It then posts its own wraps to `POST /keyrings/wraps`, and discards the
+seed.
+
+**Errors:** `400 INVALID_BATCH` · `404 NOT_FOUND` (any root or proof failure, uniform) · `409 TOO_MANY_DEVICES`.
+
+### `GET /devices` — 🔒
+
+`200 { devices: [{ id, signing_public_key, encryption_public_key_x25519, encryption_public_key_mlkem, scopes, created_at }], head }`.
+There is no device name on the server; name devices in the client's encrypted space.
+
+### `POST /devices/batch` — 🔒
+
+`{ "batch": { … } }`, with every event signed by the **calling** device. Linking a limited device
+is a `device-add` here, with the new device's wraps for every existing generation of its scopes.
+Removing, narrowing and rotating need `admin`; a device may always remove itself (log-out).
+**`200`** → the device list, or an empty list when the caller removed itself.
+
+### `GET /devices/chain?after={seq}` — 🔒
+
+The owner's own events after `seq`. Verify them from the root key; the server did, but the client is
+the one that must not trust it.
+
+### `GET /keyrings` — 🔒
+
+`200 { current: { scope: generation }, generations: [{ scope, generation, wrapped_key, sealed_material? }] }`,
+covering only the keyring scopes the calling device holds. `wrapped_key` is `null` for a generation
+this device has no wrap of yet.
+
+### `POST /keyrings/wraps` — 🔒
+
+`{ "wraps": [{ scope, generation, recipient: "<device id>", wrapped_key }] }`. It adds wraps of
+**existing** generations, for a device holding the scope, from a device holding it. **`204`.** An
+existing wrap is `400 INVALID_BATCH`.
+
+### `GET /users/{uuid}/public-keys` — 🔒
+
+`200 { uuid, user_address, root_public_key, sharing_keys: { generation, encryption_public_key_x25519, encryption_public_key_mlkem }, proof: [events] }`.
+
+`proof` runs from the root to the `sharing-keys` event that published these keys: the `device-add`
+of each device that signed along the way, then the announcement. **Verify it against the root key
+you pinned** (the fingerprint of `root_public_key`); do not trust the keys otherwise.
+
+---
+
+---
+
+## 20. PIN Endpoints (OPRF)
+
+The spec is [pin-oprf.md](../api-general/.docs/auth/pin-oprf.md). Elements are 32-byte ristretto255 encodings in
+base64 (44 characters). The OPRF is RFC 9497, base mode, `ristretto255-SHA512`.
+
+### Device PIN
+
+| Route | Auth | Body → answer |
+| --- | --- | --- |
+| `POST /oprf/devices` | 🔒 | `{ blinded_element }` → `201 { registration_id, evaluated_element }` |
+| `POST /oprf/devices/{id}/commit` | 🔒 same device | `{ confirm_public_key }` (Ed25519) → `204`. Replaces any earlier registration of this device |
+| `POST /oprf/devices/{id}/evaluate` | public (`oprf-device` budget) | `{ blinded_element }` → `200 { evaluated_element, attempt_id, attempts_remaining }` |
+| `POST /oprf/devices/{id}/confirm` | public | `{ attempt_id, proof }` → `204`, or `404` |
+| `DELETE /oprf/devices/{id}` | 🔒 its device, or a full device | → `204` |
+
+- `proof` is Ed25519, under the `device-confirm` key, over
+  `"Cryple-PIN-v2|device-confirm|<registration_id>|<attempt_id>"`.
+- **Confirm every successful unlock**: a confirmation gives every attempt back.
+- **`404` on `evaluate` means the registration is gone.** The attempts ran out or the device was
+  removed. Ask for the seed and re-enrol; do not ask for the PIN again.
+
+### Account PIN (Paranoid)
+
+| Route | Auth | Body → answer |
+| --- | --- | --- |
+| `POST /oprf/account/begin` | 🔒 full device + root | `{ blinded_element, challenge, timestamp, signature, pin_proof? }`, action `second-factor-begin` over `user_address`, `blinded_element` → `200 { evaluated_element }` |
+| `POST /oprf/account/enable` | 🔒 full device + root | `{ proof_public_key, challenge, timestamp, signature }`, action `enable-second-factor` over `proof_public_key` → `204`. Standard accounts only, and **for ever** |
+| `POST /oprf/account/rotate` | 🔒 full device + root + current proof | `{ proof_public_key, …, pin_proof }`, action `rotate-second-factor` → `204` |
+| `POST /oprf/account/evaluate` | public, root-signed | `{ user_address, blinded_element, challenge, timestamp, signature }`, action `pin-evaluate` over `user_address`, `blinded_element` → `200 { evaluated_element }` |
+
+- **`evaluate` always answers with an evaluation.** For a Standard account, an unknown address, a
+  bad signature or a throttled attempt it is a fake one, deterministic per address, so the route
+  reveals nothing. A client that derives a wrong proof from it simply fails the root action it was
+  for, with the uniform answer.
+- **Wrong PINs are throttled per account**: 5 free, then a wait doubling from 1 s to 15 minutes.
+  During a wait even the right PIN yields a useless evaluation. A client seeing repeated failures
+  for a PIN the user is sure of should suggest waiting, not retyping.
+- **`pin_proof`** is Ed25519, under the `account-proof` key, over the same `SHA-256(payload)` the
+  root signature covers. It goes on every root action of a Paranoid account: `chain-read`,
+  `device-enrol`, `account-delete`, `second-factor-begin`, `rotate-second-factor`.
+
+**Errors:** `400 BAD_REQUEST` (malformed element or key) · `401 INVALID_CREDENTIALS` (the account
+routes: root, proof or state refused, uniformly) · `404 NOT_FOUND` (the device routes).
 

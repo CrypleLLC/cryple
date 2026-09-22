@@ -1,4 +1,4 @@
-import type { SessionHandoffMaterial } from './index';
+import { isHandoffMaterial, type SessionHandoffMaterial } from './index';
 
 export const HANDOFF_TIMEOUT_MS = 1200;
 export const HANDOFF_REQUEST = 'cryple-session-handoff/request';
@@ -57,7 +57,7 @@ function isOffer(value: unknown): value is OfferMessage {
   return (
     message.kind === HANDOFF_OFFER &&
     typeof message.nonce === 'string' &&
-    typeof message.offer?.material?.seedHex === 'string'
+    isHandoffMaterial(message.offer?.material)
   );
 }
 

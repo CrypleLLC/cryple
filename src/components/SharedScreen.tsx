@@ -2,9 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
+  NothingToCopyError,
+  copySharedItem,
   describeReceived,
+  displayName,
   listConnections,
   listInbox,
+  loadAddressBook,
   openSharedFile,
   UNREADABLE_SHARED_NAME,
   type ConnectionRecord,
@@ -22,14 +26,16 @@ import {
   SHARING_COPY,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
-import { Card, Empty, Notice, Spinner } from './ui';
+import { scopeForItemType } from '@/lib/scopes';
+import { Button, Card, Empty, Notice, Spinner } from './ui';
 import { DocumentsIcon, FileTypeIcon, NotesIcon, SharingIcon, VaultIcon } from './icons';
 
 const SCALE = iconScale('medium');
 
 export default function SharedScreen() {
   const context = useAuthedContext();
-  const { reportError } = useCryple();
+  const { reportError, holds } = useCryple();
+  const [notice, setNotice] = useState<string>();
 
   const [items, setItems] = useState<ReceivedItem[]>();
   const [connections, setConnections] = useState(new Map<string, ConnectionRecord>());
@@ -39,9 +45,15 @@ export default function SharedScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [all, inbox] = await Promise.all([listConnections(context), listInbox(context)]);
+      const [all, inbox, book] = await Promise.all([
+        listConnections(context),
+        listInbox(context),
+        holds('sharing') ? loadAddressBook(context).catch(() => undefined) : Promise.resolve(undefined),
+      ]);
       const byId = new Map(all.map((connection) => [connection.id, connection]));
       setConnections(byId);
+      const nicknameOf = (share: InboundShareRecord) =>
+        displayName(book?.nicknames[share.connection_id]) ?? share.sender_username;
 
       const described = await Promise.allSettled(
         inbox.map((share) =>
@@ -56,31 +68,51 @@ export default function SharedScreen() {
       );
 
       setItems(
-        described.map((outcome, index) =>
-          outcome.status === 'fulfilled'
-            ? outcome.value
-            : unreadable(inbox[index], String(outcome.reason)),
-        ),
+        described.map((outcome, index) => {
+          const item =
+            outcome.status === 'fulfilled'
+              ? outcome.value
+              : unreadable(inbox[index], String(outcome.reason));
+          return { ...item, from: nicknameOf(inbox[index]) };
+        }),
       );
     } catch (error) {
       setMessage(reportError(error));
       setItems([]);
     }
-  }, [context, reportError]);
+  }, [context, reportError, holds]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  async function open(item: ReceivedItem) {
-    if (item.itemType !== 'file') {
-      setOpened(item);
-      return;
-    }
+  function open(item: ReceivedItem) {
+    setNotice(undefined);
+    setOpened(item);
+  }
 
+  async function copy(item: ReceivedItem) {
     const connection = connections.get(item.connectionId);
     if (!connection) {
-      setMessage(SHARING_COPY.connectionGone);
+      setMessage(SHARING_COPY.lostConnection);
+      return;
+    }
+    setBusy(true);
+    setMessage(undefined);
+    try {
+      await copySharedItem(context, connection, { id: item.shareId, item_type: item.itemType });
+      setNotice(SHARING_COPY.copied);
+    } catch (error) {
+      setMessage(error instanceof NothingToCopyError ? SHARING_COPY.nothingToCopy : reportError(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function download(item: ReceivedItem) {
+    const connection = connections.get(item.connectionId);
+    if (!connection) {
+      setMessage(SHARING_COPY.lostConnection);
       return;
     }
 
@@ -127,7 +159,7 @@ export default function SharedScreen() {
               key={item.shareId}
               item={item}
               busy={busy}
-              onOpen={() => void open(item)}
+              onOpen={() => open(item)}
             />
           ))}
         </ul>
@@ -135,13 +167,31 @@ export default function SharedScreen() {
 
       {opened ? (
         <Card title={opened.name} subtitle={`${ITEM_LABELS[opened.itemType]} from ${opened.from}`}>
-          {opened.text === undefined ? (
-            <Notice tone="warning">{SHARING_COPY.documentNotReadable}</Notice>
-          ) : (
-            <pre className="whitespace-pre-wrap break-words rounded-lg bg-raised p-3 text-compact text-ink">
-              {opened.text}
-            </pre>
-          )}
+          <div className="space-y-4">
+            {notice ? <Notice tone="success">{notice}</Notice> : null}
+            {opened.itemType === 'file' ? null : opened.text === undefined ? (
+              <Notice tone="warning">{SHARING_COPY.documentNotReadable}</Notice>
+            ) : (
+              <pre className="whitespace-pre-wrap break-words rounded-lg bg-raised p-3 text-compact text-ink">
+                {opened.text}
+              </pre>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {opened.itemType === 'file' ? (
+                <Button disabled={busy} onClick={() => void download(opened)}>
+                  {busy ? SHARING_COPY.opening : SHARING_COPY.download}
+                </Button>
+              ) : null}
+              {holds(scopeForItemType(opened.itemType)) ? (
+                <Button variant="secondary" disabled={busy} onClick={() => void copy(opened)}>
+                  {busy ? SHARING_COPY.copying : SHARING_COPY.copyToMyAccount}
+                </Button>
+              ) : null}
+            </div>
+            <p className="text-caption normal-case tracking-normal text-ink-muted">
+              {SHARING_COPY.copyExplain}
+            </p>
+          </div>
         </Card>
       ) : null}
     </div>

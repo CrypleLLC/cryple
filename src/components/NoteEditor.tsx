@@ -47,7 +47,7 @@ export default function NoteEditor({
   onSaved: (record: NoteRecord, plaintext: string) => void;
 }) {
   const context = useAuthedContext();
-  const { reportError } = useCryple();
+  const { reportError, fullDevice } = useCryple();
 
   const [record, setRecord] = useState(opened?.record);
   const [saved, setSaved] = useState(opened?.plaintext);
@@ -266,7 +266,7 @@ export default function NoteEditor({
           >
             {NOTE_SAVE_LABELS[status]}
           </span>
-          {record !== undefined ? (
+          {record !== undefined && fullDevice ? (
             <Button
               variant="danger"
               disabled={busy || saving}

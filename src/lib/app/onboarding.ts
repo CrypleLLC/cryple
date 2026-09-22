@@ -12,6 +12,7 @@ export interface OnboardingState {
   mnemonic?: string;
   pin?: string;
   paranoid?: boolean;
+  lostDevices?: boolean;
   username?: string;
   recoveryKitSaved?: boolean;
   error?: string;
@@ -19,11 +20,10 @@ export interface OnboardingState {
 
 export type OnboardingEvent =
   | { type: 'choose-origin'; origin: OnboardingOrigin; wordCount?: MnemonicWordCount }
-  | { type: 'mnemonic-ready'; mnemonic: string }
-  // One event, because mode and PIN are one decision on one screen: the PIN is
-  // always set, and `paranoid` only says whether it is also the server factor.
+  | { type: 'mnemonic-ready'; mnemonic: string; lostDevices?: boolean }
   | { type: 'pin-chosen'; pin: string; paranoid: boolean }
   | { type: 'enrolled'; username: string }
+  | { type: 'create-instead' }
   | { type: 'recovery-kit-saved' }
   | { type: 'failed'; message: string }
   | { type: 'back' };
@@ -38,33 +38,58 @@ const PIN_REJECTION_COPY: Record<PinRejection, string> = {
   'descending-sequence': 'That PIN counts down. Choose a less predictable one.',
 };
 
+export const PHRASE_NOT_KEPT =
+  'This browser does not keep your recovery phrase. You type it again to add a device, to bring ' +
+  'this browser back if it forgets your account, and to remove a device you lost.';
+
 export const MODE_COPY = {
   standard: {
     title: 'Standard',
-    summary: 'Your recovery phrase alone proves who you are to Cryple.',
+    summary: 'Your recovery phrase alone can add a device and recover everything.',
     tradeoff:
-      'Your PIN stays on this device — it locks the app and encrypts the copy of your phrase ' +
-      'kept here, and Cryple never sees it.',
+      'Your PIN only unlocks this browser. The server rations every try without ever seeing the ' +
+      'PIN. Standard is a deliberate choice: with it, nothing but losing your phrase can lock ' +
+      'you out.',
   },
   paranoid: {
     title: 'Paranoid',
-    summary: 'Your PIN is also required to sign in, on top of your recovery phrase.',
+    summary:
+      'Your recovery phrase also needs an account PIN before it can add a device or delete the ' +
+      'account.',
     tradeoff:
-      'Someone who steals your phrase still cannot get in without the PIN. You will be asked ' +
-      'for it on every new device.',
+      'Someone who steals your phrase still cannot get in without the account PIN. The PIN you ' +
+      'choose here becomes your account PIN too.',
   },
   oneWayDoor:
-    'You can move from Standard to Paranoid later, but never back. There is no way to stop a ' +
-    'PIN being required once it is — that is what protects you if your recovery phrase is ever ' +
-    'stolen.',
+    'There is no way back to Standard, and no reset. If you forget your account PIN, your ' +
+    'account is lost for ever, even with your recovery phrase.',
 } as const;
 
 export const PIN_STEP_COPY = {
   title: 'Choose your 6-digit PIN',
   subtitle:
-    'It locks the app and encrypts the copy of your phrase kept on this device, so coming back ' +
-    'is just the PIN rather than 12 words. Three wrong tries erase that copy.',
-  signIn: 'Enter the PIN for this device.',
+    'It unlocks this browser. It never leaves this device: the server helps check it without ' +
+    'seeing it, and after too many wrong tries this browser forgets your account until you type ' +
+    'your recovery phrase again.',
+  signIn:
+    'Choose this browser’s PIN. If your account uses Paranoid mode, type your account PIN: it ' +
+    'is checked, and becomes this browser’s PIN too.',
+} as const;
+
+export const ENROL_STEP_COPY = {
+  title: 'Add this browser',
+  summary:
+    'Your recovery phrase adds this browser as one of your devices. ' + PHRASE_NOT_KEPT,
+  lostDevices: 'I lost my other devices: remove them all',
+  lostDevicesWarning:
+    'Every other device is removed in the same step and every key they held changes, so they ' +
+    'cannot read anything saved afterwards. They keep whatever they had already copied.',
+  noAccount:
+    'No account uses this recovery phrase yet. Check it, or create a new account with it.',
+  createInstead: 'Create an account with this phrase',
+  exposure:
+    'While you type your phrase, it is in this page’s memory. Type it only on a browser you ' +
+    'trust, ideally Brave with a profile that has no extensions.',
 } as const;
 
 export const RECOVERY_KIT_STEP_COPY = {
@@ -74,7 +99,8 @@ export const RECOVERY_KIT_STEP_COPY = {
     'in from the mobile app.',
   warning:
     'Print it or keep it on storage that stays offline. Anyone who has your recovery phrase has ' +
-    'your vault, and nobody can restore it for you if you lose it.',
+    'your vault, and nobody can restore it for you if you lose it. ' +
+    PHRASE_NOT_KEPT,
   download: 'Download recovery kit',
   downloadAgain: 'Download again',
   preparing: 'Preparing your kit…',
@@ -172,6 +198,7 @@ export function onboardingReducer(
       return {
         ...state,
         mnemonic: event.mnemonic,
+        lostDevices: event.lostDevices ?? false,
         step: 'pin',
         error: undefined,
       };
@@ -196,9 +223,15 @@ export function onboardingReducer(
         ...state,
         step: state.origin === 'generate' ? 'recovery-kit' : 'done',
         username: event.username,
+        mnemonic: state.origin === 'generate' ? state.mnemonic : undefined,
         pin: undefined,
         error: undefined,
       };
+
+    case 'create-instead':
+      return state.mnemonic === undefined
+        ? state
+        : { ...state, origin: 'generate', step: 'pin', lostDevices: false, error: undefined };
 
     case 'recovery-kit-saved':
       return state.step === 'recovery-kit' ? { ...state, recoveryKitSaved: true } : state;

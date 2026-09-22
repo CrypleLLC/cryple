@@ -108,7 +108,7 @@ export async function openPreview(
   context: FilesContext,
   record: FileRecord,
 ): Promise<OpenedPreview> {
-  const dek = await wrapper(context).unwrapDek(record.wrapped_dek);
+  const dek = await wrapper(context).unwrapDek(record);
 
   try {
     const manifest = await openManifest(record.ciphertext, dek);

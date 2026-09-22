@@ -32,8 +32,16 @@ const config = [
         {
           name: 'localStorage',
           message:
-            'Only the seed vault may reach persistent storage, and it stores one PIN-encrypted ' +
-            'blob. Go through src/lib/pin instead. See src/lib/pin/README.md.',
+            'Nothing secret lives in localStorage. The device record lives in IndexedDB through ' +
+            'src/lib/device; src/lib/pin only deletes what earlier versions left behind. See ' +
+            'src/lib/device/README.md.',
+        },
+        {
+          name: 'indexedDB',
+          message:
+            'IndexedDB holds exactly two things: this device record (src/lib/device/store.ts) and ' +
+            'unfinished upload handles (src/lib/files/handles.ts). A new use needs an argument ' +
+            'in its README and an exemption in eslint.config.mjs.',
         },
         {
           name: 'sessionStorage',
@@ -56,6 +64,13 @@ const config = [
           },
           {
             object,
+            property: 'indexedDB',
+            message:
+              `${object}.indexedDB is the same store as the bare global. Only the exempt modules ` +
+              'in eslint.config.mjs may reach it.',
+          },
+          {
+            object,
             property: 'sessionStorage',
             message:
               `Nothing in Cryple is persisted to sessionStorage, through ${object} or otherwise. ` +
@@ -71,20 +86,23 @@ const config = [
   // view preference with no bearing on secrets, and losing it on every reload is
   // the kind of small wrongness a user notices on every visit.
   //
-  // The fourth, added 2026-09-13: src/lib/sharing/pins.ts keeps the key
-  // fingerprint pinned when each sharing connection was accepted, so a later
-  // change raises the alarm. It stores one blob sealed under a DEK wrapped by the
-  // vault KEK, the same construction as a vault item, so the device holds no
-  // readable list of whom the account is connected to. The server has no
-  // encrypted slot per connection to hold it instead; that arrives with the
-  // connection nicknames (Task 104.5), and the pins move there with them.
+  // src/lib/pin keeps its exemption on 2026-09-21 only to delete what the
+  // seed-vault client left behind: the encrypted seed, the mode hint and the
+  // sharing pins, which moved into the sealed address book on the server.
   {
-    files: [
-      'src/lib/pin/**',
-      'src/lib/app/mode-hint.ts',
-      'src/lib/app/icon-size.ts',
-      'src/lib/sharing/pins.ts',
-    ],
+    files: ['src/lib/pin/**', 'src/lib/app/icon-size.ts'],
+    rules: {
+      'no-restricted-globals': 'off',
+      'no-restricted-properties': 'off',
+    },
+  },
+
+  // IndexedDB, 2026-09-21: the device record (src/lib/device/store.ts) holds
+  // this browser's non-extractable CryptoKeys, which only IndexedDB can store,
+  // and its PIN-sealed material. src/lib/files/handles.ts keeps one
+  // FileSystemFileHandle per unfinished upload.
+  {
+    files: ['src/lib/device/store.ts', 'src/lib/files/handles.ts'],
     rules: {
       'no-restricted-globals': 'off',
       'no-restricted-properties': 'off',

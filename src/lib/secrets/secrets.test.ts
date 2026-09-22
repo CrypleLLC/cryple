@@ -1,9 +1,11 @@
+import { scopeDekWrapper } from '@/lib/keyrings';
+import { openBlob, sealBlob } from '@/lib/sealed';
+import { openTestSession } from '@/test/session';
+import { spkiBase64ToUncompressedPoint } from '@/lib/encoding';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import vectors from '@/test/fixtures/test-vectors.json';
 import { TokenStore } from '@/lib/api';
-import { SessionKeystore } from '@/lib/session';
 import { buildActionPayload, verifyPayload } from '@/lib/signing';
-import { deriveKeyTreeFromSeed } from '@/lib/keys';
 import { bytesToBase64, bytesToHex, hexToBytes } from '@/lib/encoding';
 import {
   createSecret,
@@ -17,7 +19,6 @@ import {
   openSecret,
   openText,
   sealText,
-  vaultKekDekWrapper,
   UnsupportedPayloadVersionError,
   DEK_LENGTH,
   MAX_PLAINTEXT_BYTES,
@@ -26,11 +27,6 @@ import {
   type SecretsContext,
 } from './index';
 
-const mnemonic = vectors.seed_and_user_address.mnemonic;
-const pin = vectors.server_auth_token.pin;
-const tree = await deriveKeyTreeFromSeed(hexToBytes(vectors.seed_and_user_address.seed_hex));
-const publicKey = tree.identity.publicKeyUncompressed;
-const vaultKekVector = vectors.vault_kek;
 const sealedBlobVector = vectors.sealed_blob;
 
 const ID_A = '0c892e57-93cf-423a-a9e9-fee5a9f87681';
@@ -72,8 +68,7 @@ function mockFetch(...specs: { status: number; body?: unknown }[]) {
 async function newContext(
   options: { paranoid?: boolean; dek?: DekWrapper } = {},
 ): Promise<SecretsContext> {
-  const session = new SessionKeystore({ idleTimeoutMs: 0 });
-  await session.unlockWithMnemonic(mnemonic, pin);
+  const { session } = (await openTestSession()).context;
   const tokens = new TokenStore();
   tokens.set('jwt-token');
   return {
@@ -88,6 +83,7 @@ const storedSecret = {
   id: ID_A,
   ciphertext: 'AXh4eHh4eHh4eHh4Y2lwaGVy',
   wrapped_dek: 'd3JhcHBlZA==',
+  key_generation: 1,
   version: 'v1',
   created_at: '2026-07-26T12:00:00Z',
   updated_at: '2026-07-26T12:00:00Z',
@@ -95,30 +91,44 @@ const storedSecret = {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('Task 13 — the vault KEK wraps and unwraps the per-item DEK', () => {
-  it('matches the frozen HKDF info label', () => {
-    expect(vaultKekVector.hkdf_info_label).toBe('Cryple-Key-v1|vault-kek');
-    expect(bytesToBase64(tree.vaultKek)).toBe(vaultKekVector.vault_kek_base64);
-  });
-
-  it('unwraps the fixture sealed_blob vector under the fixture vault KEK', async () => {
-    const wrapper = vaultKekDekWrapper(hexToBytes(sealedBlobVector.key_hex));
-    const opened = await wrapper.unwrapDek(sealedBlobVector.blob_base64);
+describe('the per-item DEK is wrapped under the secrets KEK of a generation', () => {
+  it('opens the fixture sealed_blob vector, the envelope every wrapped DEK uses', async () => {
+    const opened = await openBlob(sealedBlobVector.blob_base64, hexToBytes(sealedBlobVector.key_hex));
     expect(bytesToHex(opened)).toBe(sealedBlobVector.plaintext_hex);
   });
 
-  it('round-trips a DEK under the session vault KEK, with a fresh IV each time', async () => {
-    const wrapper = vaultKekDekWrapper(tree.vaultKek);
+  it('round-trips a DEK under the current generation, with a fresh IV each time', async () => {
+    const context = await newContext();
+    const wrapper = scopeDekWrapper(context, 'secrets');
     const dek = generateDek();
 
     const wrappedOnce = await wrapper.wrapDek(dek);
     const wrappedTwice = await wrapper.wrapDek(dek);
-    expect(wrappedOnce).not.toBe(wrappedTwice);
+    expect(wrappedOnce.wrapped_dek).not.toBe(wrappedTwice.wrapped_dek);
+    expect(wrappedOnce.key_generation).toBe(1);
 
     expect(await wrapper.unwrapDek(wrappedOnce)).toEqual(dek);
   });
 
-  it('produces a sealed-blob-layout wrapped_dek when no context.dek override is supplied', async () => {
+  it('opens an old generation after a rotation and wraps new items under the new one', async () => {
+    const { context } = await openTestSession({ generations: { secrets: 2 } });
+    const wrapper = scopeDekWrapper(context, 'secrets');
+    const dek = generateDek();
+
+    const current = await wrapper.wrapDek(dek);
+    expect(current.key_generation).toBe(2);
+
+    const old = { wrapped_dek: await sealBlob(dek, context.session.kek('secrets', 1)), key_generation: 1 };
+    expect(await wrapper.unwrapDek(old)).toEqual(dek);
+  });
+
+  it('does not open under another scope\'s KEK', async () => {
+    const context = await newContext();
+    const wrapped = await scopeDekWrapper(context, 'secrets').wrapDek(generateDek());
+    await expect(scopeDekWrapper(context, 'notes').unwrapDek(wrapped)).rejects.toThrow();
+  });
+
+  it('sends a sealed-blob wrapped_dek and the current key_generation', async () => {
     const calls = mockFetch({ status: 201, body: { data: storedSecret } });
 
     await createSecret(await newContext(), 'my secret');
@@ -126,12 +136,13 @@ describe('Task 13 — the vault KEK wraps and unwraps the per-item DEK', () => {
       c.charCodeAt(0),
     );
     expect(blob[0]).toBe(0x01);
+    expect(calls[0].body!.key_generation).toBe(1);
   });
 
   it('lets a caller override the wrapper via context.dek', async () => {
     const fake: DekWrapper = {
-      wrapDek: async (dek) => bytesToBase64(dek),
-      unwrapDek: async (wrapped) => Uint8Array.from(atob(wrapped), (c) => c.charCodeAt(0)),
+      wrapDek: async (dek) => ({ wrapped_dek: bytesToBase64(dek), key_generation: 7 }),
+      unwrapDek: async (wrapped) => Uint8Array.from(atob(wrapped.wrapped_dek), (c) => c.charCodeAt(0)),
     };
     const calls = mockFetch({ status: 201, body: { data: storedSecret } });
 
@@ -140,6 +151,46 @@ describe('Task 13 — the vault KEK wraps and unwraps the per-item DEK', () => {
       c.charCodeAt(0),
     );
     expect(blob).toHaveLength(DEK_LENGTH);
+    expect(calls[0].body!.key_generation).toBe(7);
+  });
+
+  it('re-reads the keyrings and retries once on 409 STALE_KEY_GENERATION, then surfaces a second', async () => {
+    const { context, device } = await openTestSession();
+    const { wrapKekForDevice, generateScopeKek } = await import('@/lib/keyrings');
+    const next = generateScopeKek();
+    const keyrings = {
+      current: { secrets: 2 },
+      generations: [
+        {
+          scope: 'secrets',
+          generation: 2,
+          wrapped_key: await wrapKekForDevice(next, context.session.userAddress, {
+            deviceId: device.deviceId,
+            x25519PublicKey: bytesToBase64(device.x25519PublicKey),
+            mlkemPublicKey: bytesToBase64(device.mlkemPublicKey),
+          }),
+        },
+      ],
+    };
+    const calls = mockFetch(
+      { status: 409, body: { code: 'STALE_KEY_GENERATION' } },
+      { status: 200, body: { data: keyrings } },
+      { status: 201, body: { data: storedSecret } },
+    );
+
+    await createSecret(context, 'x', { id: ID_A });
+    expect(calls.map((call) => call.method)).toEqual(['POST', 'GET', 'POST']);
+    expect(calls[0].body!.key_generation).toBe(1);
+    expect(calls[2].body!.key_generation).toBe(2);
+    expect(calls[2].body!.id).toBe(ID_A);
+
+    const again = mockFetch(
+      { status: 409, body: { code: 'STALE_KEY_GENERATION' } },
+      { status: 200, body: { data: keyrings } },
+      { status: 409, body: { code: 'STALE_KEY_GENERATION' } },
+    );
+    await expect(createSecret(context, 'y')).rejects.toMatchObject({ code: 'STALE_KEY_GENERATION' });
+    expect(again).toHaveLength(3);
   });
 
   it('generates a random 256-bit DEK', () => {
@@ -292,7 +343,8 @@ describe('reads', () => {
 describe('deletes', () => {
   it('sends a required body carrying the secret-delete signature', async () => {
     const calls = mockFetch({ status: 204 });
-    await deleteSecret(await newContext(), ID_A);
+    const context = await newContext();
+    await deleteSecret(context, ID_A);
 
     const body = calls[0].body!;
     expect(calls[0].method).toBe('DELETE');
@@ -306,7 +358,7 @@ describe('deletes', () => {
           [ID_A],
         ),
         body.signature as string,
-        publicKey,
+        spkiBase64ToUncompressedPoint(context.session.device.signingPublicKey),
       ),
     ).toBe(true);
   });
@@ -314,7 +366,8 @@ describe('deletes', () => {
   it('sorts and de-duplicates the batch before signing', async () => {
     const calls = mockFetch({ status: 200, body: { data: { requested: 3, deleted: 3 } } });
 
-    const result = await deleteSecrets(await newContext(), [ID_C, ID_A, ID_B, ID_A]);
+    const context = await newContext();
+    const result = await deleteSecrets(context, [ID_C, ID_A, ID_B, ID_A]);
 
     const body = calls[0].body!;
     expect(body.ids).toEqual([ID_A, ID_B, ID_C]);
@@ -327,7 +380,7 @@ describe('deletes', () => {
           [ID_A, ID_B, ID_C],
         ),
         body.signature as string,
-        publicKey,
+        spkiBase64ToUncompressedPoint(context.session.device.signingPublicKey),
       ),
     ).toBe(true);
     expect(result).toEqual({ requested: 3, deleted: 3 });
@@ -341,14 +394,16 @@ describe('deletes', () => {
     });
   });
 
-  it('attaches password only on a Paranoid account', async () => {
+  it('never sends a password or a PIN proof, in either mode: a delete is the device\'s', async () => {
     const paranoid = mockFetch({ status: 204 });
     await deleteSecret(await newContext({ paranoid: true }), ID_A);
-    expect(paranoid[0].body).toHaveProperty('password');
+    expect(paranoid[0].body).not.toHaveProperty('password');
+    expect(paranoid[0].body).not.toHaveProperty('pin_proof');
 
     const standard = mockFetch({ status: 204 });
     await deleteSecret(await newContext({ paranoid: false }), ID_A);
     expect(standard[0].body).not.toHaveProperty('password');
+    expect(standard[0].body).not.toHaveProperty('pin_proof');
   });
 
   it('refuses a non-canonical id in either form', async () => {

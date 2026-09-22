@@ -26,7 +26,7 @@ export default function ShareItemDialog({
   onClose: () => void;
 }) {
   const context = useAuthedContext();
-  const { reportError } = useCryple();
+  const { reportError, fullDevice } = useCryple();
 
   const [connections, setConnections] = useState<ConnectionRecord[]>([]);
   const [recipients, setRecipients] = useState<ItemRecipientRecord[]>([]);
@@ -120,9 +120,11 @@ export default function ShareItemDialog({
               {recipients.map((recipient) => (
                 <li key={recipient.id} className="flex items-center justify-between gap-3">
                   <span className="font-mono text-compact text-ink">{recipient.username}</span>
-                  <Button variant="ghost" disabled={busy} onClick={() => revoke(recipient.id)}>
-                    Remove
-                  </Button>
+                  {fullDevice ? (
+                    <Button variant="ghost" disabled={busy} onClick={() => revoke(recipient.id)}>
+                      Remove
+                    </Button>
+                  ) : null}
                 </li>
               ))}
             </ul>

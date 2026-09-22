@@ -1,3 +1,4 @@
+import { openTestSession } from '@/test/session';
 import { describe, expect, it } from 'vitest';
 import {
   HANDOFF_OFFER,
@@ -14,7 +15,7 @@ const ORIGIN = 'https://app.cryple.example';
 const DOCUMENT_URL = '/docs/00000000-0000-4000-8000-000000000000';
 
 const OFFER: HandoffOffer = {
-  material: { seedHex: 'ab'.repeat(64), serverAuthToken: 'cd'.repeat(32) },
+  material: (await openTestSession()).context.session.exportForHandoff(),
   token: 'header.payload.signature',
 };
 

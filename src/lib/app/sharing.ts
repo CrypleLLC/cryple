@@ -29,14 +29,20 @@ export const SHARING_COPY = {
   fingerprintTitle: 'Check their fingerprint before you accept',
   fingerprintWhy:
     'Read this code to them out loud, on a call or in person, and check it matches what they ' +
-    'see. It is the one part of sharing that maths cannot do for you: if the server ever ' +
-    'substituted their keys for its own, this is where it shows.',
+    'see. It is the fingerprint of their account key, which never changes. It is the one part ' +
+    'of sharing that maths cannot do for you: if the server ever substituted another account ' +
+    'for theirs, this is where it shows.',
+  fingerprintMine: 'Yours',
+  fingerprintTheirs: 'Theirs',
   fingerprintConfirm: 'It matches — accept',
   fingerprintDecline: 'Decline',
   fingerprintChanged:
-    'This connection’s fingerprint has changed since it was first checked on this device. ' +
-    'Cryple keys never change, so someone may be intercepting it, and nothing more can be sent ' +
-    'through it. Tell them through another channel, then disconnect and invite each other again.',
+    'This connection’s account key is not the one you first checked. An account key never ' +
+    'changes, so someone may be intercepting it, and nothing more can be sent through it. Tell ' +
+    'them through another channel, then disconnect and invite each other again.',
+  fingerprintProofInvalid:
+    'Their sharing keys could not be traced back to their account key, so they may not be ' +
+    'theirs. Nothing can be sent through this connection until they can.',
   fingerprintAccountChanged:
     'The username on this connection now leads to a different account from the one you ' +
     'connected to, so nothing more can be sent through it.',
@@ -62,6 +68,19 @@ export const SHARING_COPY = {
     'This connection was made by an older version of Cryple and its key exchange cannot be ' +
     'reproduced. Disconnect and invite each other again — nothing that was sent through it can ' +
     'be recovered.',
+  lostConnection:
+    'This connection is gone. To share again, send a new invitation and compare fingerprints ' +
+    'again. A connection is never repaired by looking their username up again: the name may ' +
+    'belong to someone else now.',
+  nicknameLabel: 'Nickname',
+  nicknameHint: 'Only you see it. It is sealed in your address book, never sent in the clear.',
+  nicknameSave: 'Save nickname',
+  copying: 'Copying…',
+  copyExplain:
+    'A copy is re-encrypted under a key of your own, so it survives the original being deleted ' +
+    'or unshared. Anything you can read can be copied like this, which is why sharing never ' +
+    'claims otherwise.',
+  nothingToCopy: 'There is nothing to copy yet: they have not saved this document since sharing it.',
   connectionGone:
     'The connection this came through is gone, so this can no longer be opened. Ask them to ' +
     'invite you again — do not reuse the old one.',
@@ -121,16 +140,27 @@ export function connectionsToVerify(
 export interface TrustAlarm {
   tone: 'danger' | 'warning';
   message: string;
+  newInvitation: boolean;
 }
 
 export function trustAlarm(trust: ConnectionTrust): TrustAlarm | undefined {
   switch (trust.status) {
-    case 'keys-changed':
-      return { tone: 'danger', message: SHARING_COPY.fingerprintChanged };
+    case 'root-changed':
+      return { tone: 'danger', message: SHARING_COPY.fingerprintChanged, newInvitation: true };
+    case 'proof-invalid':
+      return { tone: 'danger', message: SHARING_COPY.fingerprintProofInvalid, newInvitation: false };
     case 'account-changed':
-      return { tone: 'danger', message: SHARING_COPY.fingerprintAccountChanged };
+      return {
+        tone: 'danger',
+        message: `${SHARING_COPY.fingerprintAccountChanged} ${SHARING_COPY.lostConnection}`,
+        newInvitation: true,
+      };
     case 'unresolvable':
-      return { tone: 'warning', message: SHARING_COPY.fingerprintUncheckable };
+      return {
+        tone: 'warning',
+        message: `${SHARING_COPY.fingerprintUncheckable} ${SHARING_COPY.lostConnection}`,
+        newInvitation: true,
+      };
     case 'trusted':
     case 'unpinned':
       return undefined;

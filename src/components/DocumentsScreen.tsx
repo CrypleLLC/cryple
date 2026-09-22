@@ -34,7 +34,7 @@ import ShareItemDialog from './ShareItemDialog';
 
 export default function DocumentsScreen() {
   const context = useAuthedContext();
-  const { reportError } = useCryple();
+  const { reportError, fullDevice } = useCryple();
 
   const [summaries, setSummaries] = useState<DocumentSummary[]>();
   const [message, setMessage] = useState<string>();
@@ -165,7 +165,7 @@ export default function DocumentsScreen() {
             </Button>
           )}
 
-          {selecting && selected.length > 0 && (
+          {fullDevice && selecting && selected.length > 0 && (
             <Button variant="danger" disabled={busy} onClick={() => setConfirming(true)}>
               <TrashIcon className="h-4 w-4" />
               Delete

@@ -80,6 +80,7 @@ class FakeServer {
     return {
       id: 'doc',
       wrapped_dek: 'wrapped',
+      key_generation: 1,
       snapshot_ciphertext: this.snapshotCiphertext,
       snapshot_seq: this.snapshotSeq,
       revision: this.revision,

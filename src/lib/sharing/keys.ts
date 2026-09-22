@@ -129,18 +129,14 @@ export function publishedRecipientKeys(record: {
   };
 }
 
-export async function keyFingerprint(keys: RecipientKeys): Promise<string> {
-  const material = new Uint8Array(keys.x25519PublicKey.length + keys.mlkemPublicKey.length);
-  material.set(keys.x25519PublicKey, 0);
-  material.set(keys.mlkemPublicKey, keys.x25519PublicKey.length);
-
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', material));
+export async function rootFingerprint(rootPublicKeySpki: string): Promise<string> {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest('SHA-256', base64ToBytes(rootPublicKeySpki)),
+  );
   const hex = bytesToHex(digest).toUpperCase();
-
   const groups: string[] = [];
   for (let i = 0; i < FINGERPRINT_GROUPS; i += 1) {
     groups.push(hex.slice(i * FINGERPRINT_GROUP_SIZE, (i + 1) * FINGERPRINT_GROUP_SIZE));
   }
-
   return groups.join('-');
 }

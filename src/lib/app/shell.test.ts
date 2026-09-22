@@ -45,9 +45,12 @@ describe("turning on the second factor", () => {
     expect(checkUpgrade(mnemonic, pin, "999999")).toMatchObject({ ok: false });
   });
 
-  it("says the upgrade is one-way, in the same words as onboarding", () => {
-    expect(SECOND_FACTOR_COPY.offered.oneWayDoor).toBe(MODE_COPY.oneWayDoor);
-    expect(SECOND_FACTOR_COPY.enabled.oneWayDoor).toBe(MODE_COPY.oneWayDoor);
+  it("says, before the call, that the change is one-way and a forgotten account PIN ends the account", () => {
+    expect(SECOND_FACTOR_COPY.offered.oneWayDoor).toMatch(/no way back to Standard/);
+    expect(SECOND_FACTOR_COPY.offered.oneWayDoor).toMatch(/lost for ever/);
+    expect(SECOND_FACTOR_COPY.offered.oneWayDoor).toMatch(/deliberate choice, not a lesser one/);
+    expect(SECOND_FACTOR_COPY.enabled.oneWayDoor).toMatch(/no reset/);
+    expect(MODE_COPY.oneWayDoor).toMatch(/lost for ever/);
   });
 
   it("never offers to turn the second factor off", () => {
@@ -56,60 +59,37 @@ describe("turning on the second factor", () => {
     );
   });
 
-  it("explains why the phrase is asked for — the local copy is re-sealed under the new PIN", () => {
-    expect(SECOND_FACTOR_COPY.offered.phrasePrompt).toMatch(/re-encrypts/);
+  it("explains why the phrase is asked for — it signs the change and is not kept", () => {
+    expect(SECOND_FACTOR_COPY.offered.phrasePrompt).toMatch(/signs this change/);
+    expect(SECOND_FACTOR_COPY.offered.phrasePrompt).toMatch(/does not keep it/);
     expect(SECOND_FACTOR_COPY.phraseMismatch).toMatch(/different account/);
   });
 
-  it("describes the upgrade as a sign-in requirement, not as gaining a local PIN", () => {
-    // Both modes have a PIN now, so "adds a PIN to this device" would be false —
-    // what changes is that the server starts requiring it too.
-    expect(SECOND_FACTOR_COPY.offered.summary).toMatch(/to sign in/);
-    expect(SECOND_FACTOR_COPY.enabledNotice).toMatch(
-      /required to sign in anywhere/,
-    );
+  it("describes Paranoid as a PIN on everything the phrase alone could do, not as a sign-in step", () => {
+    expect(SECOND_FACTOR_COPY.offered.summary).toMatch(/adding a device/);
+    expect(SECOND_FACTOR_COPY.offered.summary).not.toMatch(/to sign in/);
+    expect(SECOND_FACTOR_COPY.enabledNotice).toMatch(/whenever your recovery phrase is used/);
   });
 });
 
 describe("leaving a session", () => {
-  it("offers logging out in both modes — it is never the only thing missing", () => {
-    for (const remembers of [true, false]) {
-      expect(sessionExits(remembers).map((exit) => exit.id)).toContain(
-        "log-out",
-      );
-    }
+  it("offers both ways to leave, and says which one each is", () => {
+    expect(sessionExits().map((exit) => exit.id)).toEqual(["lock", "remove-browser"]);
   });
 
-  it("offers a plain lock only when the device has a phrase to come back to", () => {
-    expect(sessionExits(true).map((exit) => exit.id)).toEqual([
-      "lock",
-      "log-out",
-    ]);
-    expect(sessionExits(false).map((exit) => exit.id)).toEqual(["log-out"]);
-  });
-
-  it("confirms only the log out that erases the stored phrase", () => {
-    const [lock, logOut] = sessionExits(true);
-
+  it("locks without asking, because the device stays and the PIN brings you back", () => {
+    const [lock] = sessionExits();
     expect(lock.confirm).toBeUndefined();
     expect(lock.destructive).toBe(false);
-    expect(logOut.confirm).toBeDefined();
-    expect(logOut.destructive).toBe(true);
+    expect(lock.description).toMatch(/PIN/);
   });
 
-  it("does not warn a Standard user about erasing something they never stored", () => {
-    const [logOut] = sessionExits(false);
-
-    expect(logOut.confirm).toBeUndefined();
-    expect(logOut.destructive).toBe(false);
-    expect(logOut.description).toMatch(/recovery phrase again/);
-  });
-
-  it("promises the account survives, since logging out is local only", () => {
-    const [, logOut] = sessionExits(true);
-
-    expect(logOut.confirm).toMatch(/recovery phrase/i);
-    expect(logOut.confirm).toMatch(/untouched/i);
+  it("confirms removing this browser, and says the phrase is then needed", () => {
+    const [, remove] = sessionExits();
+    expect(remove.destructive).toBe(true);
+    expect(remove.confirm).toMatch(/recovery phrase/i);
+    expect(remove.confirm).toMatch(/untouched/i);
+    expect(remove.description).toMatch(/recovery phrase/);
   });
 });
 
@@ -141,6 +121,7 @@ describe("the vault index", () => {
         id: "0c892e57-93cf-423a-a9e9-fee5a9f87681",
         ciphertext: "AQIDBA==",
         wrapped_dek: "x",
+        key_generation: 1,
         version: "v1",
         created_at: "2026-07-26T12:00:00Z",
         updated_at: "2026-07-26T12:00:00Z",
@@ -213,6 +194,7 @@ describe("the vault index", () => {
       id: entry.id,
       ciphertext: "AQIDBA==",
       wrapped_dek: "x",
+      key_generation: 1,
       version: "v1",
       created_at: entry.updatedAt,
       updated_at: entry.updatedAt,
@@ -230,6 +212,7 @@ describe("the vault index", () => {
       id: "x",
       ciphertext,
       wrapped_dek: "x",
+      key_generation: 1,
       version: "v1",
       created_at: "2026-07-26T12:00:00Z",
       updated_at: "2026-07-26T12:00:00Z",

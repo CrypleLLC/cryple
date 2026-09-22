@@ -132,6 +132,7 @@ export async function request<T = unknown>(
       status: response.status,
       endpoint,
       allow: response.headers.get('Allow') ?? undefined,
+      retryAfterSeconds: parseRetryAfter(response.headers.get('Retry-After')),
     });
   }
 
@@ -149,6 +150,13 @@ export async function request<T = unknown>(
   };
 }
 
+export function parseRetryAfter(value: string | null): number | undefined {
+  if (value === null || !/^\d+$/.test(value.trim())) {
+    return undefined;
+  }
+  return Number.parseInt(value.trim(), 10);
+}
+
 function fallbackCode(status: number): ApiErrorCode {
   switch (status) {
     case 400:
@@ -161,6 +169,8 @@ function fallbackCode(status: number): ApiErrorCode {
       return 'METHOD_NOT_ALLOWED';
     case 409:
       return 'CONFLICT';
+    case 429:
+      return 'TOO_MANY_REQUESTS';
     case 503:
       return 'NOT_READY';
     default:
