@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { UNLOCK_COPY } from '@/lib/app';
 import { useCryple } from './CrypleProvider';
-import { Button, Card, Field, Notice } from './ui';
+import { Button, Card, Notice, PinField } from './ui';
 
 export default function Unlock() {
   const { unlock, startOver } = useCryple();
@@ -34,11 +34,8 @@ export default function Unlock() {
           void submit();
         }}
       >
-        <Field
+        <PinField
           label="PIN"
-          type="password"
-          inputMode="numeric"
-          maxLength={6}
           autoFocus
           value={pin}
           onChange={(event) => setPin(event.target.value)}

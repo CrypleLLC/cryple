@@ -22,7 +22,7 @@ import {
 } from '@/lib/app';
 import { parseScopeList } from '@/lib/scopes';
 import { useCryple } from './CrypleProvider';
-import { Button, Card, Field, Notice, TextArea } from './ui';
+import { Button, Card, Notice, PinField, TextArea } from './ui';
 
 export default function Onboarding() {
   const { createAccount, enrolBrowser, enterVault, notice } = useCryple();
@@ -321,23 +321,6 @@ function PinStep({
       subtitle={signingUp ? PIN_STEP_COPY.subtitle : PIN_STEP_COPY.signIn}
     >
       <div className="space-y-4">
-        <Field
-          label="PIN"
-          type="password"
-          inputMode="numeric"
-          maxLength={6}
-          value={pin}
-          onChange={(event) => setPin(event.target.value)}
-        />
-        <Field
-          label="Confirm PIN"
-          type="password"
-          inputMode="numeric"
-          maxLength={6}
-          value={confirmation}
-          onChange={(event) => setConfirmation(event.target.value)}
-        />
-
         {signingUp ? (
           <fieldset className="space-y-3 rounded-xl border border-line bg-raised p-4">
             <legend className="px-1 text-compact font-semibold text-ink">
@@ -365,6 +348,13 @@ function PinStep({
             {paranoid ? <p className="text-compact text-warning">{MODE_COPY.oneWayDoor}</p> : null}
           </fieldset>
         ) : null}
+
+        <PinField label="PIN" value={pin} onChange={(event) => setPin(event.target.value)} />
+        <PinField
+          label="Confirm PIN"
+          value={confirmation}
+          onChange={(event) => setConfirmation(event.target.value)}
+        />
 
         {message ? <Notice tone="danger">{message}</Notice> : null}
 

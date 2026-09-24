@@ -96,6 +96,9 @@ const config = [
   // this browser's non-extractable CryptoKeys, which only IndexedDB can store,
   // and its PIN-sealed material. src/lib/files/handles.ts keeps one
   // FileSystemFileHandle per unfinished upload.
+  // store.ts also reaches localStorage, to delete the PIN-wrapped seed an
+  // earlier deployment left in browsers that ran it. It only removes; it never
+  // reads or writes. See src/lib/device/README.md.
   {
     files: ['src/lib/device/store.ts', 'src/lib/files/handles.ts'],
     rules: {

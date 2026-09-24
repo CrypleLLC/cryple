@@ -667,8 +667,9 @@ export async function removeOtherDevices(
   context: AuthedContext,
   mnemonic: string,
   deviceIds: readonly string[],
-): Promise<void> {
+): Promise<string[]> {
   const { session } = context;
+  const rotated: string[] = [];
   await withAccountRoot(session.userAddress, mnemonic, async (root) => {
     const state = await readVerifiedChain(
       context,
@@ -702,10 +703,13 @@ export async function removeOtherDevices(
         })),
       Object.fromEntries(built.created.map((generation) => [generation.scope, generation.generation])),
     );
+    rotated.push(...built.created.map((generation) => generation.scope));
     for (const generation of built.created) {
       zeroSharingPair(generation.sharingKeys);
     }
   });
+
+  return rotated;
 }
 
 function zeroSharingPair(keys: BuiltBatch['created'][number]['sharingKeys']): void {

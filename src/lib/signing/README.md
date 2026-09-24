@@ -5,8 +5,8 @@ destructive request carries. **Built once, here — never per call site.** This 
 hardest piece of the client and the most repeated.
 
 Task 8 of [tasks.md](../../../tasks/tasks.md). Implements
-[auth/challenge.md](../../../../api-general/.docs/auth/challenge.md) and
-[auth/signed-actions.md](../../../../api-general/.docs/auth/signed-actions.md).
+[auth/challenge.md](../../../../api-general/docs/auth/challenge.md) and
+[auth/signed-actions.md](../../../../api-general/docs/auth/signed-actions.md).
 
 ## The authorization rule
 
@@ -18,9 +18,9 @@ Task 8 of [tasks.md](../../../tasks/tasks.md). Implements
 
 Signing is behind a `Signer` (`signBytes(message) → 64-byte P1363`):
 
-| Signer | Key | Signs |
-| --- | --- | --- |
-| `cryptoKeySigner(key)` | This device's non-extractable WebCrypto key | Sign-in, device actions, chain statements |
+| Signer                     | Key                                            | Signs                                                          |
+| -------------------------- | ---------------------------------------------- | -------------------------------------------------------------- |
+| `cryptoKeySigner(key)`     | This device's non-extractable WebCrypto key    | Sign-in, device actions, chain statements                      |
 | `rawKeySigner(privateKey)` | The root, derived from the phrase for one flow | Sign-up, enrolment, root actions, root-signed chain statements |
 
 Both hash with SHA-256 over the payload bytes and produce the same format, so the server verifies
@@ -39,16 +39,16 @@ either direction.
 
 ## API
 
-| Export | Purpose |
-| --- | --- |
-| `createChallenge()`, `currentTimestamp()` | 64 lowercase hex; Unix **seconds** |
-| `buildAuthPayload` / `buildActionPayload` | The strings above |
-| `signPayload(payload, signer)` | → base64 of 64 raw bytes |
-| `verifyPayload(payload, sig, publicKey)` | Accepts high-S signatures, which Go and WebCrypto produce |
-| `signAuthEnvelope(signer)` | Sign-up (root) and sign-in (device) |
-| `signActionEnvelope(action, args, device)` | Device actions only; refuses a root action |
-| `signRootAction(action, args, root, pinProof?)` | Root actions; adds `pin_proof`, an Ed25519 signature over `payloadDigest(payload)`, the same SHA-256 digest the root signature covers. Refuses a proof on an action that never takes one |
-| `ACTIONS`, `getActionSpec`, `normalizeActionArgs` | The action table as data |
+| Export                                            | Purpose                                                                                                                                                                                  |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createChallenge()`, `currentTimestamp()`         | 64 lowercase hex; Unix **seconds**                                                                                                                                                       |
+| `buildAuthPayload` / `buildActionPayload`         | The strings above                                                                                                                                                                        |
+| `signPayload(payload, signer)`                    | → base64 of 64 raw bytes                                                                                                                                                                 |
+| `verifyPayload(payload, sig, publicKey)`          | Accepts high-S signatures, which Go and WebCrypto produce                                                                                                                                |
+| `signAuthEnvelope(signer)`                        | Sign-up (root) and sign-in (device)                                                                                                                                                      |
+| `signActionEnvelope(action, args, device)`        | Device actions only; refuses a root action                                                                                                                                               |
+| `signRootAction(action, args, root, pinProof?)`   | Root actions; adds `pin_proof`, an Ed25519 signature over `payloadDigest(payload)`, the same SHA-256 digest the root signature covers. Refuses a proof on an action that never takes one |
+| `ACTIONS`, `getActionSpec`, `normalizeActionArgs` | The action table as data                                                                                                                                                                 |
 
 ## Things that silently break every signature
 
@@ -61,7 +61,7 @@ either direction.
 
 ## The action table
 
-`ACTIONS` encodes [signed-actions.md § Actions](../../../../api-general/.docs/auth/signed-actions.md#actions)
+`ACTIONS` encodes [signed-actions.md § Actions](../../../../api-general/docs/auth/signed-actions.md#actions)
 as data: argument order, signer (`root` or `device`), whether a PIN proof applies, and whether it
 is batchable. The count is asserted.
 

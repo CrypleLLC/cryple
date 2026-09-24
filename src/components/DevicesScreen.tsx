@@ -8,6 +8,7 @@ import {
   removeOtherDevices,
 } from '@/lib/account';
 import { listDevices } from '@/lib/keyrings';
+import { rewrapAfterRotation } from '@/lib/rekey';
 import { editAddressBook, loadAddressBook, setDeviceName } from '@/lib/sharing';
 import {
   DEVICES_COPY,
@@ -192,8 +193,9 @@ function RemoveDevice({
     setBusy(true);
     setMessage(undefined);
     try {
-      await removeOtherDevices(context, mnemonicSentence(mnemonic), [row.id]);
+      const rotated = await removeOtherDevices(context, mnemonicSentence(mnemonic), [row.id]);
       setMnemonic('');
+      await rewrapAfterRotation(context, rotated);
       await onDone(DEVICES_COPY.removed);
     } catch (error) {
       setMessage(

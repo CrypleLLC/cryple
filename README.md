@@ -200,5 +200,5 @@ The test suite includes a fixture that reproduces every key derivation against v
 the backend. No backend test reads that file, so this suite is the only cross-client check that
 these derivations are correct anywhere in the project. Keep it green.
 
-One note for anyone auditing: Cryple has no secp256k1 key and no Ethereum account, and wallet
-integration is not planned. The key derivation path reserves that branch and never uses it.
+One note for anyone auditing: Cryple has no secp256k1 key and no Ethereum account. The key
+derivation path reserves that branch and never derives from it.

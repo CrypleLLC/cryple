@@ -35,7 +35,7 @@ import {
   type SignUpDraft,
 } from '@/lib/account';
 import { AuthRejectedError } from '@/lib/auth';
-import { browserDeviceStore } from '@/lib/device/store';
+import { browserDeviceStore, discardAbandonedLocalStorage } from '@/lib/device/store';
 import type { Scope } from '@/lib/scopes';
 import { SessionKeystore } from '@/lib/session';
 import { requestSession, serveSession } from '@/lib/session/handoff';
@@ -139,6 +139,7 @@ export function CrypleProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     const boot = async () => {
+      discardAbandonedLocalStorage();
       const offer = await requestSession();
       if (offer !== undefined && !cancelled) {
         try {

@@ -1,7 +1,7 @@
 # `lib/sealed` — the symmetric sealed-blob envelope
 
 One AES-256-GCM envelope, used everywhere this client encrypts something **under a key it
-already holds** (as opposed to wrapping *for someone else*, which is
+already holds** (as opposed to wrapping _for someone else_, which is
 [`lib/pqxdh`](../pqxdh/README.md)).
 
 ```
@@ -9,14 +9,14 @@ sealed(key, plaintext) =         0x01 ‖ iv(12) ‖ AES-256-GCM(key, iv, plaint
                         base64( … ) for anything that goes in a TEXT column
 ```
 
-| Consumer | Key | Plaintext | Encoding |
-| --- | --- | --- | --- |
-| `ciphertext` — [`lib/secrets`](../secrets/README.md) | that item's DEK | the item payload | base64 |
-| `wrapped_dek` — every item domain | the item scope's KEK of `key_generation` ([`lib/keyrings`](../keyrings/README.md)) | the item DEK | base64 |
-| a root keyring wrap, the sharing material, a stored share sub-key | the root wrap key, the `sharing` KEK, the item scope's KEK | a scope KEK, sharing keys, a sub-key | base64 |
-| the device record's `sealed` — [`lib/device`](../device/README.md) | the `device-wrap` PIN key | the device's ML-KEM seed | base64 |
-| the note and document payloads | that item's DEK | the item payload | base64 |
-| a drive chunk — [`lib/files`](../files/README.md) | that file's DEK | `u32be(index) ‖ u32be(count) ‖ payload` | **raw** |
+| Consumer                                                           | Key                                                                                | Plaintext                               | Encoding |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------- | --------------------------------------- | -------- |
+| `ciphertext` — [`lib/secrets`](../secrets/README.md)               | that item's DEK                                                                    | the item payload                        | base64   |
+| `wrapped_dek` — every item domain                                  | the item scope's KEK of `key_generation` ([`lib/keyrings`](../keyrings/README.md)) | the item DEK                            | base64   |
+| a root keyring wrap, the sharing material, a stored share sub-key  | the root wrap key, the `sharing` KEK, the item scope's KEK                         | a scope KEK, sharing keys, a sub-key    | base64   |
+| the device record's `sealed` — [`lib/device`](../device/README.md) | the `device-wrap` PIN key                                                          | the device's ML-KEM seed                | base64   |
+| the note and document payloads                                     | that item's DEK                                                                    | the item payload                        | base64   |
+| a drive chunk — [`lib/files`](../files/README.md)                  | that file's DEK                                                                    | `u32be(index) ‖ u32be(count) ‖ payload` | **raw**  |
 
 ## Base64 is an encoding, not part of the envelope
 
@@ -32,7 +32,7 @@ and there is one implementation of it.
 ## The layout is ratified
 
 **Ratified 2026-08-08** as
-[`crypto/ECDSA.md` § Sealed Blob Format](../../../../api-general/.docs/crypto/ECDSA.md)
+[`crypto/ECDSA.md` § Sealed Blob Format](../../../../api-general/docs/crypto/ECDSA.md)
 (Decision B), byte-for-byte as written above, and pinned by the `sealed_blob` vector in
 `test-vectors.json`. An earlier revision of this file called the layout provisional and pointed
 at a proposal document; that proposal landed.

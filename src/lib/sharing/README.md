@@ -1,7 +1,7 @@
 # `lib/sharing`
 
-The client half of safe sharing. The protocol is [Task 102](../../../../tasks.md#task-102) D1–D10,
-adapted to devices in [device-keys.md § Sharing under scopes](../../../../api-general/.docs/crypto/device-keys.md#sharing-under-scopes).
+The client half of safe sharing. The protocol is [Task 102](../../../../tasks-closed.md#task-102) D1–D10,
+adapted to devices in [device-keys.md § Sharing under scopes](../../../../api-general/docs/crypto/device-keys.md#sharing-under-scopes).
 The wire contract is [front-end-endpoints.md § 18](../../../front-end-endpoints.md#18-sharing-endpoints).
 
 ## One connection per pair, both ways
@@ -34,6 +34,38 @@ what the other side shared.
 after. **Never a counter IV**: one sub-key protects many wraps, so `wrapUnderConnection` draws
 its own IV and takes none.
 
+## Re-establishing after a rotation — `reestablishConnection`
+
+A connection key was established to the counterparty's `sharing` keys of one generation. Removing a
+device rotates every keyring it held, so after a rotation that connection key is still one the
+removed device could derive. `reestablishConnection` mints a new one
+([Task 131](../../../../tasks-closed.md#task-131)).
+
+`SharingScreen` calls it for every connection each time the screen loads, and a failure on one is
+skipped rather than surfaced — it is a catch-up, not something the user asked for. It is a no-op
+unless all of these hold:
+
+- the connection is **outbound** (only the sender can re-establish — PQXDH encapsulation needs the
+  recipient's public keys and nothing of the recipient's that a rotation invalidates);
+- it is **accepted**;
+- the counterparty resolves to the same `user_address` it did before;
+- `connectionIsStale` — their published `sharing` generation is **newer** than
+  `recipient_key_generation`. It never re-establishes backwards, whatever the server reports;
+- the counterparty is still **trusted** against the pinned root key. `mayPin` is false here: a
+  catch-up in the background must never quietly pin a key nobody compared.
+
+It then re-wraps **every** share on the connection, in both directions. `listConnectionShares`
+gives the set; each share's DEK is opened under the old sub-key and sealed under the new one. The
+scope a share was sent under is not recorded on the row, so each is tried scope by scope until one
+opens — that is what makes a share's scope still decide which sub-key applies. All of it goes in
+one request, because the server applies it in one transaction: sub-keys without share wraps would
+leave nothing on the connection openable.
+
+**What it buys, and what it does not.** A removed device that knew the old sharing keys cannot
+derive the new connection key, so it cannot read anything shared from now on. It could already read
+what was shared before, and re-wrapping does not take that back — the same prospective limit
+[revocation](#sharing-is-a-reference-and-revocation-is-prospective) has.
+
 ## Trust: the root key, pinned, and the proof path
 
 The fingerprint two people compare out of band is the **fingerprint of the root public key**
@@ -42,14 +74,14 @@ The fingerprint two people compare out of band is the **fingerprint of the root 
 `verifyConnection` resolves the counterparty's current username, reads
 `GET /users/{uuid}/public-keys`, and returns one of:
 
-| Status | Means | UI |
-| --- | --- | --- |
-| `trusted` | Same account, the proof path verifies, the root key matches the pin | Nothing |
-| `unpinned` | An invitation still awaiting this account, not compared yet | The acceptance screen shows the fingerprint |
-| `root-changed` | The root key differs from the pin | **Danger**, *Do not send*, new invitation |
-| `proof-invalid` | The sharing keys do not trace back to the root | **Danger**, *Do not send* |
-| `account-changed` | The username now leads to another account | **Danger**, new invitation |
-| `unresolvable` | The username leads nowhere, or the lookup failed | Warning, new invitation |
+| Status            | Means                                                               | UI                                          |
+| ----------------- | ------------------------------------------------------------------- | ------------------------------------------- |
+| `trusted`         | Same account, the proof path verifies, the root key matches the pin | Nothing                                     |
+| `unpinned`        | An invitation still awaiting this account, not compared yet         | The acceptance screen shows the fingerprint |
+| `root-changed`    | The root key differs from the pin                                   | **Danger**, _Do not send_, new invitation   |
+| `proof-invalid`   | The sharing keys do not trace back to the root                      | **Danger**, _Do not send_                   |
+| `account-changed` | The username now leads to another account                           | **Danger**, new invitation                  |
+| `unresolvable`    | The username leads nowhere, or the lookup failed                    | Warning, new invitation                     |
 
 - **A sharing-key rotation is not an alarm.** New sharing keys are announced in the account's
   chain, and the proof path (`lib/chain` → `verifyProofPath`) ties them to the pinned root.
@@ -82,14 +114,14 @@ device id).
 ## Never re-resolve a username to repair a connection
 
 A nickname can outlive the connection it pointed at, and a deleted account's usernames are
-released ([Task 118](../../../../tasks.md#task-118)). Re-resolving a stored username to heal a
+released ([Task 118](../../../../tasks-closed.md#task-118)). Re-resolving a stored username to heal a
 broken connection would silently attach to whoever holds that name now. **A lost connection is a
 new invitation and a fresh fingerprint comparison, never a repair.** The alarms for
 `account-changed` and `unresolvable` say so.
 
 ## Copying a shared item — `copySharedItem`
 
-*Copy to my own account* re-encrypts what the recipient can read under a **fresh DEK of their
+_Copy to my own account_ re-encrypts what the recipient can read under a **fresh DEK of their
 own**, wrapped under their own scope KEK at the current generation. Re-wrapping the shared DEK
 would leave the original owner holding a key that opens the copy for ever. A file is downloaded,
 decrypted, re-encrypted and uploaded again, and counts against the recipient's quota. A document
@@ -107,7 +139,7 @@ survives the original being deleted or unshared.
 
 `describeReceived` unwraps each arrival far enough to name it: a file's name from its sealed
 manifest, a secret's and a note's through the `SharedTextView` functions `lib/app` passes in.
-**It never throws.** Every failure comes back as an *Unreadable* item naming the step that
+**It never throws.** Every failure comes back as an _Unreadable_ item naming the step that
 failed, so one bad share can never hide the others.
 
 ## Inputs to a KDF context are checked at the boundary
@@ -119,5 +151,5 @@ nobody can reproduce, and the damage would only show on the far side, later.
 ## Where it lives in the UI
 
 Inviting, reviewing a fingerprint, nicknames and disconnecting are in the **Sharing** settings
-tab. What arrived is the **Shared** tab, a tile grid with *Download* and *Copy to my own account*.
+tab. What arrived is the **Shared** tab, a tile grid with _Download_ and _Copy to my own account_.
 Only item types the device holds are offered.

@@ -23,7 +23,7 @@ App Router forces to allow inline scripts anyway.
 
 ## The policy, enforced
 
-It shipped report-only on 2026-09-13 and was switched to enforced the same day ([Task 40.6](../../../tasks/tasks.md#task-40-6)).
+It shipped report-only on 2026-09-13 and was switched to enforced the same day ([Task 40.6](../../../tasks/tasks.md)).
 There is one `Content-Security-Policy` header and no report-only copy.
 
 | Directive | Sources | Why |
