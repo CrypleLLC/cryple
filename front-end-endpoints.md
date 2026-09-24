@@ -173,6 +173,8 @@ path** is not in that category — see `405` below — and does return the envel
 | 405  | `METHOD_NOT_ALLOWED`   | The path exists but does not accept this verb.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 409  | `CONFLICT`             | The resource is not in a state that accepts the request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | 409  | `STALE_KEY_GENERATION` | A `wrapped_dek` (or a sharing sub-key or address book) sealed under a generation that is not the scope's current one. Re-read `GET /keyrings`, re-wrap under the current generation, and retry.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| 422  | `FOLDER_TOO_DEEP` | A folder create or move would make the tree deeper than 8 levels. |
+| 422  | `FOLDER_INTO_ITSELF` | A folder move would put it inside itself or its own subtree. |
 | 409  | `TOO_MANY_DEVICES`     | §19 only: the account already has `DEVICES_MAX_PER_ACCOUNT` active devices.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | 413  | `BAD_REQUEST`          | `POST /files` only ([§17](#17-files-endpoints)): the declared object exceeds `FILES_MAX_OBJECT_BYTES`. **Note the code is `BAD_REQUEST`, not a code of its own** — branch on the status, not the code, to tell this from an ordinary field rejection.                                                                                                                                                                                                                                                                                                                                                                                                |
 | 429  | `TOO_MANY_REQUESTS`    | Four budgets. Per client address: one shared by the public routes (`/sign-up`, `/sign-in`, `/auth/verify`, `/users/lookup`, `/devices/enrol`, `/devices/enrol/chain`, `/oprf/account/evaluate`), one on the device PIN routes (`/oprf/devices/{id}/evaluate`, `/confirm`), and one shared by `PUT /users/username` and `GET /users/resolve`. Per account: one on `POST /files`. The address or account sent more requests than that budget allows in the current window. `Retry-After` is the number of seconds to wait. **It says nothing about the account** — do not show it as an authentication failure, and do not retry before `Retry-After`. |
@@ -727,6 +729,49 @@ Replaces the wrapped DEK of one or more secrets under a newer `secrets` generati
 
 **Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (any id is not a canonical UUID — nothing is re-wrapped) · `400 BAD_REQUEST` (missing `key_generation`) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (empty set, or an id named twice) · `409 STALE_KEY_GENERATION` · `500 INTERNAL_ERROR`.
 
+### `GET /secrets/folders` · `PUT /secrets/folders` — the vault's tabs
+
+The tabs of the vault — how many there are, what they are called, which secret sits in which — as
+**one sealed blob** per scope. `GET /notes/folders` and `PUT /notes/folders` are the same routes for
+the spaces in notes, stored separately. The layout inside is the client's; the server never sees a
+folder name, a folder count or which item is in which folder.
+
+Both routes need the scope they are under: `/secrets/folders` needs `secrets`, `/notes/folders`
+needs `notes`. A limited device may write them — organising is not destructive.
+
+`GET` → `200 { scope, ciphertext, wrapped_dek, key_generation, revision, updated_at }`, or `404`
+before the first `PUT`.
+
+**Request (`PUT`):**
+
+```json
+{
+  "ciphertext": "sealed(DEK, folder manifest)",
+  "wrapped_dek": "sealed(scope KEK, DEK)",
+  "key_generation": 2,
+  "expected_revision": 0,
+  "challenge": "...",
+  "timestamp": 1785000000,
+  "signature": "..."
+}
+```
+
+**Signed action `folders-update`**, by the calling device, over `scope` (`secrets` or `notes`),
+`expected_revision` and the hex SHA-256 of `ciphertext`. The scope is inside the signature, so a
+body signed for one scope cannot be stored under the other.
+
+`expected_revision: 0` creates the manifest; `n` replaces revision `n` with `n+1`. Answers `200`
+with the stored row. `ciphertext` is at most 512 KiB of base64. `key_generation` must be the scope's
+current one — the DEK is wrapped under the **scope's own KEK**, not under `sharing`.
+
+**Errors:** `400 INVALID_BODY` · `400 BAD_REQUEST` (empty, oversized or non-base64 blob, a negative
+revision, no `key_generation`) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND`
+(nothing stored yet, or a device without the scope) · `409 CONFLICT` (stale revision: read, merge,
+retry) · `409 STALE_KEY_GENERATION`.
+
+⚠️ **The server validates nothing inside the tree**, because it cannot read it. A cycle, a depth
+beyond the scope's limit or a parent that does not exist are the client's to refuse on load.
+
 ---
 
 ---
@@ -947,6 +992,10 @@ Replaces the wrapped DEK of one or more notes under a newer `notes` generation, 
 
 **Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (any id is not a canonical UUID — nothing is re-wrapped) · `400 BAD_REQUEST` (missing `key_generation`) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (empty set, or an id named twice) · `409 STALE_KEY_GENERATION` · `500 INTERNAL_ERROR`.
 
+**`PUT /notes/keys` has a sibling for organisation:** the spaces are `GET /notes/folders` and
+`PUT /notes/folders`, described with the secrets routes in
+[§9](#get-secretsfolders--put-secretsfolders--the-vaults-tabs).
+
 ---
 
 ## 16. Documents Endpoints
@@ -998,6 +1047,8 @@ Creates an empty document. **JWT only** — no signature.
 ### `GET /documents`
 
 The document index: **cursors only**, no snapshot and no deltas. Paginated per [§3.1](#31-pagination). This is the endpoint to hit on app open.
+
+`?folder=<folder id>` lists one folder and `?folder=root` the top level; without it, every document. Each row carries `folder_id` when the document is in a folder.
 
 **`200 OK`**
 
@@ -1133,6 +1184,49 @@ One `document-delete` signature covering a whole set. **Sort the ids ascending a
 **`200 OK`:** `{ "requested": 2, "deleted": 2 }`
 
 `deleted` can be lower without being an error. An empty id set is `404 NOT_FOUND`, returned before the signature is checked so it cannot burn a challenge.
+
+---
+
+### Folders — `GET` · `POST /documents/folders`, `PATCH` · `DELETE /documents/folders/{id}`, `PUT /documents/folders/items`
+
+The same five routes exist under `/files/folders` for the drive. A folder is a **row** here, unlike
+the vault's tabs: the server sees which folder is inside which and which item sits where, and
+**never a name** — the name is sealed on the device under a fresh DEK wrapped by the scope's KEK,
+exactly like an item. Every route needs the scope; the delete needs a **full** device.
+
+**`GET`** → `200`, every live folder:
+
+```json
+{ "data": [ { "id": "…", "parent_id": "…", "ciphertext": "sealed(DEK, name)", "wrapped_dek": "…", "key_generation": 2, "position": 0, "created_at": "…", "updated_at": "…" } ] }
+```
+
+`parent_id` is absent at the top level.
+
+**`POST`** `{ "id": "client uuid", "parent_id": "…"?, "ciphertext", "wrapped_dek", "key_generation" }` →
+`201`, or `200` with the stored row when that `id` already exists — send a client `id` so a retry is
+safe. The folder goes after its siblings.
+
+**`PATCH /…/folders/{id}`** changes any of:
+
+- the name — `ciphertext`, `wrapped_dek` and `key_generation` together, under the current generation;
+- the place — `"parent": {}` for the top level, `"parent": {"id": "…"}` to move inside a folder;
+- the order — `"position": n`.
+
+**`DELETE /…/folders/{id}`** — signed action **`folder-delete`** over `scope` (`documents` or `files`)
+and `folder_id`. **It deletes everything under the folder**: its subfolders and every item in any of
+them, in one transaction. Documents go at once; files are marked deleted like `DELETE /files` and
+their bytes leave through the deletion queue. `200 { "folders": 3, "items": 12 }`.
+
+**`PUT /…/folders/items`** `{ "ids": [...], "folder_id": "…"? }` — moves up to 1,000 items; without
+`folder_id` they go to the top level. `200 { "requested": 2, "moved": 2 }`; an id that is not yours
+does not move. **Unsigned**: moving is organisation, not destruction. **A drive thumbnail is a file of
+its own** — move it with its file, or it stays behind.
+
+**Limits the server enforces:** at most **8 levels**; no folder inside itself or its own subtree;
+a parent or target that is deleted or not yours is `404`.
+
+**Errors:** `400 INVALID_BODY` · `400 BAD_REQUEST` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` ·
+`404 NOT_FOUND` · `409 STALE_KEY_GENERATION` · `422 FOLDER_TOO_DEEP` · `422 FOLDER_INTO_ITSELF`.
 
 ---
 
@@ -1312,6 +1406,8 @@ The listing. Returns the sealed manifests — **a directory listing is your rend
 **`200 OK`:** the same row shape as `POST`, minus `upload`, in a `data` array with a `page` object.
 
 Paginated per [§3.1](#31-pagination), the same envelope `GET /notes` and `GET /documents` use — follow `next_cursor` until `has_more` is `false`, and never build a cursor yourself.
+
+`?folder=<folder id>` lists one folder and `?folder=root` the top level; without it, every file. Each row carries `folder_id` when the file is in a folder.
 
 Rows with `r2_state: "pending"` are uploads that have not completed. They are not in the vault and cannot be downloaded, but they are not junk either: `GET /files/{id}/upload` resumes one and `DELETE /files/{id}/upload` gives its reservation back, and the sweep collects whatever is left after `FILES_ABANDONED_AFTER_SECONDS`. Show them as unfinished uploads rather than as files — or as nothing at all, which leaves the user unable to reclaim the space.
 
@@ -1908,9 +2004,50 @@ Appends one revision. **No signed action.**
 
 **Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (either id is not a canonical UUID) · `400 BAD_REQUEST` (missing `key_generation`, empty payload, ciphertext over 32 KiB) · `401 UNAUTHORIZED` · `404 NOT_FOUND` (no `passwords` scope) · `409 STALE_KEY_GENERATION`.
 
-### `GET /credentials` — the sync pull
+### `GET /credentials` — the vault listing
 
-Every revision above a cursor, in `seq` order, **tombstones included**. A client that has been offline replays them in order and arrives where a client that never was would be.
+One row per credential that still exists, at its current value, newest first. **This is the web app's listing**, and it mirrors `GET /secrets`: a tombstoned credential is absent, and no revision history is served.
+
+**`200 OK`:**
+
+```json
+{
+  "message": "Credentials retrieved successfully",
+  "data": [
+    {
+      "credential_id": "…",
+      "revision_id": "…",
+      "seq": 93,
+      "ciphertext": "…",
+      "wrapped_dek": "…",
+      "key_generation": 3,
+      "version": "v1",
+      "created_at": "…"
+    }
+  ]
+}
+```
+
+### `GET /credentials?fields=meta` — what a rotation left behind
+
+Every non-tombstone revision's wrap, **without its ciphertext**, so a client can find the stale ones without downloading the store to look.
+
+```json
+{
+  "message": "Credentials metadata retrieved successfully",
+  "data": [
+    { "credential_id": "…", "revision_id": "…", "wrapped_dek": "…", "key_generation": 2, "created_at": "…" }
+  ]
+}
+```
+
+**It names revisions, not credentials**, because every revision carries its own wrap — including the revisions of a credential that has since been deleted, whose wraps stay live until they are pruned. Feed these straight into `PUT /credentials/keys`.
+
+Any other value of `fields` is `400 INVALID_PARAM`.
+
+### `GET /credentials/sync` — the incremental pull
+
+Every revision above a cursor, in `seq` order, **tombstones included**. A client that has been offline replays them in order and arrives where a client that never was would be. **This is the extension's endpoint**: it answers "which credential matches this page" locally, so it needs the deletions as well as the writes.
 
 `?cursor=` the highest `seq` you have (omit or `0` for a full pull) · `?limit=` up to 500, default 200.
 
@@ -1973,7 +2110,7 @@ Keeps the most recent `keep_last` revisions of one credential and **destroys the
 
 ### `PUT /credentials/keys` — re-wrap after a rotation
 
-The same shape as the other stores' rekey routes, with one difference: it names **revision ids**, not credential ids. Every revision carries its own wrap, so a rotation has to move all of them — `GET /credentials` is how you enumerate them.
+The same shape as the other stores' rekey routes, with one difference: it names **revision ids**, not credential ids. Every revision carries its own wrap, so a rotation has to move all of them — `GET /credentials?fields=meta` is how you enumerate them.
 
 **Requires a `credential-rekey` signed action from a full device**, ids sorted ascending, a revision named twice refused. **Tombstones are skipped**: they seal nothing, and the schema refuses a key on one.
 

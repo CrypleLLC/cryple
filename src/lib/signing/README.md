@@ -75,6 +75,8 @@ is batchable. The count is asserted.
 - **Sharing actions bind the counterparty or the item**: `connection-invite` binds the username,
   the blob and both key generations; `connection-keys` and `address-book-update` bind a digest
   of exactly what is stored.
+- **`folders-update` binds the scope** beside the revision and the digest, so a manifest signed for
+  `secrets` cannot be stored as the `notes` one ([`lib/folders`](../folders/README.md)).
 - **`username-update` binds the normalised name**, which [`lib/users`](../users/README.md)
   applies before signing.
 

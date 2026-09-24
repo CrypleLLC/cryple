@@ -1,13 +1,14 @@
 import { request } from '@/lib/api';
 import { requireToken, type AuthedContext } from '@/lib/context';
+import { listCredentialsMeta } from '@/lib/credentials';
 import { listDocumentsMeta } from '@/lib/documents';
 import { listFiles } from '@/lib/files';
 import { scopeDekWrapper } from '@/lib/keyrings';
 import { listNotesMeta } from '@/lib/notes';
 import { listSecretsMeta } from '@/lib/secrets';
 import { zeroBytes } from '@/lib/encoding';
-import { ITEM_SCOPES, type ItemScope } from '@/lib/scopes';
-import { normalizeActionArgs, signActionEnvelope } from '@/lib/signing';
+import { DEK_SCOPES, type DekScope } from '@/lib/scopes';
+import { normalizeActionArgs, signActionEnvelope, type DeviceActionLabel } from '@/lib/signing';
 
 export const REKEY_BATCH_SIZE = 100;
 
@@ -18,7 +19,7 @@ export interface WrappedItem {
 }
 
 export interface RekeyOutcome {
-  scope: ItemScope;
+  scope: DekScope;
   requested: number;
   rekeyed: number;
 }
@@ -28,25 +29,50 @@ interface RekeyResponse {
   rekeyed: number;
 }
 
-const ACTION_BY_SCOPE = {
-  secrets: 'secret-rekey',
-  notes: 'note-rekey',
-  documents: 'document-rekey',
-  files: 'file-rekey',
-} as const satisfies Record<ItemScope, string>;
-
-async function listWrapped(context: AuthedContext, scope: ItemScope): Promise<WrappedItem[]> {
-  switch (scope) {
-    case 'secrets':
-      return listSecretsMeta(context);
-    case 'notes':
-      return listNotesMeta(context);
-    case 'documents':
-      return listDocumentsMeta(context);
-    case 'files':
-      return (await listFiles(context)).filter((file) => file.r2_state === 'ok');
-  }
+interface RekeyRoute {
+  path: string;
+  action: DeviceActionLabel;
+  idField: 'id' | 'revision_id';
+  list: (context: AuthedContext) => Promise<WrappedItem[]>;
 }
+
+const ROUTES = {
+  secrets: {
+    path: '/secrets/keys',
+    action: 'secret-rekey',
+    idField: 'id',
+    list: (context) => listSecretsMeta(context),
+  },
+  notes: {
+    path: '/notes/keys',
+    action: 'note-rekey',
+    idField: 'id',
+    list: (context) => listNotesMeta(context),
+  },
+  documents: {
+    path: '/documents/keys',
+    action: 'document-rekey',
+    idField: 'id',
+    list: (context) => listDocumentsMeta(context),
+  },
+  files: {
+    path: '/files/keys',
+    action: 'file-rekey',
+    idField: 'id',
+    list: async (context) => (await listFiles(context)).filter((file) => file.r2_state === 'ok'),
+  },
+  passwords: {
+    path: '/credentials/keys',
+    action: 'credential-rekey',
+    idField: 'revision_id',
+    list: async (context) =>
+      (await listCredentialsMeta(context)).map((meta) => ({
+        id: meta.revision_id,
+        wrapped_dek: meta.wrapped_dek,
+        key_generation: meta.key_generation,
+      })),
+  },
+} as const satisfies Record<DekScope, RekeyRoute>;
 
 export function staleItems(items: readonly WrappedItem[], generation: number): WrappedItem[] {
   return items
@@ -64,11 +90,12 @@ export function batched<T>(items: readonly T[], size = REKEY_BATCH_SIZE): T[][] 
 
 async function rewrapBatch(
   context: AuthedContext,
-  scope: ItemScope,
+  scope: DekScope,
   batch: readonly WrappedItem[],
 ): Promise<RekeyResponse> {
+  const route: RekeyRoute = ROUTES[scope];
   const wrapper = scopeDekWrapper(context, scope);
-  const items: { id: string; wrapped_dek: string }[] = [];
+  const items: Record<string, string>[] = [];
   let generation = 0;
 
   for (const item of batch) {
@@ -76,22 +103,21 @@ async function rewrapBatch(
     try {
       const wrapped = await wrapper.wrapDek(dek);
       generation = wrapped.key_generation;
-      items.push({ id: item.id, wrapped_dek: wrapped.wrapped_dek });
+      items.push({ [route.idField]: item.id, wrapped_dek: wrapped.wrapped_dek });
     } finally {
       zeroBytes(dek);
     }
   }
 
-  const action = ACTION_BY_SCOPE[scope];
   const normalized = normalizeActionArgs(
-    action,
-    items.map((item) => item.id),
+    route.action,
+    batch.map((item) => item.id),
   );
-  const envelope = await signActionEnvelope(action, normalized, context.session.signer());
+  const envelope = await signActionEnvelope(route.action, normalized, context.session.signer());
 
   const response = await request<RekeyResponse>({
     method: 'PUT',
-    path: `/${scope}/keys`,
+    path: route.path,
     token: requireToken(context),
     body: { key_generation: generation, items, ...envelope },
   });
@@ -99,12 +125,9 @@ async function rewrapBatch(
   return response.data;
 }
 
-export async function rewrapScope(
-  context: AuthedContext,
-  scope: ItemScope,
-): Promise<RekeyOutcome> {
+export async function rewrapScope(context: AuthedContext, scope: DekScope): Promise<RekeyOutcome> {
   const { generation } = context.session.currentKek(scope);
-  const stale = staleItems(await listWrapped(context, scope), generation);
+  const stale = staleItems(await ROUTES[scope].list(context), generation);
 
   let rekeyed = 0;
   for (const batch of batched(stale)) {
@@ -119,7 +142,7 @@ export async function rewrapAfterRotation(
   context: AuthedContext,
   scopes: readonly string[],
 ): Promise<RekeyOutcome[]> {
-  const wanted = ITEM_SCOPES.filter(
+  const wanted = DEK_SCOPES.filter(
     (scope) => scopes.includes(scope) && context.session.holds(scope),
   );
 

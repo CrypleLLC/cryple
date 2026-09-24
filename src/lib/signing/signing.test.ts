@@ -205,8 +205,8 @@ describe('the four batchable delete actions', () => {
 });
 
 describe('the action table matches signed-actions.md', () => {
-  it('covers all 27 actions', () => {
-    expect(Object.keys(ACTIONS)).toHaveLength(27);
+  it('covers all 29 actions', () => {
+    expect(Object.keys(ACTIONS)).toHaveLength(29);
   });
 
   it('leaves writing a credential unsigned, which is what keeps an extension on the JWT side', () => {
@@ -260,6 +260,8 @@ describe('the action table matches signed-actions.md', () => {
     expect(ACTIONS['share-create'].args).toEqual(['connection_id', 'item_type', 'item_id']);
     expect(ACTIONS['connection-keys'].args).toEqual(['connection_id', 'keys_digest']);
     expect(ACTIONS['address-book-update'].args).toEqual(['expected_revision', 'ciphertext_digest']);
+    expect(ACTIONS['folder-delete'].args).toEqual(['scope', 'folder_id']);
+    expect(ACTIONS['folders-update'].args).toEqual(['scope', 'expected_revision', 'ciphertext_digest']);
   });
 
   it('makes the four deletes batchable and signed by the device', () => {

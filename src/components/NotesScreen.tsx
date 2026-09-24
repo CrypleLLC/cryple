@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { DragEvent } from 'react';
 import { deleteNotes, listNotes, openNote, type NoteRecord } from '@/lib/notes';
+import { HOME_FOLDER_ID } from '@/lib/folders';
 import {
   NOTE_MINIATURE_TEXT_SHARE,
   batchDeleteConfirmation,
@@ -10,6 +12,7 @@ import {
   defaultIconSize,
   gridTemplate,
   miniatureTextPixels,
+  NOTE_NOUNS,
   noteCountLabel,
   readIconSize,
   retainSelectable,
@@ -21,9 +24,10 @@ import {
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
 import NoteEditor from './NoteEditor';
-import { CheckIcon, NotesIcon, PlusIcon, SharingIcon, TrashIcon } from './icons';
-import { Button, Card, Empty, Notice, SizeStepper, Spinner } from './ui';
+import { CheckIcon, NotesIcon, SharingIcon, TrashIcon } from './icons';
+import { Button, Card, Empty, FloatingAddButton, Notice, SizeStepper, Spinner } from './ui';
 import ShareItemDialog from './ShareItemDialog';
+import FolderTabs, { MoveToTab, startItemDrag, useFolderTabs } from './FolderTabs';
 
 type View = { mode: 'list' } | { mode: 'note'; id?: string };
 
@@ -79,17 +83,42 @@ export default function NotesScreen() {
     void load();
   }, [load]);
 
-  const tiles = useMemo(() => (notes === undefined ? undefined : buildNoteTiles(notes)), [notes]);
+  const noteIds = useMemo(() => notes?.map((note) => note.record.id), [notes]);
+  const folders = useFolderTabs('notes', noteIds);
+  const filterTab = folders.filter;
+  const fileInTab = folders.file;
+  const inActiveTab = folders.active !== HOME_FOLDER_ID;
+
+  const tiles = useMemo(
+    () => (notes === undefined ? undefined : filterTab(buildNoteTiles(notes), (tile) => tile.id)),
+    [notes, filterTab],
+  );
+
+  const deleteTabItems = useCallback(
+    async (ids: string[]) => {
+      await deleteNotes(context, ids);
+      setSelected([]);
+      await load();
+    },
+    [context, load],
+  );
 
   const closeEditor = useCallback(() => {
     setView({ mode: 'list' });
     void load();
   }, [load]);
 
-  const noteSaved = useCallback((record: NoteRecord, plaintext: string) => {
-    setView({ mode: 'note', id: record.id });
-    setNotes((current) => mergeNote(current, record, plaintext));
-  }, []);
+  const noteSaved = useCallback(
+    (record: NoteRecord, plaintext: string) => {
+      const created = notes?.some((note) => note.record.id === record.id) !== true;
+      setView({ mode: 'note', id: record.id });
+      setNotes((current) => mergeNote(current, record, plaintext));
+      if (created && inActiveTab) {
+        void fileInTab(record.id);
+      }
+    },
+    [notes, inActiveTab, fileInTab],
+  );
 
   function stopSelecting() {
     setSelecting(false);
@@ -110,6 +139,7 @@ export default function NotesScreen() {
     setDeleting(true);
     try {
       const result = await deleteNotes(context, selected);
+      await folders.forget(selected);
       setSelecting(false);
       setSelected([]);
       setConfirmingBatch(false);
@@ -133,6 +163,8 @@ export default function NotesScreen() {
 
   return (
     <div className="space-y-5">
+      <FolderTabs state={folders} nouns={NOTE_NOUNS} label="Note spaces" deleteItems={deleteTabItems} />
+
       {message ? <Notice tone="danger">{message}</Notice> : null}
 
       {sharing ? (
@@ -155,6 +187,11 @@ export default function NotesScreen() {
             />
             {selecting ? (
               <>
+                <MoveToTab
+                  state={folders}
+                  itemIds={selected}
+                  label={`Move ${noteCountLabel(selected.length)} to another space`}
+                />
                 <Button
                   variant="secondary"
                   disabled={deleting || selected.length === tiles.length}
@@ -208,8 +245,9 @@ export default function NotesScreen() {
       ) : tiles.length === 0 ? (
         <Card>
           <Empty icon={<NotesIcon className="h-6 w-6" />}>
-            No notes yet. Use the button in the corner to write one — it is encrypted on this
-            device before it is stored.
+            {notes !== undefined && notes.length > 0
+              ? 'This space is empty. Drag a note onto its name, or write one while the space is open.'
+              : 'No notes yet. Use the button in the corner to write one — it is encrypted on this device before it is stored.'}
           </Empty>
         </Card>
       ) : (
@@ -226,6 +264,9 @@ export default function NotesScreen() {
               selected={selected.includes(tile.id)}
               busy={deleting}
               onOpen={() => openTile(tile.id)}
+              onDragStart={(event) =>
+                startItemDrag(event, selected.includes(tile.id) ? selected : [tile.id])
+              }
               onShare={() => setSharing(tile.id)}
               onToggle={() => {
                 setSelecting(true);
@@ -237,15 +278,7 @@ export default function NotesScreen() {
       )}
 
       {selecting ? null : (
-        <button
-          type="button"
-          aria-label="New note"
-          title="New note"
-          onClick={() => setView({ mode: 'note' })}
-          className="brand-gradient fixed bottom-6 right-6 z-20 flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lift transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-ground"
-        >
-          <PlusIcon className="h-6 w-6 shrink-0" />
-        </button>
+        <FloatingAddButton label="New note" spread onClick={() => setView({ mode: 'note' })} />
       )}
     </div>
   );
@@ -260,6 +293,7 @@ function NoteFile({
   onOpen,
   onShare,
   onToggle,
+  onDragStart,
 }: {
   tile: NoteTile;
   textPixels: number;
@@ -269,9 +303,10 @@ function NoteFile({
   onOpen: () => void;
   onShare: () => void;
   onToggle: () => void;
+  onDragStart: (event: DragEvent) => void;
 }) {
   return (
-    <li className="group relative">
+    <li className="group relative" draggable={!busy} onDragStart={onDragStart}>
       <button
         type="button"
         onClick={onOpen}

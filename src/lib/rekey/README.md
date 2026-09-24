@@ -4,8 +4,8 @@
 already stored stays wrapped under the generation it was written with. This module walks those
 items and re-wraps their DEKs under the current one.
 
-**It is the only module that reaches into all four item domains**, which is why it is its own
-module rather than something in [`lib/keyrings`](../keyrings/README.md): the item domains import
+**It is the only module that reaches into all five scopes that wrap DEKs**, which is why it is its
+own module rather than something in [`lib/keyrings`](../keyrings/README.md): those domains import
 `lib/keyrings`, so the seam has to sit above them, the way [`lib/account`](../account/README.md)
 does.
 
@@ -26,17 +26,34 @@ is the stronger move and is not what this is.
 | Export | What |
 | --- | --- |
 | `rewrapScope(context, scope)` | Lists one scope, re-wraps everything below the current generation, returns `{scope, requested, rekeyed}` |
-| `rewrapAfterRotation(context, scopes)` | The scopes a batch rotated, filtered to item scopes this device holds, in order |
+| `rewrapAfterRotation(context, scopes)` | The scopes a batch rotated, filtered to `DEK_SCOPES` this device holds, in order |
 | `staleItems(items, generation)` | The items below `generation`, sorted by id |
 | `batched(items, size)` | Splits into `REKEY_BATCH_SIZE` batches |
 
 `removeOtherDevices` ([`lib/account`](../account/README.md)) returns the scopes its batch rotated,
 and `DevicesScreen` passes them straight to `rewrapAfterRotation`.
 
+## One table, five scopes
+
+Each scope differs only in where its items are listed, what the route is, what the action is called,
+and what the id field is named. `ROUTES` holds exactly that, and the unwrap / re-wrap / sign / `PUT`
+path is written once:
+
+| Scope | Listing | Route | Names |
+| --- | --- | --- | --- |
+| `secrets`, `notes`, `documents` | `?fields=meta` | `PUT /<scope>/keys` | `id` |
+| `files` | `GET /files` | `PUT /files/keys` | `id` |
+| `passwords` | `GET /credentials?fields=meta` | `PUT /credentials/keys` | **`revision_id`** |
+
+**`passwords` is in `DEK_SCOPES` but not in `ITEM_SCOPES`**, and that distinction exists for this
+module. `ITEM_SCOPES` means "a scope whose items this walks by item id"; credentials are walked by
+**revision** id, because [an edit is an append](../credentials/README.md) and every revision carries
+its own wrap. A credential edited weekly for five years is 260 wraps to move, not one — which is
+why the batching matters here more than anywhere else.
+
 ## Why the listings carry `wrapped_dek`
 
-Every one of the four listings this module reads — `GET /secrets?fields=meta`, `GET /notes`,
-`GET /documents`, `GET /files` — returns `wrapped_dek` and `key_generation` beside the id. Without
+Every listing this module reads returns `wrapped_dek` and `key_generation` beside the id. Without
 them there is no way to tell which items a rotation left behind except to download every item and
 look, which for documents means every snapshot and for files every object. A wrap is 84 bytes.
 
@@ -51,6 +68,8 @@ look, which for documents means every snapshot and for files every object. A wra
   will carry the current generation itself; a row the drive has not finished storing has nothing
   worth re-wrapping.
 - **A scope this device does not hold is skipped**, and left to a device that does.
+- **`sharing` is never walked.** Its keys are not item DEKs; a rotation there is
+  [`reestablishConnection`](../sharing/README.md), not a re-wrap.
 
 ## What is still open
 

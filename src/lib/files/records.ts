@@ -18,6 +18,7 @@ export interface FileRecord {
   gcs_state: GcsState;
   created_at: string;
   updated_at: string;
+  folder_id?: string;
 }
 
 export interface UploadPart {

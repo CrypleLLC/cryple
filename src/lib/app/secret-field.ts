@@ -27,6 +27,10 @@ export function pinInputAttributes(length: number, cssMasking: boolean): PinInpu
   return { ...secretInputAttributes(true, cssMasking), inputMode: 'numeric', maxLength: length };
 }
 
+export function maskedInputClass(base: string, ...extra: (string | undefined)[]): string {
+  return [base, ...extra].filter((part) => part !== undefined && part.length > 0).join(' ');
+}
+
 export function secretInputAttributes(masked: boolean, cssMasking: boolean): SecretInputAttributes {
   if (!masked) {
     return { type: 'text', autoComplete: 'off', ...PASSWORD_MANAGER_IGNORE };

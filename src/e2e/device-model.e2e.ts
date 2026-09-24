@@ -28,6 +28,7 @@ import { downloadFile, uploadFile } from '@/lib/files';
 import { createNote, getNote, openNote } from '@/lib/notes';
 import { rewrapAfterRotation } from '@/lib/rekey';
 import { createSecret, getSecret, openSecret } from '@/lib/secrets';
+import { getCredential, openCredential, writeCredential } from '@/lib/credentials';
 import { SessionKeystore } from '@/lib/session';
 import {
   AlreadyConnectedError,
@@ -198,6 +199,9 @@ describe('127.8 items under keyrings and generations, 127.6 enrolment, 127.10 re
     ids.note = (await createNote(ctx, '# Plan\nbody')).note.id;
     ids.document = (await createDocumentFromSnapshot(ctx, documentSnapshot('Will'))).id;
     ids.file = (await uploadFile(ctx, smallFile('deed.txt', 'the deed'))).id;
+    ids.credential = (
+      await writeCredential(ctx, '{"site":"bank.example","username":"ada","password":"hunter2"}')
+    ).revision.credential_id;
   });
 
   it('round-trips every item type under generation 1', async () => {
@@ -248,9 +252,24 @@ describe('127.8 items under keyrings and generations, 127.6 enrolment, 127.10 re
     const ctx = context(second);
     const before = await getSecret(ctx, ids.secret);
 
-    const outcomes = await rewrapAfterRotation(ctx, ['secrets', 'notes', 'documents', 'files', 'sharing']);
+    const beforeCredential = await getCredential(ctx, ids.credential);
 
-    expect(outcomes.map((outcome) => outcome.scope)).toEqual(['secrets', 'notes', 'documents', 'files']);
+    const outcomes = await rewrapAfterRotation(ctx, [
+      'secrets',
+      'notes',
+      'documents',
+      'files',
+      'passwords',
+      'sharing',
+    ]);
+
+    expect(outcomes.map((outcome) => outcome.scope)).toEqual([
+      'secrets',
+      'notes',
+      'documents',
+      'files',
+      'passwords',
+    ]);
     for (const outcome of outcomes) {
       expect(outcome.rekeyed).toBe(outcome.requested);
       expect(outcome.requested).toBeGreaterThan(0);
@@ -269,7 +288,22 @@ describe('127.8 items under keyrings and generations, 127.6 enrolment, 127.10 re
     const file = await downloadFile(ctx, ids.file);
     expect(new TextDecoder().decode(file.bytes)).toBe('the deed');
 
-    const second_pass = await rewrapAfterRotation(ctx, ['secrets', 'notes', 'documents', 'files']);
+    const afterCredential = await getCredential(ctx, ids.credential);
+    expect(afterCredential.key_generation).toBe(2);
+    expect(afterCredential.wrapped_dek).not.toBe(beforeCredential.wrapped_dek);
+    expect(afterCredential.ciphertext).toBe(beforeCredential.ciphertext);
+    expect(JSON.parse(await openCredential(ctx, afterCredential))).toMatchObject({
+      site: 'bank.example',
+      password: 'hunter2',
+    });
+
+    const second_pass = await rewrapAfterRotation(ctx, [
+      'secrets',
+      'notes',
+      'documents',
+      'files',
+      'passwords',
+    ]);
     expect(second_pass.every((outcome) => outcome.requested === 0)).toBe(true);
   });
 

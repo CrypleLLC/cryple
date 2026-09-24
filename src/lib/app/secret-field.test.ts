@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PASSWORD_MANAGER_IGNORE,
   TEXT_SECURITY_CLASS,
+  maskedInputClass,
   pinInputAttributes,
   secretInputAttributes,
   supportsTextSecurity,
@@ -90,5 +91,28 @@ describe('pinInputAttributes', () => {
     const attributes = pinInputAttributes(6, true);
     expect(attributes.inputMode).toBe('numeric');
     expect(attributes.maxLength).toBe(6);
+  });
+});
+
+describe('maskedInputClass', () => {
+  const base = 'border bg-surface text-ink';
+
+  it('adds the masking class to the base rather than replacing it', () => {
+    const merged = maskedInputClass(base, pinInputAttributes(6, true).className);
+
+    expect(merged).toContain('text-ink');
+    expect(merged).toContain('bg-surface');
+    expect(merged).toContain(TEXT_SECURITY_CLASS);
+  });
+
+  it('keeps the base intact when there is nothing to add', () => {
+    expect(maskedInputClass(base, undefined)).toBe(base);
+    expect(maskedInputClass(base, '')).toBe(base);
+  });
+
+  it('composes several additions in order', () => {
+    expect(maskedInputClass(base, 'pr-11', TEXT_SECURITY_CLASS)).toBe(
+      `${base} pr-11 ${TEXT_SECURITY_CLASS}`,
+    );
   });
 });

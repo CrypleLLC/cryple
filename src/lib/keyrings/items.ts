@@ -1,6 +1,6 @@
 import type { AuthedContext } from '@/lib/context';
 import { openBlob, sealBlob } from '@/lib/sealed';
-import type { ItemScope } from '@/lib/scopes';
+import type { DekScope } from '@/lib/scopes';
 import { refreshKeyrings } from './api';
 
 export interface WrappedDek {
@@ -13,7 +13,7 @@ export interface DekWrapper {
   unwrapDek(record: WrappedDek): Promise<Uint8Array>;
 }
 
-export function scopeDekWrapper(context: AuthedContext, scope: ItemScope): DekWrapper {
+export function scopeDekWrapper(context: AuthedContext, scope: DekScope): DekWrapper {
   const { session } = context;
   return {
     async wrapDek(dek) {

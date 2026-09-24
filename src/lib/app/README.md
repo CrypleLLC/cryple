@@ -13,7 +13,9 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | `sign-out.ts` | Lock and *Remove this browser* |
 | `transfers.ts` | Uploads in flight, including a queue paused by `429` |
 | `vault.ts` | The vault index view model, received-ciphertext integrity check, and the local secret name/value format |
+| `passwords.ts` | The credential payload format (`site`, `username`, `password`, optional `note`), the row builder sorted by site then username, and the host-only site label |
 | `notes.ts` | The notes file-grid view model — title, thumbnail, selection, character budget and autosave state |
+| `folders.ts` | The folder copy and view models: the tab strip (`buildFolderTabs`, `itemsInTab`, tab naming and deleting) and the documents/drive tree (folder naming, what a delete takes, why a move was refused) |
 | `icon-size.ts` | The four-step size scale shared by all three grids, the columns each draws, and the remembered choice per screen |
 | `modal.ts` | A modal's keyboard contract, backdrop dismissal and scroll-lock counting |
 | `shell.ts` | `accountInitial`, the sidebar avatar's letter |
