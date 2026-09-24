@@ -1,6 +1,6 @@
 import { ApiError, assertCanonicalUuid, request, USERNAME_MALFORMED } from '@/lib/api';
-import { deriveServerAuthToken } from '@/lib/pin';
-import { signActionEnvelope } from '@/lib/signing';
+import type { PublishedSharingKeys, StoredChainEvent } from '@/lib/chain';
+import { signActionEnvelope, signRootAction, type PinProofSigner, type Signer } from '@/lib/signing';
 import { requireToken, type AuthedContext } from '@/lib/context';
 
 const USER_ADDRESS_PATTERN = /^[0-9a-f]{64}$/;
@@ -28,7 +28,7 @@ export interface AccountRecord {
   user_address: string;
   username: string;
   uuid: string;
-  has_password: boolean;
+  paranoid: boolean;
   created_at: string;
 }
 
@@ -40,8 +40,9 @@ export interface UsernameResolution {
 export interface PublicKeysRecord {
   uuid: string;
   user_address: string;
-  encryption_public_key_x25519: string;
-  encryption_public_key_mlkem: string;
+  root_public_key: string;
+  sharing_keys: PublishedSharingKeys;
+  proof: StoredChainEvent[];
 }
 
 export async function getMe(context: AuthedContext): Promise<AccountRecord> {
@@ -58,7 +59,7 @@ export async function fetchAccountMode(
   context: AuthedContext,
 ): Promise<{ paranoid: boolean; account: AccountRecord }> {
   const account = await getMe(context);
-  return { paranoid: account.has_password, account };
+  return { paranoid: account.paranoid, account };
 }
 
 export async function lookupUsername(
@@ -86,15 +87,7 @@ export async function updateUsername(
     throw new MalformedUsernameError(username);
   }
 
-  const envelope = signActionEnvelope(
-    'username-update',
-    [claimed],
-    {
-      privateKey: context.session.identityPrivateKey,
-      serverAuthToken: context.session.serverAuthToken(),
-    },
-    { paranoid: context.paranoid },
-  );
+  const envelope = await signActionEnvelope('username-update', [claimed], context.session.signer());
 
   await request<void>({
     method: 'PUT',
@@ -146,99 +139,23 @@ export async function getPublicKeys(
   return response.data;
 }
 
-export type EnableSecondFactorOutcome =
-  | { status: 'enabled' }
-  | { status: 'already-enabled' };
-
-export async function enableSecondFactor(
+export async function deleteAccount(
   context: AuthedContext,
-  newPin: string,
-): Promise<EnableSecondFactorOutcome> {
-  const newToken = await deriveServerAuthToken(newPin, context.session.userAddress);
-
-  const envelope = signActionEnvelope(
-    'enable-second-factor',
-    [newToken],
-    { privateKey: context.session.identityPrivateKey },
-    { paranoid: false },
-  );
-
-  try {
-    await request<void>({
-      method: 'POST',
-      path: '/users/second-factor',
-      token: requireToken(context),
-      timeoutMs: context.timeoutMs,
-      body: { new_password: newToken, ...envelope },
-    });
-  } catch (error) {
-    if (error instanceof ApiError && error.isCredentialFailure) {
-      const { paranoid } = await fetchAccountMode(context);
-      if (paranoid) {
-        await context.session.rekeySecondFactor(newPin);
-        return { status: 'already-enabled' };
-      }
-    }
-    throw error;
-  }
-
-  await context.session.rekeySecondFactor(newPin);
-  return { status: 'enabled' };
-}
-
-export async function rotateSecondFactor(
-  context: AuthedContext,
-  newPin: string,
+  root: Signer,
+  pinProof?: PinProofSigner,
 ): Promise<void> {
-  const newToken = await deriveServerAuthToken(newPin, context.session.userAddress);
-
-  const envelope = signActionEnvelope(
-    'rotate-second-factor',
-    [newToken],
-    {
-      privateKey: context.session.identityPrivateKey,
-      serverAuthToken: context.session.serverAuthToken(),
-    },
-    { paranoid: true },
+  const envelope = await signRootAction(
+    'account-delete',
+    [context.session.userAddress],
+    root,
+    pinProof,
   );
 
   await request<void>({
-    method: 'PUT',
-    path: '/users/password',
+    method: 'DELETE',
+    path: '/users',
     token: requireToken(context),
     timeoutMs: context.timeoutMs,
-    body: { new_password: newToken, ...envelope },
+    body: envelope,
   });
-
-  await context.session.rekeySecondFactor(newPin);
-}
-
-export async function deleteAccount(context: AuthedContext): Promise<void> {
-  const envelope = signActionEnvelope(
-    'account-delete',
-    [context.session.userAddress],
-    {
-      privateKey: context.session.identityPrivateKey,
-      serverAuthToken: context.session.serverAuthToken(),
-    },
-    { paranoid: context.paranoid },
-  );
-
-  try {
-    await request<void>({
-      method: 'DELETE',
-      path: '/users',
-      token: requireToken(context),
-      timeoutMs: context.timeoutMs,
-      body: envelope,
-    });
-  } catch (error) {
-    if (error instanceof ApiError && error.isCredentialFailure) {
-      return;
-    }
-    throw error;
-  } finally {
-    context.tokens.clear();
-    context.session.lock();
-  }
 }

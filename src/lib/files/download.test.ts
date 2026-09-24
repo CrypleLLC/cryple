@@ -1,10 +1,10 @@
+import { openTestSession } from '@/test/session';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { sha256 } from '@noble/hashes/sha2.js';
-import vectors from '@/test/fixtures/test-vectors.json';
 import { TokenStore } from '@/lib/api';
-import { SessionKeystore } from '@/lib/session';
 import { bytesToHex, concatBytes } from '@/lib/encoding';
-import { generateDek, vaultKekDekWrapper } from '@/lib/secrets';
+import { generateDek } from '@/lib/secrets';
+import { scopeDekWrapper, type WrappedDek } from '@/lib/keyrings';
 import type { AuthedContext } from '@/lib/context';
 import {
   DownloadBufferExceededError,
@@ -24,8 +24,7 @@ import { CHUNK_PAYLOAD_BYTES, layoutFor } from './layout';
 const ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
 
 async function newContext(): Promise<AuthedContext> {
-  const session = new SessionKeystore({ idleTimeoutMs: 0 });
-  await session.unlockWithMnemonic(vectors.seed_and_user_address.mnemonic, '481937');
+  const { session } = (await openTestSession()).context;
   const tokens = new TokenStore();
   tokens.set('jwt-token');
   return { session, tokens, paranoid: false };
@@ -55,6 +54,7 @@ interface Stored {
   object: Uint8Array;
   ciphertext: string;
   wrapped_dek: string;
+  key_generation: number;
   size_bytes: number;
   sha256: string;
   dek: Uint8Array;
@@ -84,7 +84,7 @@ async function store(
   return {
     object,
     ciphertext: await sealManifest(manifest, dek),
-    wrapped_dek: await vaultKekDekWrapper(context.session.vaultKek).wrapDek(dek),
+    ...(await scopeDekWrapper(context, 'files').wrapDek(dek)),
     size_bytes: layout.storedBytes,
     sha256: bytesToHex(sha256(object)),
     dek,
@@ -107,6 +107,7 @@ function mockApi(stored: Stored, object?: Uint8Array, overrides: Record<string, 
                 id: ID,
                 ciphertext: stored.ciphertext,
                 wrapped_dek: stored.wrapped_dek,
+                key_generation: stored.key_generation,
                 size_bytes: stored.size_bytes,
                 ciphertext_sha256: stored.sha256,
                 version: 'v1',
@@ -255,11 +256,7 @@ describe('what the stream refuses', () => {
     const owner = await newContext();
     const stored = await store(bytes(40_000), owner);
 
-    const stranger = new SessionKeystore({ idleTimeoutMs: 0 });
-    await stranger.unlockWithMnemonic(
-      'legal winner thank year wave sausage worth useful legal winner thank yellow',
-      '481937',
-    );
+    const stranger = (await openTestSession()).context.session;
     const strangerContext: AuthedContext = {
       session: stranger,
       tokens: new TokenStore(),
@@ -277,7 +274,7 @@ describe('decrypting a stream directly', () => {
     const context = await newContext();
     const plaintext = bytes(40_000);
     const stored = await store(plaintext, context);
-    const dek = await vaultKekDekWrapper(context.session.vaultKek).unwrapDek(stored.wrapped_dek);
+    const dek = await scopeDekWrapper(context, 'files').unwrapDek(stored as unknown as WrappedDek);
 
     const out = decryptStream(streamOf(stored.object), stored.manifest, dek);
     const reader = out.getReader();
@@ -291,7 +288,7 @@ describe('decrypting a stream directly', () => {
     const context = await newContext();
     const plaintext = bytes(40_000);
     const stored = await store(plaintext, context);
-    const dek = await vaultKekDekWrapper(context.session.vaultKek).unwrapDek(stored.wrapped_dek);
+    const dek = await scopeDekWrapper(context, 'files').unwrapDek(stored as unknown as WrappedDek);
 
     const slices: Uint8Array[] = [];
     for (let at = 0; at < stored.object.length; at += 997) {
@@ -316,7 +313,7 @@ describe('ranged reads, for seeking', () => {
     const context = await newContext();
     const plaintext = bytes(CHUNK_PAYLOAD_BYTES + 100_000);
     const stored = await store(plaintext, context);
-    const dek = await vaultKekDekWrapper(context.session.vaultKek).unwrapDek(stored.wrapped_dek);
+    const dek = await scopeDekWrapper(context, 'files').unwrapDek(stored as unknown as WrappedDek);
 
     let requested = '';
     const fetchImpl = (async (_url: string, init: RequestInit) => {
@@ -338,7 +335,7 @@ describe('ranged reads, for seeking', () => {
   it('refuses a chunk served from the wrong offset', { timeout: 30_000 }, async () => {
     const context = await newContext();
     const stored = await store(bytes(CHUNK_PAYLOAD_BYTES + 100_000), context);
-    const dek = await vaultKekDekWrapper(context.session.vaultKek).unwrapDek(stored.wrapped_dek);
+    const dek = await scopeDekWrapper(context, 'files').unwrapDek(stored as unknown as WrappedDek);
 
     const fetchImpl = (async () =>
       ({
@@ -420,11 +417,16 @@ describe('the whole round trip', () => {
     vi.unstubAllGlobals();
 
     const secondDevice = await newContext();
+    secondDevice.session.addKeyrings(
+      [{ scope: 'files', generation: 1, kek: uploader.session.kek('files', 1).slice() }],
+      { files: 1 },
+    );
     mockApi(
       {
         object: concatBytes(...objectParts),
         ciphertext: String(posted.ciphertext),
         wrapped_dek: String(posted.wrapped_dek),
+        key_generation: Number(posted.key_generation),
         size_bytes: Number(posted.size_bytes),
         sha256: String(patched.ciphertext_sha256),
         dek: new Uint8Array(),

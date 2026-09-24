@@ -52,6 +52,11 @@ html[data-staging] {
   --color-danger-bg: #fef2f2;
   --color-danger-line: #fecaca;
 
+  --color-folder-back: #818cf8;
+  --color-folder-front: #a5b4fc;
+  --color-folder-shine: #c7d2fe;
+  --color-folder-edge: #6366f1;
+
   --text-caption: 0.6875rem;
   --text-caption--line-height: 0.875rem;
   --text-caption--letter-spacing: 0.05em;

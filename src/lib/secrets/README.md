@@ -3,38 +3,21 @@
 Per-item encryption and the `/secrets` endpoints. Tasks 12 and 13 of
 [tasks.md](../../../tasks/tasks.md).
 
-## The vault KEK (Decision A)
+## Wrapping the item DEK
 
-`wrapDek` / `unwrapDek` used to ship as a stub that threw `KekNotSpecifiedError`: the owner-side
-KEK that produces `wrapped_dek` was unspecified, and three sources agreed it had to stay that
-way rather than be invented here — the frozen key tree derived no symmetric wrapping key,
-[`storage-plan.md` §3.1.1](../../../../api-general/.docs/storage-plan.md) said outright *"do
-not invent a KEK path here,"* and the server treats `wrapped_dek` as fully opaque, so a
-divergent client choice would fail silently, per item, forever.
-
-**Resolved 2026-08-08** in `crypto/ECDSA.md` § Step 5 (backend Task 64): another HKDF leaf under
-the existing `Cryple-Key-v1|…` scheme.
+Each item has its own random DEK. The DEK is wrapped under the **`secrets` scope KEK of the
+current generation**, and the row records which generation:
 
 ```
-vault_kek = HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|vault-kek", L=32)
+wrapped_dek    = sealed(secrets_kek[key_generation], dek)
+key_generation = the scope's current generation when the item was written
 ```
 
-`deriveVaultKek` lives in [`lib/keys`](../keys/README.md) alongside the other two HKDF leaves,
-and is exposed on the session as `SessionKeystore.vaultKek`. `vaultKekDekWrapper(vaultKek)` in
-`dek.ts` is the real `DekWrapper`: `wrapDek`/`unwrapDek` seal/open the DEK through the existing
-sealed-blob codec (`sealPayload`/`openPayload`, i.e. `@/lib/sealed`'s `sealBlob`/`openBlob`).
-
-**Scope stays narrow, per the ratified spec text.** The vault KEK "only ever wraps other keys...
-[and] never encrypts application data directly." That is why it wraps the per-item DEK and
-nothing else. A fifth
-leaf rather than a reuse of this one; see
-branch of the frozen key tree exists for a label the product no longer writes; it stays derived
-and unused, because removing a branch would move every account's keys.
-
-`wrapper(context)` (in `index.ts`, and its mirror in
-) defaults to
-`vaultKekDekWrapper(context.session.vaultKek)`. `context.dek` is still an optional override —
-kept as a test seam, not because production ever needs a second implementation.
+`wrapper(context)` is `scopeDekWrapper(context, 'secrets')` from [`lib/keyrings`](../keyrings/README.md):
+`wrapDek(dek)` returns `{ wrapped_dek, key_generation }`, and `unwrapDek(row)` picks the KEK by
+the row's `key_generation`, so items written before a rotation keep opening. `createSecret` runs
+inside `withCurrentGeneration`, which re-wraps and retries once on `409 STALE_KEY_GENERATION`.
+`context.dek` is an optional override, used by tests to exercise the transport on its own.
 
 ## The ciphertext byte layout (Decision B)
 
@@ -62,7 +45,7 @@ than guessing — a future layout change stays detectable instead of silently mi
 ## Per-item flow
 
 ```
-random 256-bit DEK → AES-256-GCM the payload → wrapDek(DEK) → POST /secrets
+random 256-bit DEK → AES-256-GCM the payload → wrap under the current secrets KEK → POST /secrets with key_generation
 ```
 
 The DEK is fresh per item and zeroed in a `finally` on every path.
@@ -81,8 +64,8 @@ The DEK is fresh per item and zeroed in a `finally` on every path.
 | `hashReceivedCiphertext` | — | See below |
 
 `SecretsContext` extends the shared `AuthedContext` with an optional `dek: DekWrapper`. Omitted,
-it defaults to `vaultKekDekWrapper(context.session.vaultKek)` — the real wrapper. Tests still use
-the override to exercise the transport/signing paths independently of the vault KEK.
+it defaults to the `secrets` scope wrapper. Deletes are signed by **this device's** key, and need
+a full device.
 
 ## Rules this domain is built to
 
@@ -116,10 +99,9 @@ malformed bodies.
 
 ## Tests
 
-`secrets.test.ts` asserts: the vault KEK matches the fixture's `hkdf_info_label` and
-`vault_kek_base64`; `vaultKekDekWrapper` unwraps the fixture `sealed_blob` vector and round-trips
-a fresh DEK with a fresh IV each call; `createSecret` without a `context.dek` override produces a
-`wrapped_dek` in the sealed-blob layout; an explicit `context.dek` override still takes
-precedence; the codec's version byte and its rejection of unknown versions; fresh IVs; that the
-plaintext never appears in a request body; `201`/`200`; the plaintext budget; canonical-id
-enforcement; and that the batch signature is over the sorted de-duplicated set.
+`secrets.test.ts`: the sealed-blob vector opens; a DEK round-trips under the current generation
+with a fresh IV each time; an old generation still opens after a rotation while new items use the
+new one; a DEK wrapped for one scope does not open under another; `createSecret` sends
+`key_generation`; on `STALE_KEY_GENERATION` it re-reads the keyrings and retries once, and a
+second refusal is surfaced; deletes are device-signed over sorted, de-duplicated ids and send no
+password or PIN proof.

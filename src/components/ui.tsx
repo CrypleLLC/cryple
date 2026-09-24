@@ -10,18 +10,32 @@ import type {
   TextareaHTMLAttributes,
 } from 'react';
 import {
+  CLIPBOARD_COPIED_LABEL,
+  createSensitiveClipboard,
   FOCUSABLE_SELECTOR,
   iconScale,
   isBackdropDismissal,
   isLargestIconSize,
   isSmallestIconSize,
+  CONTENT_GUTTER,
+  contentMeasure,
+  FLOATING_SPREAD_GUTTER,
   largerIconSize,
+  maskedInputClass,
+  pinInputAttributes,
+  PRIVATE_TEXT_PROPS,
   scrollLockTransition,
+  secretInputAttributes,
+  SECRET_FIELD_COPY,
+  SIDEBAR_INSET,
   smallerIconSize,
+  supportsTextSecurity,
   trapAction,
   type IconSize,
+  type SensitiveClipboard,
 } from '@/lib/app';
-import { CheckIcon, ClipboardIcon, CloseIcon, MinusIcon, PlusIcon } from './icons';
+import { PIN_LENGTH } from '@/lib/pin';
+import { CheckIcon, ClipboardIcon, CloseIcon, EyeIcon, EyeOffIcon, MinusIcon, PlusIcon } from './icons';
 
 export function PanelGrid({ children }: { children: ReactNode }) {
   return <div className="grid gap-8 md:grid-cols-2">{children}</div>;
@@ -100,10 +114,47 @@ export function IconButton({
   );
 }
 
+export function FloatingAddButton({
+  label,
+  spread = false,
+  className = '',
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; spread?: boolean }) {
+  const frame = spread
+    ? `${contentMeasure(true)} ${FLOATING_SPREAD_GUTTER}`
+    : `${contentMeasure(false)} ${CONTENT_GUTTER}`;
+
+  return (
+    <div className={`pointer-events-none fixed inset-x-0 bottom-0 z-40 ${SIDEBAR_INSET}`}>
+      <div className={`mx-auto flex w-full justify-end ${frame}`}>
+        <button
+          type="button"
+          title={label}
+          aria-label={label}
+          className={`brand-gradient pointer-events-auto mb-6 inline-flex h-14 w-14 cursor-pointer items-center justify-center rounded-full text-white shadow-lift transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-ground disabled:pointer-events-none disabled:cursor-default disabled:opacity-50 disabled:shadow-card ${className}`}
+          {...props}
+        >
+          <PlusIcon className="h-6 w-6 shrink-0" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+let secretClipboard: SensitiveClipboard | undefined;
+
+function clipboardForSecrets(): SensitiveClipboard | undefined {
+  if (typeof window === 'undefined' || navigator.clipboard === undefined) {
+    return undefined;
+  }
+  secretClipboard ??= createSensitiveClipboard({ clipboard: navigator.clipboard, focus: window });
+  return secretClipboard;
+}
+
 export function CopyButton({
   value,
   label = 'Copy',
-  copiedLabel = 'Copied',
+  copiedLabel = CLIPBOARD_COPIED_LABEL,
   disabled = false,
   className = '',
 }: {
@@ -127,10 +178,14 @@ export function CopyButton({
       aria-label={copied ? copiedLabel : label}
       className={className}
       onClick={() => {
-        void navigator.clipboard?.writeText(value);
-        setCopied(true);
-        clearTimeout(timer.current);
-        timer.current = setTimeout(() => setCopied(false), 2000);
+        void clipboardForSecrets()
+          ?.copy(value)
+          .then(() => {
+            setCopied(true);
+            clearTimeout(timer.current);
+            timer.current = setTimeout(() => setCopied(false), 2000);
+          })
+          .catch(() => undefined);
       }}
     >
       {copied ? <CheckIcon className="h-4 w-4 shrink-0 text-success" /> : <ClipboardIcon />}
@@ -149,15 +204,34 @@ const HINT_CLASS = 'mt-1.5 block text-compact text-ink-muted';
 export function Field({
   label,
   hint,
+  className,
   ...props
 }: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string }) {
   return (
     <label className="block">
       <span className={LABEL_CLASS}>{label}</span>
-      <input className={INPUT_CLASS} {...props} />
+      <input
+        className={maskedInputClass(INPUT_CLASS, className)}
+        {...PRIVATE_TEXT_PROPS}
+        {...props}
+      />
       {hint ? <span className={HINT_CLASS}>{hint}</span> : null}
     </label>
   );
+}
+
+export function PinField({
+  label,
+  ...props
+}: Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  'type' | 'inputMode' | 'maxLength' | 'autoComplete' | 'className'
+> & {
+  label: string;
+}) {
+  const [cssMasking] = useState(() => supportsTextSecurity());
+
+  return <Field label={label} {...pinInputAttributes(PIN_LENGTH, cssMasking)} {...props} />;
 }
 
 export function TextArea({
@@ -169,9 +243,62 @@ export function TextArea({
   return (
     <label className="block">
       <span className={LABEL_CLASS}>{label}</span>
-      <textarea className={`${INPUT_CLASS} h-28 resize-y font-mono ${className}`} {...props} />
+      <textarea
+        className={maskedInputClass(INPUT_CLASS, 'h-28 resize-y font-mono', className)}
+        {...PRIVATE_TEXT_PROPS}
+        {...props}
+      />
       {hint ? <span className={HINT_CLASS}>{hint}</span> : null}
     </label>
+  );
+}
+
+export function SecretField({
+  label,
+  value,
+  onChange,
+  revealed,
+  onRevealedChange,
+  disabled = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  revealed: boolean;
+  onRevealedChange: (revealed: boolean) => void;
+  disabled?: boolean;
+}) {
+  const [cssMasking] = useState(() => supportsTextSecurity());
+  const inputId = useId();
+  const attributes = secretInputAttributes(!revealed, cssMasking);
+
+  return (
+    <div>
+      <label htmlFor={inputId} className={LABEL_CLASS}>
+        {label}
+      </label>
+      <div className="relative">
+        <input
+          id={inputId}
+          {...PRIVATE_TEXT_PROPS}
+          {...attributes}
+          className={maskedInputClass(INPUT_CLASS, 'pr-11', attributes.className)}
+          value={value}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <IconButton
+          label={revealed ? SECRET_FIELD_COPY.hide : SECRET_FIELD_COPY.show}
+          aria-pressed={revealed}
+          aria-controls={inputId}
+          disabled={disabled}
+          onClick={() => onRevealedChange(!revealed)}
+          className="absolute right-0.5 top-[calc(50%+0.1875rem)] -translate-y-1/2"
+        >
+          {revealed ? <EyeOffIcon className="h-4 w-4 shrink-0" /> : <EyeIcon className="h-4 w-4 shrink-0" />}
+        </IconButton>
+      </div>
+    </div>
   );
 }
 

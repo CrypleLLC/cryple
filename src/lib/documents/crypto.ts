@@ -4,9 +4,9 @@ import type { DocumentRecord } from './records';
 
 export async function openDocumentDek(
   context: DocumentsContext,
-  document: Pick<DocumentRecord, 'wrapped_dek'>,
+  document: Pick<DocumentRecord, 'wrapped_dek' | 'key_generation'>,
 ): Promise<Uint8Array> {
-  return wrapper(context).unwrapDek(document.wrapped_dek);
+  return wrapper(context).unwrapDek(document);
 }
 
 export async function sealUpdate(update: Uint8Array, dek: Uint8Array): Promise<string> {

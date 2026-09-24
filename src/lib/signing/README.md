@@ -5,16 +5,26 @@ destructive request carries. **Built once, here — never per call site.** This 
 hardest piece of the client and the most repeated.
 
 Task 8 of [tasks.md](../../../tasks/tasks.md). Implements
-[auth/challenge.md](../../../../api-general/.docs/auth/challenge.md) and
-[auth/signed-actions.md](../../../../api-general/.docs/auth/signed-actions.md).
+[auth/challenge.md](../../../../api-general/docs/auth/challenge.md) and
+[auth/signed-actions.md](../../../../api-general/docs/auth/signed-actions.md).
 
 ## The authorization rule
 
-> **The JWT authorizes reads and additions. Anything that destroys or replaces existing data
-> needs the seed key — plus the second factor when the signer is in Paranoid Mode.**
+> **A device's JWT authorizes reads and additions within its scopes. Destroying data needs a
+> full device's signature. Destroying or re-keying the account needs the root, plus the PIN
+> proof on Paranoid accounts.**
 
-So `GET` anything and `POST /secrets` need only the token. Every `DELETE`, plus
-`POST /users/second-factor` and `PUT /users/password`, needs a signature from this module.
+## Who signs
+
+Signing is behind a `Signer` (`signBytes(message) → 64-byte P1363`):
+
+| Signer                     | Key                                            | Signs                                                          |
+| -------------------------- | ---------------------------------------------- | -------------------------------------------------------------- |
+| `cryptoKeySigner(key)`     | This device's non-extractable WebCrypto key    | Sign-in, device actions, chain statements                      |
+| `rawKeySigner(privateKey)` | The root, derived from the phrase for one flow | Sign-up, enrolment, root actions, root-signed chain statements |
+
+Both hash with SHA-256 over the payload bytes and produce the same format, so the server verifies
+either the same way.
 
 ## The two payload shapes
 
@@ -23,115 +33,64 @@ auth    = <challenge> ":" <timestamp>
 action  = <challenge> ":" <timestamp> ":" <action> [":" <arg> …]
 ```
 
-A sign-in payload has exactly two colon-separated fields; an action payload has at least
-three, and the third is always a label from a closed set. **That is why no version byte is
-needed** — a signature captured from one context can never verify in the other, in either
-direction. `signing.test.ts` asserts both directions.
+A sign-in payload has exactly two fields; an action payload has at least three, and the third is
+a label from a closed set. A signature captured in one context never verifies in the other, in
+either direction.
 
 ## API
 
-| Export | Purpose |
-| --- | --- |
-| `createChallenge()` | 32 random bytes → 64 lowercase hex |
-| `currentTimestamp()` | Unix **seconds** |
-| `buildAuthPayload` / `buildActionPayload` | The colon-joined strings above |
-| `signPayload(payload, privateKey)` | → base64 of 64 raw bytes |
-| `verifyPayload(payload, sig, publicKey)` | Client-side audit of a stored vote |
-| `signAuthEnvelope(identity, { paranoid })` | Sign-up / sign-in envelope |
-| `signActionEnvelope(action, args, identity, { paranoid })` | Everything destructive |
-| `ACTIONS`, `getActionSpec`, `normalizeActionArgs` | The action table as data |
+| Export                                            | Purpose                                                                                                                                                                                  |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createChallenge()`, `currentTimestamp()`         | 64 lowercase hex; Unix **seconds**                                                                                                                                                       |
+| `buildAuthPayload` / `buildActionPayload`         | The strings above                                                                                                                                                                        |
+| `signPayload(payload, signer)`                    | → base64 of 64 raw bytes                                                                                                                                                                 |
+| `verifyPayload(payload, sig, publicKey)`          | Accepts high-S signatures, which Go and WebCrypto produce                                                                                                                                |
+| `signAuthEnvelope(signer)`                        | Sign-up (root) and sign-in (device)                                                                                                                                                      |
+| `signActionEnvelope(action, args, device)`        | Device actions only; refuses a root action                                                                                                                                               |
+| `signRootAction(action, args, root, pinProof?)`   | Root actions; adds `pin_proof`, an Ed25519 signature over `payloadDigest(payload)`, the same SHA-256 digest the root signature covers. Refuses a proof on an action that never takes one |
+| `ACTIONS`, `getActionSpec`, `normalizeActionArgs` | The action table as data                                                                                                                                                                 |
 
 ## Things that silently break every signature
 
-**Do not pre-hash.** `p256.sign` applies SHA-256 to its message argument, exactly as
-`crypto.subtle.sign` does. Hashing first signs `SHA-256(SHA-256(payload))` and the server —
-which hashes once — rejects everything. The test suite pins this: a deliberately
-double-hashed signature must fail to verify.
-
-**IEEE P1363 only** — raw `r‖s`, exactly 64 bytes, base64. The ASN.1/DER fallback was
-removed from the backend. `signPayload` asserts the 64-byte length rather than trusting the
-library's default format.
-
-**WebCrypto cannot sign here.** It cannot import a raw EC private scalar, and the key tree
-produces exactly that — hence `@noble/curves`. The output is byte-compatible: the test suite
-verifies a noble signature with `crypto.subtle.verify`.
-
-**One challenge per request, always fresh.** It is consumed *before* the signature is
-verified, so every retry — including automatic ones — needs a new triple. That is why
-[`lib/api`](../api/README.md) never retries.
-
-**Freshness is ±300s in both directions.** A future timestamp fails too. Never fake or round
-the clock; if sign-in fails on a valid account, check the device clock first.
+- **Do not pre-hash.** The signer hashes the payload once, like the server. Hashing first signs
+  `SHA-256(SHA-256(payload))`.
+- **IEEE P1363 only**, 64 bytes. `signPayload` asserts the length.
+- **One challenge per request, always fresh.** It is consumed before the signature is checked,
+  so every retry needs a new triple, and [`lib/api`](../api/README.md) never retries.
+- **Freshness is ±300 s in both directions.** Never fake or round the clock.
 
 ## The action table
 
-`ACTIONS` encodes [signed-actions.md § Actions](../../../../api-general/.docs/auth/signed-actions.md#actions)
-as data — label → argument order → second-factor flag → who signs. **A new action is one row,
-not new code.** All eight are present and the count is asserted.
+`ACTIONS` encodes [signed-actions.md § Actions](../../../../api-general/docs/auth/signed-actions.md#actions)
+as data: argument order, signer (`root` or `device`), whether a PIN proof applies, and whether it
+is batchable. The count is asserted.
 
-**`username-update`** is one `username` argument, **not** variadic, second factor demanded. The
-argument it binds is the **normalised** name — lowercased and trimmed — and applying that rule is
-[`lib/users`](../users/README.md)'s job, not this module's: the server normalises again before
-verifying, so signing the raw input produces a well-formed request that fails authentication, and
-the failure wears a bad signature's clothes rather than a formatting mistake's.
+- **Root actions:** `chain-read`, `device-enrol`, `account-delete`, `second-factor-begin`,
+  `enable-second-factor`, `rotate-second-factor`, `pin-evaluate`. A proof goes on all of them on
+  a Paranoid account except `enable-second-factor` (no PIN exists yet) and `pin-evaluate` (it is
+  how the proof is obtained). A Standard account never sends one.
+- **The four deletes** (`secret-delete`, `note-delete`, `document-delete`, `file-delete`) are
+  batchable: ids are sorted and de-duplicated before signing, and the single delete is the
+  one-element case. They need a full device.
+- **Sharing actions bind the counterparty or the item**: `connection-invite` binds the username,
+  the blob and both key generations; `connection-keys` and `address-book-update` bind a digest
+  of exactly what is stored.
+- **`folders-update` binds the scope** beside the revision and the digest, so a manifest signed for
+  `secrets` cannot be stored as the `notes` one ([`lib/folders`](../folders/README.md)).
+- **`username-update` binds the normalised name**, which [`lib/users`](../users/README.md)
+  applies before signing.
 
-`normalizeActionArgs` enforces arity, rejects empty arguments, and rejects any argument
-containing `:` — the field separator.
-
-### The second factor
-
-`password` is attached exactly when **the table demands it** *and* **the account is
-Paranoid**. Mode comes from `has_password` on `GET /users/me` — never a cached guess, because
-local state does not survive a reinstall and "restore on a new device" is the normal path.
-
-Sending a token on a Standard account fails exactly as hard as omitting it on a Paranoid one,
-so both mistakes are prevented here rather than at the call site.
-
-**The signer's own mode decides — the *signer's*, not the account owner's.** Every action in
-`ACTIONS` today is signed by the account's own owner, so `signer` is `'owner'` on all of them and
-the distinction costs nothing. Keep it anyway: it is load-bearing the moment private sharing adds an
-action one account signs against another's data, and it was load-bearing before, when guardians
-signed against an owner's account.
-
-**One carve-out takes no second factor, structurally** — do not "fix" it:
-
-| Action | Why |
-| --- | --- |
-| `enable-second-factor` | None exists yet; that is what the call creates. |
-
-Four more carve-outs existed until 2026-09-04, all belonging to the guardian-gated PIN reset:
-that flow was for an owner who had **lost** the PIN, so demanding it would have defeated the
-flow. It left with recovery, and with it the last route in this API that a caller could reach
-without a token.
-
-### `secret-delete` is the only batchable action
-
-Its ids are **sorted ascending and de-duplicated** before the payload is built, because the
-server rebuilds it the same way. `DELETE /secrets/{id}` is the one-element case of the same
-label. Every other signature binds one target, so N deletions elsewhere means N signatures and
-N challenges.
-
-### Actions with their own gotchas
-
-- **Both second-factor actions sign the new token itself**, not the intent, so nothing between
-  the client and the server can substitute a value of its own on a validly-signed call. That
-  matters more since 2026-09-04: with no reset path, an account that comes out of enrolment with
-  the wrong PIN is finished.
-- **Sign the value, not the intent** generalises. Nine retired actions all followed it, and the
-  next action this table gains — a share addressed to a recipient — has to bind the recipient
-  or a proxy can redirect it. The retired specs are live in `dms-shamir`.
+`normalizeActionArgs` enforces arity and rejects empty arguments and any containing `:`.
 
 ## Failure modes the UI must not try to distinguish
 
-A bad signature and a wrong PIN both return `401 INVALID_CREDENTIALS`, identically and by
-design. **Render one generic message.** And because the challenge is spent before the second
-factor is checked, a wrong PIN burns it — the retry needs a fresh triple, not the same one.
+A bad signature and a wrong PIN proof both return `401 INVALID_CREDENTIALS` on root actions (or
+the uniform `404` on enrolment). **Render one message**, and after two failures for a PIN the user
+is sure of, suggest waiting (`lib/app` → `accountPinRefusal`).
 
 ## Tests
 
-`signing.test.ts` mirrors the backend's `service_test.go`: the signature is bound to its
-challenge, timestamp, action label and every argument (each checked by mutating one field and
-asserting the signature no longer verifies); a sign-in signature is refused as an action
-signature and vice versa; `secret-delete` ids sort and de-duplicate to an order-independent
-payload; the P1363 length holds across many signings; and the second-factor attachment matrix
-covers Standard, Paranoid and all three carve-outs.
+`signing.test.ts`: challenge and payload shapes, P1363 from both signers, verification against
+the right key only, high-S acceptance, the non-extractable device key, binding to every payload
+field, auth versus action separation, batch normalisation, the action table's signers and proof
+rules, device-versus-root refusals, and a PIN proof that verifies over the root's digest.

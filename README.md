@@ -51,29 +51,36 @@ are encrypted.
 This is why "we cannot read your data" is checkable rather than a promise. The code that would do
 the reading is in this repository, and there is no key on the server side to do it with.
 
+### Your devices
+
+Your recovery phrase is not stored anywhere, not even in your browser. Each browser you use
+becomes one of your **devices**, with keys of its own that never leave it. You type the phrase
+only to create the account, to add a device, and for account-level actions such as removing a
+lost device or deleting the account. While you type it, it is in the page's memory; the rest of
+the time the browser holds only its own keys. For the best protection, use Brave with a profile
+that has no extensions.
+
+A device you lose can be removed from any other device. Removal changes every key it held, so it
+cannot read anything saved afterwards. It keeps whatever it had already copied: nothing can reach
+into a device that is gone.
+
 ### Unlocking a device
 
-Both modes use a 6-digit PIN, chosen once when you set up. It encrypts the copy of your phrase kept in
-this browser and locks the app, so day to day you come back with six digits instead of twenty-four
-words — on a reload, and after fifteen idle minutes. What you are choosing is what _else_ that PIN
-does:
+Each browser has a 6-digit PIN. It unlocks that browser on a reload and after fifteen idle
+minutes. The PIN never leaves the device: the server helps check it without ever seeing it, and
+allows only a limited number of wrong tries. After the last one, the browser forgets your account
+and your recovery phrase adds it back. Your vault is untouched either way.
 
-- **Standard** — the PIN never leaves the device. Signing in is your recovery phrase alone, so
-  forgetting the PIN costs you nothing: log out, sign back in with your phrase, set a new one.
-- **Paranoid** — the same PIN is _also_ checked by the server, so your phrase alone will not sign
-  you in anywhere. **Forgetting it ends the account.** There is no reset, by anyone, ever.
+You also choose a mode:
 
-Paranoid mode exists for one scenario: someone steals your recovery phrase. Without your PIN it is
-not enough. You can upgrade from Standard to Paranoid later, but **never the reverse** — a stolen
-phrase must not be able to switch protection off. The app has no button to remove a PIN and never
-will.
+- **Standard** — your recovery phrase alone can add a device. A deliberate choice: nothing but
+  losing your phrase can lock you out.
+- **Paranoid** — your phrase also needs an **account PIN** before it can add a device or delete
+  the account. Someone who steals your phrase still cannot get in. **Forgetting the account PIN
+  ends the account.** There is no reset, by anyone, ever.
 
-Turning a 6-digit PIN into a real encryption key takes deliberate effort — the app runs 600,000
-rounds of a slow key-derivation function, which is why unlocking pauses for a moment. That pause
-is the point: it makes guessing PINs expensive. It is paid once per session, not per action.
-
-**Three wrong PINs erase the copy on that device.** Your vault is untouched — you get back in with
-your recovery phrase.
+You can move from Standard to Paranoid later, but **never the reverse**: a stolen phrase must not
+be able to switch protection off.
 
 ### There is no account recovery, and that is the design
 
@@ -124,7 +131,18 @@ Point the client at your API in `.env.local`:
 NEXT_PUBLIC_BASE_API_URL=http://localhost:8080
 ```
 
-That is the only setting. It defaults to the value above.
+It defaults to the value above.
+
+The drive uploads and downloads straight from the object store, and the Content Security Policy
+only lets the page talk to hosts it names. Add the API's `R2_ENDPOINT` as well:
+
+```bash
+CSP_OBJECT_STORE_ORIGINS=https://<account-id>.r2.cloudflarestorage.com
+```
+
+Without it the development server blocks every drive transfer and says so in the console, and
+**a production build refuses to finish** — on Vercel, set it for every environment. See
+[`lib/security-headers`](./src/lib/security-headers/README.md).
 
 ```bash
 npm test      # 469 tests
@@ -156,11 +174,31 @@ constants, [front-end-guide.md](./front-end-guide.md) and
 | [`lib/sealed`](./src/lib/sealed/README.md)         | The versioned encrypted-blob format                 |
 | [`lib/secrets`](./src/lib/secrets/README.md)       | Vault items                                         |
 | [`lib/app`](./src/lib/app/README.md)               | Product logic behind the interface                  |
+| [`lib/security-headers`](./src/lib/security-headers/README.md) | The Content Security Policy and response headers |
 | [`components`](./src/components/README.md)         | The React screens                                   |
+
+### Dependency overrides
+
+`package.json` carries three `overrides`, added on 2026-09-13 so that `npm audit --omit=dev`
+reports nothing:
+
+| Override | Why |
+| --- | --- |
+| `next` → `postcss: ^8.5.25` | `next@15.5.25` pins `postcss` at exactly `8.4.31`, which has four advisories (XSS in stringify, source-map file reads). Only a minor version separates them, and the build is verified under it |
+| `nanoid: ^3.3.18` | `3.3.17`, pulled in by `postcss`, can loop forever on a zero size |
+| `sharp: ^0.35.4` | `0.34.5` inherits libvips and libheif CVEs. `0.35.4` is inside the range `next` itself declares |
+
+**Delete an override when its parent stops needing it**: when `next` no longer pins an old
+`postcss`, which Next 16 already does not, or when `npm ls` shows the natural resolution is at or
+above the override. An override left behind silently holds a package back later.
+
+After changing one, `npm ls postcss sharp nanoid` must show no `invalid` entry. A nested override
+does not replace a package the lockfile already records under that parent: delete that lock entry
+and reinstall.
 
 The test suite includes a fixture that reproduces every key derivation against values generated by
 the backend. No backend test reads that file, so this suite is the only cross-client check that
 these derivations are correct anywhere in the project. Keep it green.
 
-One note for anyone auditing: Cryple has no secp256k1 key and no Ethereum account, and wallet
-integration is not planned. The key derivation path reserves that branch and never uses it.
+One note for anyone auditing: Cryple has no secp256k1 key and no Ethereum account. The key
+derivation path reserves that branch and never derives from it.

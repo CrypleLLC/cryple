@@ -9,10 +9,11 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `CrypleProvider.tsx` | Session custody, phase machine, error translation, cross-tab handoff |
 | `AppProviders.tsx` | Mounts `CrypleProvider` in the root layout so every route shares one session |
 | `SessionGate.tsx` | The loading / onboarding / locked / ready switch, wrapped around each route |
-| `Onboarding.tsx` | Task 24 — phrase, PIN, mode, enrolment |
-| `Unlock.tsx` | PIN unlock and the 3-attempt device wipe |
+| `Onboarding.tsx` | Sign up (phrase, PIN, Standard or Paranoid, recovery kit) and adding this browser with a phrase, including *I lost my devices* and the too-many-devices picker |
+| `Unlock.tsx` | PIN unlock through the server's OPRF, with the attempts left, and *I forgot this browser's PIN* |
 | `AppShell.tsx` | Task 25 — the sidebar shell and navigation registry |
 | `VaultScreen.tsx` | Vault index, add/delete secrets (Task 34) |
+| `PasswordsScreen.tsx` | The Passwords tab: list, add, edit and delete credentials ([Task 134](../../../tasks.md#task-134)). An edit writes a new revision, so "Save" appends rather than replaces |
 | `VaultReveal.tsx` | The vault's global show/hide-values state and its top-bar button |
 | `NotesScreen.tsx` | The notes file grid, selection and batch delete |
 | `NoteEditor.tsx` | One note open — autosave, delete, WYSIWYG formatting |
@@ -21,8 +22,13 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `DocumentsScreen.tsx` | The documents grid of page miniatures — opens each document in its own tab |
 | `DriveScreen.tsx` | The drive: file grid, drag-and-drop upload, progress, download, selection and delete |
 | `UsernameScreen.tsx` | The Settings **Username** tab — one panel, `UsernameCard` |
-| `PinScreen.tsx` | The Settings **PIN** tab — the mode when it is on, the one-way upgrade when it is not |
+| `PinScreen.tsx` | The Settings **PIN** tab — this browser's PIN, turning Paranoid on, changing the account PIN |
+| `DevicesScreen.tsx` | The Settings **Devices** tab — the account's devices, names, chain verification, removing another device with the phrase |
+| `AccountScreen.tsx` | The Settings **Account** tab — deleting the account with the phrase (and the account PIN on Paranoid) |
+| `SharingScreen.tsx`, `ConnectionInvitation.tsx`, `ShareItemDialog.tsx`, `SharedScreen.tsx` | Invitations and fingerprints, nicknames, sending, and what arrived with *Copy to my own account* ([`lib/sharing`](../lib/sharing/README.md)) |
 | `UsernameCard.tsx` | The rename panel: the current name, the claim, and what a rename does |
+| `FolderTabs.tsx` | The tab strip under the header on the Vault and Notes — the sealed manifest's UI ([Folders](#folders)) |
+| `FolderBrowser.tsx` | The path bar, the OS-style folder tiles and the move picker on Documents and the Drive ([Folders](#folders)) |
 | `StorageMeter.tsx` | The account's storage bar, in the sidebar corner — stored bytes solid, reservations behind them |
 | `documents/DocumentWorkspace.tsx` | The `/docs/[id]` page: title, toolbar, A4 sheet, counts, save status |
 | `documents/DocumentToolbar.tsx` | The TipTap formatting toolbar |
@@ -32,7 +38,7 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `documents/useOutline.ts` | Debounced heading reads off the editor, and `goToHeading` |
 | `documents/useDocumentSync.ts` | Binds `DocumentSync` to a component's lifetime |
 | `documents/extensions.ts` | The TipTap extension set, bound to the document's `Y.Doc` |
-| `ui.tsx` | Card / Button / IconButton / Field / TextArea / Select / Badge / Notice / Empty / Modal / SizeStepper primitives |
+| `ui.tsx` | Card / Button / IconButton / Field / PinField / TextArea / Select / Badge / Notice / Empty / Modal / SizeStepper / CopyButton / SecretField primitives. `SecretField` masks what is typed without making it a password field ([`lib/app`](../lib/app/README.md#a-secret-is-masked-while-it-is-typed)). **Every PIN entry is a `PinField`**, never a `Field` with `type="password"`: it carries `pinInputAttributes` so the browser's password manager neither saves nor autofills the PIN ([`lib/app`](../lib/app/README.md#a-pin-is-not-a-password-the-browser-may-keep)). `Field` and `TextArea` turn spellcheck, grammar extensions and translation off by default, and `CopyButton` clears the clipboard after 30 s — both in [`lib/app`](../lib/app/README.md#plaintext-the-browser-would-otherwise-send-away) |
 | `icons.tsx` | The stroke-icon set shared by navigation and primitives, plus `FileTypeIcon` — the drive's filled, per-type file glyph |
 | `StagingBanner.tsx` | The walking red warning banner, dev-only — see [`app`](../app/README.md#the-staging-banner) |
 
@@ -48,7 +54,7 @@ Navigation is one registry, `NAV_ITEMS` in `AppShell.tsx`. Each entry is
 its screen component — the sidebar, the mobile nav and the top-bar heading all render from the
 same array. Notes was added exactly that way, as one entry; Guardians was **removed** exactly that
 way on 2026-09-04, by deleting one. `actions` is the optional slot for a component rendered in the
-top bar beside Lock / Log out, for controls that belong to the whole screen rather than to one
+top bar beside Lock and the account menu, for controls that belong to the whole screen rather than to one
 panel; the Vault's global reveal toggle is the first of them. State shared between such a control
 and its screen lives in a provider wrapping the shell, as `VaultReveal.tsx` does, since the header
 sits outside the screen's tree.
@@ -71,9 +77,7 @@ rename, and clears the field only on success. The two sentences about what a ren
 rendered unconditionally, not behind a disclosure — they are the panel's reason for existing as
 much as the field is.
 
-The second factor is **not** re-prompted here. A Paranoid session already holds its
-`Server_Auth_Token` from the unlock, and `updateUsername` reads it the way `deleteAccount` and
-`rotateSecondFactor` do; a Standard account signs without one and the server accepts that.
+A rename is signed by this device's key, with no PIN, in either mode.
 
 ## The token layer
 
@@ -210,16 +214,15 @@ exercised is a mouse drag from inside the dialog to outside it.
 
 The sidebar holds the **places you keep things** — vault, notes, documents, drive. Everything about
 the account itself lives behind the avatar in the top right: clicking it opens a menu with
-**Settings** and **Log out**.
+**Settings** and **Remove this browser**.
 
 **Lock is not in that menu**, and that is deliberate. It sits as its own button immediately to the
 left of the avatar, because it is the one control a person reaches for in a hurry — someone walking
-up behind them. A control you need in two seconds does not belong two clicks deep. It also only
-exists when the device remembers the recovery phrase; `lockExit` returns nothing otherwise, and the
-button is simply absent rather than present and broken.
+up behind them. A control you need in two seconds does not belong two clicks deep. It is always
+there, because the device record survives a lock.
 
 **Settings is a modal with tabs**, `SETTINGS_TABS` in `lib/app/settings.ts`. Sharing, Username and
-PIN are the three, and it takes the `wide` variant to give them room. None of them is a place you
+Devices, Username, PIN and Account are the tabs (Sharing only on a device holding `sharing`), and it takes the `wide` variant to give them room. None of them is a place you
 keep things, so none earned a permanent seat in the sidebar.
 
 **The tabs are a vertical menu down the left edge of the modal, not a row across the top.** The
@@ -260,6 +263,19 @@ then the connections list. Side by side, the invite form and the list read as tw
 when they are really a sequence — you invite someone, they appear in the list. The single column
 also gives the fingerprint comparison in `ConnectionInvitation` the full width it deserves, instead
 of squeezing two 24-character codes and their accept/decline buttons into half a modal.
+
+**Every connection in the list is checked against its pin on every load**, not only while an
+invitation is under review. `SharingScreen` runs `verifyConnection` on each accepted connection and
+each invitation this account sent, through `Promise.allSettled` so one failed lookup cannot hide
+another row's alarm. A row that fails shows the reason under it, and a changed key or account also
+gets a *Do not send* badge. A lookup that fails outright shows nothing on the row; a send still
+fails, because it runs the check again.
+
+**`ShareItemDialog` does not check up front, and does not need to.** The refusal lives inside
+`shareItem` and `shareItemById`, so no caller can skip it; the dialog only turns a
+`ConnectionNotTrustedError` into `sendRefusal`'s sentence. `ConnectionInvitation` uses the same
+check and disables *Accept* while it shows an alarm, so a changed fingerprint can never be accepted
+into a new pin. See `lib/sharing/README.md` § Checking a connection against its pin.
 
 ### Shared reads every tile before it can draw one
 
@@ -304,33 +320,45 @@ their copy; removing a share cannot un-read it) were cut on 2026-09-12 for the s
 
 ## Session custody
 
-`CrypleProvider` owns the one `SessionKeystore` and the one `TokenStore` for the app. Its phase is
-`loading → onboarding | locked → ready`, decided by whether a local seed vault exists.
+`CrypleProvider` owns the one `SessionKeystore`, the one `TokenStore` and the device record store
+(IndexedDB). Its phase is `loading → onboarding | locked → ready`: `locked` when a device record
+exists, `onboarding` when none does. The flows themselves are [`lib/account`](../lib/account/README.md);
+the provider maps their outcomes to sentences and phases.
 
-**Unlock once, sign from memory.** The 600k-iteration PIN stretch is paid at unlock; the derived
-signing key and `Server_Auth_Token` stay in the keystore for the session. Nothing prompts for the
-PIN per action.
+- **Unlock once, sign from memory.** The OPRF round trip and the Argon2id derivation are paid at
+  unlock; the device key and the scope KEKs stay in the keystore for the session.
+- **The token renews itself.** Five minutes before it expires, the device signs in again. A
+  `401 UNAUTHORIZED` from any call triggers the same silent sign-in; if that is refused, the
+  device was removed, the local record is forgotten and the phrase is asked for.
+- **A chain that does not verify** from the root key at unlock raises a danger notice across the
+  shell, and the devices screen refuses to remove anything until it does.
+- `holds(scope)` and `fullDevice` come from the session's scopes. The navigation hides a section
+  whose scope the device lacks, and delete buttons need a full device.
+- The provider subscribes to `session.onLock()`, so the idle lock drives the UI back to `locked`.
 
-The provider subscribes to `session.onLock()`, so the keystore's own idle timeout drives the UI
-back to `locked` rather than the two drifting apart.
-
-`reportError` is the single funnel for failures: it renders `userMessageFor(error)` — copy built
-client-side from the `code`, since the API sends no message — and drops the token on
-`401 UNAUTHORIZED`, which is the only 401 meaning "sign in again". `401 INVALID_CREDENTIALS`
-renders as one generic message, because a bad signature and a wrong PIN are indistinguishable by
-design.
-
-**Logout is deleting our own copy of the token.** There is no revocation endpoint, no session
-list, and no "sign out all devices" — none of that is rendered anywhere.
+`reportError` is the single funnel for failures: `userMessageFor(error, { deviceScopes })`,
+copy built client-side from the `code`.
 
 ## Onboarding
 
-`enrol` writes the local seed vault **after** `POST /sign-up` succeeds, so a rejected enrolment
-does not leave a vault for an account that was never created. On any failure the keystore is
-locked, zeroing what was derived.
+`createAccount` keeps the drafted genesis across a failed attempt, so a retry sends the same
+batch; it discards the draft after an authentication refusal. The phrase stays in onboarding
+state only until the recovery kit step is finished. `enrolBrowser` maps its outcomes to *no
+account uses this phrase* (with *Create an account with this phrase*), the too-many-devices
+picker, or a message.
 
-The mode step states the one-way door before either button. There is no "disable PIN" control and
-there never will be.
+Neither opens the vault on its own: the component calls `enterVault` immediately after adding a
+browser, and after the recovery kit has been downloaded for a sign-up
+([`lib/app` § Onboarding](../lib/app/README.md#onboarding)).
+
+The PDF is built by [`lib/recovery-kit`](../lib/recovery-kit/README.md), loaded with a dynamic
+`import()` on the first click so `pdf-lib` and the QR encoder stay out of every other page load.
+The download uses the same object-URL-and-anchor approach as the drive, and the URL is revoked
+straight after the click. The phrase can be revealed on the step but has no copy button.
+
+The PIN step presents Standard and Paranoid as a real choice, and shows the one-way,
+no-reset warning as soon as Paranoid is picked, before the account is created. There is no
+"disable Paranoid" control and there never will be.
 
 ## Product boundaries this shell respects
 
@@ -781,6 +809,11 @@ from `editor.state.doc` on the fly, never written back. A stored attribute would
 appended on every device that opens the document, for a value the editor can recompute for free.
 [`lib/documents`](../lib/documents/README.md) explains why that cost never goes away.
 
+The editable body and the title field carry `PRIVATE_TEXT_ATTRIBUTES` / `PRIVATE_TEXT_PROPS`, so no
+spelling, grammar or translation service sees the text, and **the tab title is never the document's
+name** — it would land in synced browser history. Why, and what it costs, is in
+[`lib/app`](../lib/app/README.md#plaintext-the-browser-would-otherwise-send-away).
+
 ### `useEditorState` must not read the editor out of its own snapshot
 
 This is the trap that made the toolbar render blank on load, and it will bite again.
@@ -978,7 +1011,79 @@ The paragraph-style control calls `setHeading`, not `toggleHeading`: from a `<se
 the level that is already active must be a no-op, and toggle turns it back into a paragraph while
 the select still reads "Heading 2".
 
+**The toolbar's values live in [`lib/document-styles`](../lib/document-styles/README.md)**, not here,
+because they double as the allowlist. `extensions.ts` swaps TipTap's `Color`, `FontFamily`,
+`FontSize`, `LineHeight` and `Highlight` attribute definitions for guarded ones built from the same
+lists, so a pasted `style` or `data-color` can store only a value the toolbar could have set — or,
+for colours, a plain colour. That module explains the injection it closes.
+
 `FONT_FAMILIES` names `var(--font-sans)` and `var(--font-mono)` — the properties this app actually
 defines in `globals.css`. They previously named `--font-geist-*`, which exist in the Next.js
 starter template and not here, so two of the three font options silently did nothing. Any export
 has to map these tokens to real family names explicitly.
+
+## Folders
+
+[Task 133](../../../tasks.md#task-133). Two components, because the two shapes of folder behave
+differently: a tab is flat and holds everything of one kind, a folder nests like an operating
+system's.
+
+### Tabs — Vault and Notes (`FolderTabs.tsx`)
+
+**The strip sits at the top of the screen, directly under the header**, and filters what the screen
+below it lists. `useFolderTabs(scope, itemIds)` owns the sealed manifest
+([`lib/folders`](../lib/folders/README.md)); `buildFolderTabs` and `itemsInTab` in
+[`lib/app/folders.ts`](../lib/app/README.md) decide what each tab shows.
+
+- **`home` is always first** and holds everything not filed elsewhere. It can be renamed, never
+  deleted.
+- **Tabs are drawn as folder tabs**: a raised, open-bottomed tab joins the list under it; the others
+  sit back on the rule. Each carries its count.
+- **New tab** is the folder-plus button at the end of the strip; typing happens in place, in a
+  tab-shaped field. **Rename** is a double click or the pencil; **delete** is the trash, confirmed in a
+  modal that says the items go with the tab. A non-empty tab can only be deleted from a full device,
+  because its items' delete is signed like any other.
+- **Filing:** drag a secret row or a note onto a tab, or use *Move to…* — a row control in the Vault,
+  the selection toolbar in Notes. Dragging a selected note carries the whole selection.
+- **Something created while a tab is open is filed in it.**
+- **A manifest that fails validation is reported, not rendered**: the strip is replaced by the
+  explanation and a *Reset the tabs* button, and everything is listed in one place until the user
+  chooses.
+
+### Folders — Documents and the Drive (`FolderBrowser.tsx`)
+
+**The path bar sits at the top of the screen, under the header**: the scope's name, then one segment
+per folder down to the open one, and *New folder* on the right. `useFolderTree(scope, onItemsChanged)`
+holds the tree and the open folder; the screen lists only the open folder's items
+(`?folder=<id>|root`), so a folder of thousands draws its first page without decrypting the rest.
+
+- **Folders look like an operating system's**: `FolderGlyph` in `icons.tsx` is a two-tone folder in
+  the brand indigo (`folder-back`, `folder-front`, `folder-shine` tokens in `globals.css`) whose front
+  flap opens while something is dragged over it. Folders come first in the grid, in the same cells as
+  the items — the icon size on the Drive, the page frame on Documents.
+- **A click opens a folder**; the path bar goes back up. Rename and delete are on the tile's hover
+  controls; delete is full-device only and its confirmation says the subfolders and items go with it.
+- **Everything is a drop target**: a folder tile and every path segment accept dragged items and
+  dragged folders. A folder is never offered a move into itself or past 8 levels (`canMoveFolder`);
+  the server refuses both anyway and the screen says why.
+- **Drive specifics.** A dragged or moved file takes its thumbnail with it (`withTheirThumbnails`).
+  An upload started inside a folder is filed there when it completes. The page-wide *drop files to
+  upload* zone reacts only to files from the operating system, never to an internal drag.
+- **Housekeeping still sees everything.** Forgetting remembered upload sources and pruning the
+  object cache need the whole drive, so they read one unfiltered listing when the screen mounts,
+  rather than being fooled by whichever folder is open.
+- **A tree the server returns broken is reported, not rendered**: no folder tiles, and everything is
+  listed flat.
+
+## Adding an item
+
+**Every screen that creates something uses `FloatingAddButton`** from `ui.tsx` — one round `+` in
+the bottom-right corner, never a button in the toolbar. It comes in two placements:
+
+- **default** — aligned to the right edge of the `max-w-6xl` content column (Vault, Passwords);
+- **`spread`** — for the full-width (`miniatures`) screens, inset three times the old margin from
+  the viewport edge (Notes, Documents, Drive).
+
+Both read `contentMeasure`, `CONTENT_GUTTER` and `FLOATING_SPREAD_GUTTER` from
+[`lib/app/shell.ts`](../lib/app/README.md), which `AppShell` reads too — so the button cannot drift
+away from the layout it is aligned to. The button hides itself while a screen is in selection mode.

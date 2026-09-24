@@ -4,248 +4,176 @@ Next.js 15 (App Router) client for the Cryple API. TypeScript, React 19, Tailwin
 
 ## Read before writing code
 
-Two sets of documents govern this client. They answer different questions and neither replaces the other.
+| File                                               | What it is                                                                                            |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| [front-end-guide.md](./front-end-guide.md)         | Base URL, auth model, who signs what, JWT, retry safety, client caveats. **§5 is mandatory.**         |
+| [front-end-endpoints.md](./front-end-endpoints.md) | Every route, payload, response and error code. A synced copy of the API's; only link prefixes differ. |
+| [tasks/tasks.md](./tasks/tasks.md)                 | The client task list. Work from it.                                                                   |
 
-| File | What it is |
-| --- | --- |
-| [front-end-guide.md](./front-end-guide.md) | Base URL, auth model, signatures, JWT, retry safety, 28 client caveats. **§5 is mandatory.** |
-| [front-end-endpoints.md](./front-end-endpoints.md) | Every route, payload, response and error code. |
-| [tasks.md](./tasks/tasks.md) | The integration task list — numbered, milestone-ordered, with acceptance criteria. Work from it. |
+These describe the API **as implemented**, the wire contract, and win over the current source and
+over anything you remember. The derivations and byte layouts are in `../api-general/docs/`:
 
-These two describe the API **as implemented** — the wire contract. They win over the current source and over anything you remember about this project. Cite the `§` you relied on when a change hinges on API behaviour.
+| File                                                                     | What it settles                                                                                                               |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| [crypto/ECDSA.md](../api-general/docs/crypto/ECDSA.md)                   | **The frozen key tree**: seed → `user_address`, the root P-256 key, the root wrap key                                         |
+| [crypto/device-keys.md](../api-general/docs/crypto/device-keys.md)       | **The model**: the seed as a cold root, devices, scopes, keyrings and generations, the event chain, batches, sharing sub-keys |
+| [auth/pin-oprf.md](../api-general/docs/auth/pin-oprf.md)                 | Both PINs over an RFC 9497 OPRF: derivations, the device record, the proofs                                                   |
+| [auth/two-factor-PIN.md](../api-general/docs/auth/two-factor-PIN.md)     | The two modes, the one-way rule, the PIN format rules, "no reset, ever"                                                       |
+| [auth/signed-actions.md](../api-general/docs/auth/signed-actions.md)     | **The authoritative action table**: argument order, root or device signer, PIN proof                                          |
+| [auth/challenge.md](../api-general/docs/auth/challenge.md)               | Challenge generation, timestamp binding, replay rules                                                                         |
+| [crypto/pqxdh.md](../api-general/docs/crypto/pqxdh.md)                   | Hybrid X25519 + ML-KEM wrapping, usages `item-share` and `device-keyring`                                                     |
+| [crypto/test-vectors.json](../api-general/docs/crypto/test-vectors.json) | Machine-checkable vectors for all of the above                                                                                |
 
-The wire contract does not specify what goes *into* those fields. Every derivation, every constant, and every byte layout of a `ciphertext` / `wrapped_dek` / `pq_hybrid_*` value lives in the backend repo's `.docs/`, one directory up:
+**Precedence**: for a byte layout or a KDF constant, the spec wins over the guide. For a status
+code, a field name or a retry rule, the guide wins.
 
-| File (relative to this repo: `../api-general/.docs/`) | What it settles |
-| --- | --- |
-| [crypto/ECDSA.md](../api-general/.docs/crypto/ECDSA.md) | **The frozen key tree.** seed → `user_address`, P-256 identity key, X25519, ML-KEM-768. |
-| [crypto/test-vectors.json](../api-general/.docs/crypto/test-vectors.json) | Machine-checkable vectors for every derivation and the PQXDH wire blob. |
-| [crypto/pqxdh.md](../api-general/.docs/crypto/pqxdh.md) | Hybrid X25519+ML-KEM wrapping — the exact bytes of every `pq_hybrid_*` field. |
-| [crypto/key-continuity.md](../api-general/.docs/crypto/key-continuity.md) | Why re-sign-up must present the *same* encryption keys, and why keys are immutable. |
-| [auth/challenge.md](../api-general/.docs/auth/challenge.md) | Challenge generation, timestamp binding, replay rules. |
-| [auth/signed-actions.md](../api-general/.docs/auth/signed-actions.md) | The action-signature envelope and the **authoritative action table**. |
-| [auth/two-factor-PIN.md](../api-general/.docs/auth/two-factor-PIN.md) | `Server_Auth_Token` derivation, PIN rules, **local seed encryption at rest**. |
-| [auth/user-address.md](../api-general/.docs/auth/user-address.md) | `user_address` derivation and format. |
-| `onchain-architecture.md` (in `dms-shamir`) | ERC-4337 signer, heartbeat, and an explicit "what the chain does NOT do". |
-| `pivot-scope.md` (in `dms-shamir`) | What is in scope, cut, or postponed. |
+**The API's own tests are executable contract.** When a doc leaves wire behaviour ambiguous, the
+Go suites in `../api-general/internal/` decide.
 
-**Precedence**: for a byte layout or a KDF constant, the frozen spec wins over the guide. For a status code, a field name, or a retry rule, the guide wins. Where they disagree on something else, the frozen spec is older — check `git log` on both before assuming. One known stale line: `auth/challenge.md` says the JWT expires in 8h; it is **24h** (`JWT_EXPIRY_HOURS` default in `../api-general/internal/utils/config/config.go`, and `front-end-guide.md` §5.5).
-
-**The API's own tests are executable contract.** When a doc leaves wire behaviour ambiguous, the Go test suite in `../api-general/internal/` is the tie-breaker — it encodes exactly what a client will hit:
-
-- `domain/auth/service/service_test.go` — the whole client-visible auth contract as tests: replayed challenges rejected, freshness in both directions, ASN.1/DER signatures rejected, signature bound to its timestamp / action / arguments, a sign-in signature refused as an action signature, mode mismatches failing symmetrically, every credential failure returning one indistinguishable error, restore-with-drifted-keys refused.
-- `domain/*/http/http_test.go` — exact request/response shapes per route, which routes need a token, non-canonical UUID rejection, the 350 ms public-response floor, opaque `500`s.
-
-No Go test consumes `test-vectors.json` — the generator produces it and nothing re-reads it. **This client's fixture test is therefore the only cross-client check of the derivations**, which is one more reason it is not optional.
-
-The specs marked **FROZEN** (`crypto/ECDSA.md`, `crypto/pqxdh.md`, `auth/two-factor-PIN.md`) are Milestone 0 output. Every path, label, iteration count and version byte in them is part of account identity. **Do not change one, and do not "fix" one inline** — a divergent constant does not throw, it produces a different account or an unopenable blob, and the failure surfaces years later at inheritance release.
-
-## The frozen key tree — implement exactly this
+## The model in one screen
 
 ```
-BIP39 mnemonic (12 or 24 words)
-  │  PBKDF2-HMAC-SHA512(NFKD(mnemonic), "mnemonic"+passphrase, 2048, 64B) → seed
-  │
-  ├─ SHA-256(seed)                                          → user_address (64-char lowercase hex)
-  ├─ SLIP-0010 P-256, m/9027'/0'/0'                          → ECDSA P-256 (API auth + ERC-4337 signer)
-  ├─ HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|x25519",   L=32)  → X25519
-  └─ HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|mlkem768", L=64)  → ML-KEM-768 (d‖z for FIPS 203 keygen)
+BIP39 phrase → seed ──┬─ SHA-256(seed)                          → user_address
+  (typed, never       ├─ SLIP-0010 P-256 m/9027'/0'/0'          → ROOT signing key  (users.public_key)
+   stored)            └─ HKDF "Cryple-Key-v1|vault-kek"          → ROOT wrap key
 
-  RESERVED, NEVER DERIVED:  m/44'/60'/…   — Cryple has no secp256k1 key and no EOA.
+Each browser (a device) generates its own keys:
+  P-256 signing key   non-extractable CryptoKey in IndexedDB     signs sign-in, actions, chain events
+  X25519              non-extractable where supported            receives keyring wraps (PQXDH)
+  ML-KEM-768 seed     sealed under the device PIN key            receives keyring wraps (PQXDH)
+
+Each keyring scope (passwords, secrets, notes, documents, files, sharing) has generations:
+  scope KEK[g]        random 32 bytes, wrapped to the root and to every device holding the scope
+  item wrapped_dek    = sealed(scope KEK[key_generation], item DEK)
 ```
 
-The traps, all of which produce a silently wrong account:
+- **The seed is never stored.** It is typed to sign up, to add this browser, to remove another
+  device, and for account-level actions, then zeroed. `lib/session` holds keys, never the phrase.
+- **Sign-in is the device signing `challenge:timestamp`** with `device_id`. The JWT names the
+  device; `401 UNAUTHORIZED` means sign in again, and a refused re-sign-in means the device was
+  removed.
+- **A device PIN** unlocks the device record through the server's OPRF, which rations guesses and
+  deletes the registration after the last one. **The account PIN** (Paranoid) is a proof on the
+  actions the root signs. The raw PIN never leaves the device.
+- **Every write carries `key_generation`**, the scope's current one. `409 STALE_KEY_GENERATION`
+  means re-read the keyrings, re-wrap, retry once.
+- **After a rotation, re-wrap what it left behind** — `lib/rekey`, `PUT /<scope>/keys`, signed by a
+  full device like a delete. Items already stored keep the generation they were written with until
+  something does this.
+- **The client verifies what the server returns**: its own chain from the root key, and every
+  contact's proof path from their pinned root key.
+- **Phase 1**: every browser is a full device with every scope. Build scope-aware UI anyway.
 
-- **`user_address` hashes the 64 raw seed bytes**, not the mnemonic and not its hex string. The current `src/` hashes the hex string — that is the bug, not the spec.
-- **SLIP-0010, not BIP32.** HMAC key is `"Nist256p1 seed"`, and the retry rules validate against **P-256's** order. Deriving with a secp256k1 library and reinterpreting the bytes is the exact mistake `crypto/ECDSA.md § Why Not BIP32` exists to stop.
-- **Every level of the path is hardened.** `9027'`, `0'`, `0'`.
-- **X25519: use the 32 output bytes as the scalar directly.** RFC 7748 clamping is inside the X25519 function — do not pre-clamp.
-- **ML-KEM needs 64 bytes** because FIPS 203 consumes `(d‖z)`. That is why it is HKDF and not a 32-byte HD node; never invent an expansion step.
-- **`public_key` on the wire is SPKI DER, base64** (always 124 chars). The on-chain form is raw `(X, Y)`, and the uncompressed point is `0x04‖X‖Y`. Three encodings of one key — mixing them is the common integration bug.
+The modules are `lib/keys`, `lib/scopes`, `lib/chain`, `lib/keyrings`, `lib/device`, `lib/oprf`,
+`lib/session`, `lib/signing`, `lib/auth`, `lib/account`, `lib/rekey`, and the item and sharing
+domains. Each has a README.
 
-**Reproduce [`crypto/test-vectors.json`](../api-general/.docs/crypto/test-vectors.json) before this client touches real data.** It covers the all-`abandon` mnemonic end to end: seed, `user_address`, all three key pairs in every encoding, the `Server_Auth_Token`, and a full PQXDH blob. Add it as a fixture in the client's test suite — that is what "a new client is trusted" means here, and it is not optional.
+**`lib/credentials` is the password store**, and it is `lib/secrets` in a different shape: an edit
+is an **append** of a new revision, never a `PUT`. `GET /credentials` is the vault listing the
+Passwords tab draws, `GET /credentials/sync` is the browser extension's feed, and
+`GET /credentials?fields=meta` names **revision ids** for a rotation. `passwords` is in `DEK_SCOPES`
+but **not in `ITEM_SCOPES`**: `lib/rekey` does walk it, by revision id rather than item id.
 
-Required dependencies not yet installed: `@noble/curves` (SLIP-0010 P-256 signing and X25519 — WebCrypto cannot import a raw EC private scalar) and `@noble/post-quantum` (ML-KEM-768). `@noble/hashes` and `bip39` are already present. WebCrypto covers SHA-256, HKDF, PBKDF2 and AES-256-GCM.
+**Reproduce `test-vectors.json` before this client touches real data.** The fixture copy is in
+`src/test/fixtures/`. No Go test consumes the file, so this client's tests are the cross-client
+check. Regenerating it is a backend operation (`go run ./tools/cryplevectors` in
+`../api-general`); this client only reads it.
 
-## PQXDH — the only way to wrap anything for someone else
-
-**Nothing calls this today, and it must not be deleted.** Its usages belonged to digital inheritance and to guardian recovery, both of which left the product (2026-09-03 and 2026-09-04). It stays because **private sharing** — sending one item to another account — is the same primitive aimed at a different recipient, and is the next feature (Task 102 in `../tasks.md`). It is also the only place the post-quantum claim does any work: vault data at rest is symmetric and already quantum-resistant, so the hybrid construction only earns its keep when encrypting **to someone else**.
-
-```
-ephemeral   = fresh X25519 key pair, per wrapped payload
-ecdhSecret  = X25519(ephemeralPriv, recipientX25519Pub)
-kemSecret, kemCiphertext = ML-KEM-768.encapsulate(recipientMlkemPub)
-
-IKM         = 0xFF×32 ‖ ecdhSecret ‖ kemSecret            (96 bytes, order normative)
-salt        = 0x00×32
-info        = "Cryple-PQXDH-v1|" ‖ usage ‖ "|" ‖ senderUserAddress ‖ "|" ‖ recipientUserAddress
-sessionKey  = HKDF-SHA256(IKM, salt, info, L=32)
-
-blob = 0x01 ‖ kemCiphertext(1088) ‖ ephemeralX25519Pub(32) ‖ iv(12) ‖ AES-256-GCM(sessionKey, iv, payload)   → base64
-```
-
-- **AES-256-GCM, not ChaCha20-Poly1305.** Earlier drafts named both; GCM won because ChaCha is absent from WebCrypto. No AAD — context binding lives in `info`.
-- `usage` is one of `recovery-share`, `recovery-session` — **both retired**, kept only because `recovery-share` is the usage `test-vectors.json` records. Task 102 assigns the sharing label and changes the spec, `PQXDH_USAGES`, the generator and the vectors in one commit. Never reuse a label for a new purpose, and never recycle a retired one.
-- Sender and recipient addresses in `info` are the 64-char lowercase hex strings, joined literally with `|`.
-- **Reject unknown version bytes** rather than guessing, and check the blob length against the layout before attempting decryption.
-
-## The second factor and the seed at rest
-
-Two **different** PBKDF2 usages, both from the PIN, and confusing them is the single easiest way to lock a user out:
+## Signed requests
 
 ```
-Server_Auth_Token = hex(PBKDF2-HMAC-SHA256(PIN, salt=utf8(user_address), 600_000, 32))   → the `password` field
-localWrapKey      = PBKDF2-HMAC-SHA256(PIN, salt=32 random bytes, 600_000, 32)           → never leaves the device
-encrypted_seed    = { v: 1, salt, iv(12 random), ct: AES-256-GCM(localWrapKey, iv, seedPhrase) }
+auth    = <challenge> ":" <timestamp>
+action  = <challenge> ":" <timestamp> ":" <action> [":" <arg> …]     SHA-256, P-256, IEEE P1363
 ```
 
-- The `Server_Auth_Token` salt is the **UTF-8 bytes of the 64-character hex string** — 64 bytes, not the 32 raw bytes it encodes. This is the most likely place for a client to diverge.
-- The local salt is random **per device**, so the same PIN yields a different wrapping key on each device. That is correct; this value is never compared across devices. Keep the `v` KDF-version marker — a future move off PBKDF2 needs it to re-wrap old blobs.
-- **PIN rules, enforced client-side**: exactly 6 ASCII digits; no ascending/descending sequence (`123456`, `654321`); no all-repeating digit (`111111`).
-- **3 failed local PIN attempts wipes the device copy.** Product policy, not a suggestion — build it.
-- 600k iterations is 0.3–1s on a laptop, several seconds on a low-end phone. Pay it **once per session** and hold the derived material in memory; a per-request derivation is a broken UX, and a per-request *prompt* is the wrong design (see the signature model below).
-- The raw PIN never leaves the device in either mode.
-
-**Mode transitions are one-directional.** Standard → Paranoid via `POST /users/second-factor` (action `enable-second-factor`, refused if a factor already exists). Paranoid → Paranoid via `PUT /users/password`, which needs the current token and is **the only way a PIN ever changes** — the guardian-gated reset left on 2026-09-04, so a forgotten Paranoid PIN ends the account. **Paranoid → Standard does not exist** — never build a "disable PIN" affordance. The asymmetry is deliberate: the PIN's whole threat model is a compromised seed, so the seed key alone must never be able to replace a PIN that is already set.
-
-## The current `src/` is obsolete — do not use it as a reference
-
-The API was rewritten. Everything below in `src/` targets an API that no longer exists. Treat it as scaffolding to replace, never as a pattern to copy or extend.
-
-| What the code does | Reality |
-| --- | --- |
-| `Authorization: Bearer ${userAddress}:${hash(password)}` | Auth is a JWT from `/sign-up` \| `/sign-in`, obtained with an ECDSA P-256 signature. |
-| Calls `/users/check`, `/keys`, `/keys/{id}` | None of these routes exist. Legacy items live at `/secrets`. |
-| `POST /sign-in` with `{user_address, password}` | Needs `challenge`, `timestamp`, `signature`; `password` is the `Server_Auth_Token`. |
-| Reads `errorData.error`, and `data.id` at the top level | Success is `{message, data}`; errors are **only** `{"code":"…"}` — no message field. |
-| `encrypted_key` / `encrypted_data` / `data_iv` / `key_iv` per item | A secret is `{id, ciphertext, wrapped_dek, version}`. There is a per-item DEK now. |
-| Treats `201` as the only auth success | `/sign-up` returns `201` created / `200` already existed; both carry a token. |
-| `sessionStorage.setItem('userPassword', plaintext)` | Never persist a plaintext secret. The seed is stored AES-GCM-wrapped under the PIN; key material is held in memory for the session. |
-| 8-hour session tracked in `localStorage` | The JWT's own 24h `exp` is the session. Nothing can end it early — there is no logout, refresh or revocation endpoint. |
-| `user_address = SHA-256(hex string of seed)` | `SHA-256` of the **64 raw seed bytes**. Different value, wrong account. |
-
-`src/lib/crypto.ts` also ships uncommented `console.log` of the environment and API URL (lines 14–18). Remove, do not extend.
-
-## What the client must now be able to do, and does not
-
-Nothing below exists in `src/` yet. All of it is specified — build against the documents above rather than asking — except the owner-side DEK wrap, whose status is in §Resolved questions at the bottom.
-
-1. **Seed → the full key tree**, reproducing `test-vectors.json`. Everything else depends on this being right, so it lands first with its fixture test.
-2. **Signed-request helper.** Build the challenge/action envelope **once**, as one function, not per call site — it is the single hardest part and the most repeated.
-3. **Session key custody.** Unlock the seed once per session, hold the derived signing key and `Server_Auth_Token` in memory, and sign from there. Design for "unlock once", never "prompt per action".
-4. **PQXDH wrap/unwrap** — built, frozen, and currently without a caller; private sharing is what will use it.
-6. **JWT lifecycle**: store, attach, treat `401 UNAUTHORIZED` as session-over.
-7. **Local seed vault**: PIN-wrapped `encrypted_seed`, 3-attempt wipe, PIN format rules.
-
-## Signed actions — the authorization rule
-
-> **The JWT authorizes reads and additions. Anything that destroys or replaces existing data needs the seed key — plus the second factor when the signer is in Paranoid Mode.**
-
-```
-payload = <challenge> ":" <timestamp> ":" <action> [":" <arg> …]     colon-joined, SHA-256, P-256, IEEE P1363
-```
-
-Sign-in and sign-up omit the action and args (`challenge:timestamp`) — a two-field payload can never collide with a three-plus-field one, which is why no version byte is needed.
-
-The **authoritative action list, with each action's argument order and whether it takes a second factor, is the table in [auth/signed-actions.md](../api-general/.docs/auth/signed-actions.md#actions)**. Read it rather than inferring from an endpoint name. What it makes non-obvious:
-
-- **The signer's own mode decides**, not the account owner's. Every action today is signed by the account's own owner, so the two coincide; the distinction becomes load-bearing again when private sharing adds an action one account signs against another's data.
-- **One carve-out takes no second factor, structurally**: `enable-second-factor`, because the call is what creates the factor. Do not "fix" it. Four more existed until 2026-09-04, all belonging to the guardian-gated PIN reset.
-- **`secret-delete` is the one batchable action.** Its ids are **sorted ascending and de-duplicated** before the payload is rebuilt, and `DELETE /secrets/{id}` is the one-element case of the same label.
-- **The challenge is consumed before the second factor is checked**, so a wrong PIN spends it and the retry needs a fresh triple. Both legs return the same error, so a client cannot tell a bad signature from a wrong PIN — surface one generic message.
+- **Device actions** (deletes, username, sharing) are signed by the device, never with a PIN.
+  Deletes need a full device.
+- **Root actions** (`chain-read`, `device-enrol`, `account-delete`, `second-factor-begin`,
+  `enable-second-factor`, `rotate-second-factor`, `pin-evaluate`) are signed by the root. On a
+  Paranoid account, `pin_proof` is an Ed25519 signature over the same SHA-256 digest. A Standard
+  account never sends one.
+- The four deletes are batchable: ids sorted ascending and de-duplicated before signing.
+- **A bad signature and a wrong PIN proof are indistinguishable by design.** Render one message.
 
 ## API rules that will bite you
 
-Derived from the guide and the specs; these are the ones a client gets wrong by default.
-
-- **One challenge per request, always fresh.** It is consumed *before* the signature is verified, so every retry — including automatic ones — needs a new `{challenge, timestamp, signature}` triple.
-- **Do not pre-hash before `crypto.subtle.sign`.** It applies SHA-256 to its data argument; hashing first signs `SHA-256(SHA-256(payload))` and every signature is rejected.
-- **IEEE P1363 only** (64 raw bytes → base64). The ASN.1/DER fallback was removed.
-- **Freshness window is ±300s in both directions.** A future timestamp fails too. Never fake or round the clock.
-- **`password` is never the user's PIN and never a local unlock password** — it is the `Server_Auth_Token` above. Send it only on Paranoid Mode accounts; sending it on a Standard Mode account fails exactly as hard as omitting it on a Paranoid one. Read the mode from `has_password` on `GET /users/me` — never guess, never trust cached local state.
-- **Every `DELETE` requires a JSON body** carrying the signature. An absent body is `400 INVALID_BODY`.
-- **Errors carry no message.** All user-facing copy is built client-side from `code` + the endpoint called. A `404` from `/sign-up`, `/sign-in` or `/auth/verify` is deliberately ambiguous — render one generic "could not sign in", never "user not found".
-- **`401 UNAUTHORIZED` (token expired) and `401 INVALID_CREDENTIALS` (account/second factor) are different.** Only the first means "sign in again from scratch"; the second can appear on a plain `GET`.
-- **Re-running `POST /sign-up` is the documented restore-on-new-device path**, and it re-sends all three keys. The server compares the two encryption keys against the stored ones and returns the generic `404` if either differs. A `404` on restore with a correct signature therefore means **your derivation is wrong**, not that the account is missing — check against the test vectors first. Nothing is overwritten by the rejected call.
-- **Keys are immutable; there is no rotation.** A mismatch is refused rather than accepted precisely because accepting would silently orphan every blob already wrapped to the old keys. Nothing wraps to them today, which is exactly why backend Task 63 was promoted alongside private sharing rather than left post-MVP.
-- **Optional fields are absent, never `null`.** Type them `?` / `| undefined` and test with `in` or `!== undefined`. `| null` takes the wrong branch on every response.
-- **UUIDs are canonical lowercase hyphenated only**, in paths and bodies. Echo back exactly what the API gave you — the same string goes into the signed payload, so "what you send" and "what you sign" must be the same bytes.
-- **Status codes**: `201` created, `204` nothing to say, `200` everything else. Do not key a helper on the verb — `DELETE /secrets` (batch) returns `200` with a body you must read.
-- **Retries are not uniformly safe** (guide § Retry safety). `POST /secrets` without a client-generated `id` and `POST /recovery/request` each create a second row; a retried `DELETE`/`PATCH` returns `404`/`409` meaning *already done*; `POST /users/second-factor` returns a `401` you cannot distinguish from failure — resolve it with `GET /users/me`.
-- **Poll, don't wait.** No webhooks, SSE or WebSockets. Nothing in the current API needs polling; a sharing inbox will be the first thing that does.
-- **Public endpoints have a 350 ms response floor.** Never use timings as a signal; never set timeouts below ~2 s.
-- **No custom request headers** — only `Content-Type` and `Authorization` are allowed by CORS. Never set `credentials: "include"`.
-- **1 MiB body cap.** Budget ~700 KiB of plaintext per secret; oversized bodies return `400 INVALID_BODY`, same as malformed JSON.
-- **Eight lists paginate; `GET /secrets` does not.** Follow `next_cursor` until `has_more` is `false` — a short page is not the last page. Cursors are opaque: never build, parse or persist one. Render the vault index from `GET /secrets?fields=meta`, and hash the ciphertext *you* received rather than trusting `ciphertext_sha256`.
-- **Auth needs Redis server-side and it fails closed.** A total auth outage with valid credentials is an infrastructure symptom, not a client bug — do not add retry logic that hammers it.
+- **One challenge per request, always fresh.** It is consumed before the signature is checked, so
+  every retry needs a new triple.
+- **Do not pre-hash.** The signer hashes the payload once, like the server.
+- **IEEE P1363 only**, 64 bytes. **Freshness is ±300 s** in both directions.
+- **Every signed `DELETE` requires a JSON body.** An absent body is `400 INVALID_BODY`.
+- **Errors carry no message.** Copy is built client-side from `code` + endpoint. Every `404` from
+  `/sign-up`, `/sign-in`, `/devices/enrol` and `/devices/enrol/chain` is one generic message.
+- **`429` is never an authentication failure.** Wait `Retry-After` and say so; a `429` on
+  `POST /files` pauses the upload queue.
+- **Optional fields are absent, never `null`.**
+- **UUIDs are canonical lowercase hyphenated**, in paths and bodies. What you send and what you
+  sign must be the same bytes.
+- **Status codes**: `201` created, `204` nothing to say, `200` everything else.
+- **Retries are not uniformly safe** (guide § Retry safety). Always send a client-generated `id`
+  on creates. Never auto-retry an OPRF evaluation: each is an attempt.
+- **Public endpoints have a 350 ms response floor.** Never use timings as a signal; never set
+  timeouts below ~2 s.
+- **No custom request headers**, and never `credentials: "include"`.
+- **1 MiB body cap** (8 MiB on documents). Budget ~700 KiB of plaintext per secret.
+- **Follow `next_cursor` until `has_more` is `false`.** Cursors are opaque. Hash the ciphertext
+  you received rather than trusting `ciphertext_sha256`.
 
 ## Product boundaries — do not build these
 
-- **No "sign out all devices" / session list.** The API has no revocation. Logout means deleting your own copy of the token.
-- **No guardians, no seed recovery, no PIN reset.** Removed 2026-09-04 and not coming back. A forgotten Paranoid PIN is terminal, and the UI must say so before the PIN is set.
-- **No key rotation flow, and no "disable PIN".** Rotation is a protocol change (backend Task 63), not an endpoint.
-- **Check-in / dead-man's-switch configuration is on-chain**, not in this API.
-
-**One item left this list on 2026-09-06: the drive.** File upload is v1 scope now, and
-`../api-general/.docs/storage-plan.md` is a build target rather than the one `.docs` file that
-isn't. **Do not start it yet** — § 5 of that document holds five unanswered decisions, including a
-per-account quota the whole storage economics depend on, and there is no client task for it. Read
-it before designing anything file-shaped; build nothing from it until those close.
+- **No guardians, no seed recovery, no PIN reset.** A forgotten account PIN is terminal, and the
+  UI says so before Paranoid is turned on.
+- **No "disable Paranoid".** The mode change is one-way.
+- **No "sign out all devices" button.** Removing a device is the devices screen; it rotates
+  what the device held.
+- **Nothing on-chain.**
 
 ## Conventions
 
-- **No comments in code.** Documentation belongs in a `README.md` per domain/module; names carry the meaning. `src/lib/crypto.ts` is the counter-example — it predates this rule.
-- The server is zero-knowledge. Every `ciphertext`, `wrapped_dek`, `encrypted_*`, `pq_hybrid_*` field is produced and consumed exclusively here. If a flow seems to need the server reading one, the flow is being misread.
-- Never log, persist unencrypted, or send to the server: the seed phrase, private keys, DEKs, the PIN, or the `Server_Auth_Token`. Zero `sessionKey`, `ecdhSecret`, `kemSecret` and ephemeral private keys after use.
+- **No comments in code.** Documentation belongs in a `README.md` per module; names carry the
+  meaning.
+- The server is zero-knowledge. Every `ciphertext`, `wrapped_dek`, `wrapped_key`,
+  `sealed_material` and PQXDH blob is produced and consumed exclusively here.
+- Never log, persist unencrypted, or send: the phrase, the seed, private keys, KEKs, DEKs, the
+  PIN. Zero secrets after use.
+- **The browser is a network client too.** Build text entry from `Field` / `TextArea`, or spread
+  `PRIVATE_TEXT_PROPS` (`PRIVATE_TEXT_ATTRIBUTES` for TipTap). **A PIN is always a `PinField`**
+  and a secret value a `SecretField` — never a `Field` with `type="password"`, which is what makes
+  a browser offer to save it. Never put decrypted content in `document.title`. Copy secrets only
+  through `CopyButton`. See `src/lib/app/README.md`.
+- **Every response carries a Content Security Policy** from `src/lib/security-headers`. A new
+  host goes into it deliberately, never as a wildcard.
 - Path alias `@/*` → `./src/*`. TypeScript `strict` is on.
-- Branches: `development` → `staging` → `preview` → `main`. Work off `development` unless told otherwise.
-- `NEXT_PUBLIC_BASE_API_URL` points at the API root — **there is no `/v1` prefix**; default `http://localhost:8080`. Configure it once — route constants are the documented paths verbatim.
+- `NEXT_PUBLIC_BASE_API_URL` points at the API root, with no version prefix; default
+  `http://localhost:8080`.
+- **Free vs Premium gating: do not build any.** The API has no tier concept.
 
 ## Commands
 
 ```bash
 npm run dev       # next dev --turbopack
-npm run build
-npm test          # vitest run
-npm run test:watch
+npm run build     # a production build needs CSP_OBJECT_STORE_ORIGINS
+npm test          # vitest run, src/**/*.test.ts
+npm run test:e2e  # vitest against a running API (CRYPLE_E2E_API, default http://localhost:8081)
 npm run lint      # eslint, flat config
-npm run lint:fix
 ```
 
-CI runs typecheck, lint (`--max-warnings 0`) and tests on every push and PR.
+CI runs typecheck, lint (`--max-warnings 0`) and tests.
 
-**Lint is ESLint 9 flat config** (`eslint.config.mjs`), extending `next/core-web-vitals` and `next/typescript`. Two rules exist because of this project's threat model rather than style, and both carry their reasoning in the failure message:
+**Lint rules that exist because of the threat model**, each carrying its reason in
+`eslint.config.mjs`:
 
-- **`no-console` is an error, with no exemptions.** The cross-cutting rule is "never log the seed phrase, private keys, DEKs, the PIN, or the `Server_Auth_Token`" — and the deleted `src/lib/crypto.ts` logged the environment and API URL. A blanket ban is the only version of that rule a linter can enforce. A `scripts/**` exemption existed for dev-only CLIs; the directory was removed on 2026-09-06 and the exemption went with it.
-- **`no-restricted-globals` blocks `localStorage` and `sessionStorage`.** Only the seed vault may reach persistent storage, and only for one PIN-encrypted blob. `src/lib/pin/**`, `src/lib/app/mode-hint.ts` and — since 2026-09-11 — `src/lib/app/icon-size.ts` are the exemptions; adding a fourth needs a reason that survives §Conventions. The third one's reason is written next to it in `eslint.config.mjs` and argued in `src/lib/app/README.md`: it stores one of four literal words naming how large the drive draws its icons, guarded so that anything unrecognised reads as no preference.
+- **`no-console` is an error, with no exemptions.**
+- **`localStorage`, `sessionStorage` and `indexedDB` are blocked**, as globals and through
+  `window`, `globalThis` and `self`. The exemptions:
+  - `src/lib/app/icon-size.ts` — one of four words naming how large a grid draws its icons;
+  - `src/lib/device/store.ts` — the device record, in IndexedDB because only IndexedDB can store
+    a non-extractable `CryptoKey`; it also _removes_ two `localStorage` keys an earlier deployment
+    left behind, and never reads or writes them;
+  - `src/lib/files/handles.ts` — one file handle per unfinished upload.
 
-  **IndexedDB is not blocked, and one module uses it**: `src/lib/files/handles.ts` keeps a `FileSystemFileHandle` per *unfinished* upload so resuming after a reload does not ask the user to find the file again. It is deleted the moment the upload completes. That is the only persistent store outside the seed vault, it holds no key material and no content, and its tradeoff — the browser records a filename on disk while an upload is in flight — is written down in `src/lib/files/README.md`. A new use of IndexedDB needs the same kind of argument.
+  A new exemption needs an argument in the module's README.
 
-Tests are Vitest (`environment: 'node'`, matching `src/**/*.test.ts` only — so `.tsx` component tests would need jsdom and a testing library that are deliberately not installed). Keep testable product logic in framework-free modules, as `src/lib/app` does.
-
-Regenerating the vectors is a backend operation (`go run ./tools/cryplevectors` in `../api-general`) and is **idempotent**. If its output differs from the committed file, a protocol constant changed — that is a breaking change to every user's keys, not a fix. This client only ever *reads* that file.
-
-## Resolved questions, and the one remaining spec gap
-
-Earlier revisions of this file carried open questions. All but one are answered by `../api-general/.docs/` and the API source; the resolutions are recorded here so they are not re-asked.
-
-- **Seed → `user_address`, seed → keys, fate of the local unlock password**: resolved by the frozen specs, inlined in the sections above.
-- **Free vs Premium gating: do not build any.** The API has no tier, plan, or entitlement concept anywhere — no config field, no enforcement, nothing on the wire. When a paid tier arrives it will be storage and file limits, not a feature flag on anything that exists today.
-
-**The last gap — the KEK behind `wrapped_dek` — closed on 2026-08-06 (Decision A).** It is recorded here because this file described it as open for months and the shape of the answer generalises.
-
-- The vault KEK is `HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|vault-kek", L=32)`, specified in `../api-general/.docs/crypto/ECDSA.md` § Step 5 and backed by the shared test vectors. The frozen key tree therefore derives **five** things, not the four this section used to list — and a sixth, `Cryple-Key-v1|passwords-kek`, is designed but unbuilt (`../api-general/.docs/password-manager.md`).
-- **It arrived as a new HKDF leaf, exactly as predicted, and that is now the rule**: a feature wanting a key of its own gets a new leaf, never a widening of an existing one. The label and construction were the backend spec's to choose, and were.
-- `src/lib/secrets/` implements it — `vaultKekDekWrapper(context.session.vaultKek)` — so the `wrapDek` / `unwrapDek` seam this section once recommended exists and is filled.
-
-**The hazard that has not gone away:** the server treats `wrapped_dek` as fully opaque (`front-end-endpoints.md`: "Opaque. Must be non-empty."), so nothing server-side will ever catch a divergent client derivation — it fails silently, per item, forever. **The test vectors are the only check**, which is why a new client must reproduce them before it is trusted with real data.
-
-Key tree and auth are fully specified and unblocked. Recovery and succession are not "specified" — they left the product on 2026-09-03 and 2026-09-04 and live in `dms-shamir-fe`.
-
-<!-- BEGIN:nextjs-agent-rules -->
-# This is NOT the Next.js you know
-
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
-<!-- END:nextjs-agent-rules -->
-
-> Note: this installation is Next `15.5.9` and has **no** `node_modules/next/dist/docs/` directory, so the instruction above cannot be followed as written. Verify App Router APIs against the installed package or the official docs.
+Tests are Vitest in the node environment. `.tsx` component tests are deliberately not set up, so
+keep testable logic in framework-free modules, as `src/lib/app` does. `src/test/session.ts` opens a
+keystore with real device keys and generation-1 KEKs for tests.

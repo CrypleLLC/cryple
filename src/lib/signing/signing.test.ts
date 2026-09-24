@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { ed25519 } from '@noble/curves/ed25519.js';
 import vectors from '@/test/fixtures/test-vectors.json';
-import { hexToBytes } from '@/lib/encoding';
+import { base64ToBytes, hexToBytes, spkiBase64ToUncompressedPoint } from '@/lib/encoding';
 import { deriveKeyTreeFromSeed } from '@/lib/keys';
+import { generateDeviceKeys, deviceSigner } from '@/lib/device/keys';
 import {
   ACTIONS,
   buildActionPayload,
@@ -9,9 +11,12 @@ import {
   createChallenge,
   currentTimestamp,
   normalizeActionArgs,
+  payloadDigest,
+  rawKeySigner,
   signActionEnvelope,
   signAuthEnvelope,
   signPayload,
+  signRootAction,
   verifyPayload,
   CHALLENGE_BYTES,
   SIGNATURE_BYTES,
@@ -20,12 +25,13 @@ import {
 
 const seed = hexToBytes(vectors.seed_and_user_address.seed_hex);
 const userAddress = vectors.seed_and_user_address.user_address;
-const serverAuthToken = vectors.server_auth_token.server_auth_token_hex;
 
 const tree = await deriveKeyTreeFromSeed(seed);
-const privateKey = tree.identity.privateKey;
-const publicKey = tree.identity.publicKeyUncompressed;
-const identity = { privateKey, serverAuthToken };
+const root = rawKeySigner(tree.identity.privateKey);
+const rootPublicKey = tree.identity.publicKeyUncompressed;
+const device = await generateDeviceKeys({ preferWebCryptoX25519: false });
+const deviceKey = deviceSigner(device);
+const devicePublicKey = spkiBase64ToUncompressedPoint(device.signingPublicKey);
 
 const CHALLENGE = 'a'.repeat(64);
 const TIMESTAMP = 1785000000;
@@ -80,67 +86,81 @@ describe('payload construction', () => {
 });
 
 describe('signature format', () => {
-  it('is IEEE P1363 — 64 raw bytes, base64', () => {
-    const signature = signPayload(buildAuthPayload(CHALLENGE, TIMESTAMP), privateKey);
-    const raw = Uint8Array.from(atob(signature), (c) => c.charCodeAt(0));
-    expect(raw).toHaveLength(SIGNATURE_BYTES);
-  });
-
-  it('is not ASN.1/DER — a DER signature starts 0x30 and varies in length', () => {
-    for (let i = 0; i < 20; i++) {
-      const signature = signPayload(`${createChallenge()}:${TIMESTAMP}`, privateKey);
-      const raw = Uint8Array.from(atob(signature), (c) => c.charCodeAt(0));
-      expect(raw).toHaveLength(64);
+  it('is IEEE P1363 — 64 raw bytes, base64 — from the root and from a WebCrypto device key', async () => {
+    for (const signer of [root, deviceKey]) {
+      const signature = await signPayload(buildAuthPayload(CHALLENGE, TIMESTAMP), signer);
+      expect(base64ToBytes(signature)).toHaveLength(SIGNATURE_BYTES);
     }
   });
 
-  it('verifies against the derived public key', () => {
+  it('is never ASN.1/DER, whatever the challenge', async () => {
+    for (let i = 0; i < 20; i++) {
+      const signature = await signPayload(`${createChallenge()}:${TIMESTAMP}`, deviceKey);
+      expect(base64ToBytes(signature)).toHaveLength(64);
+    }
+  });
+
+  it('verifies against the signer\'s own public key and no other', async () => {
     const payload = buildAuthPayload(CHALLENGE, TIMESTAMP);
-    expect(verifyPayload(payload, signPayload(payload, privateKey), publicKey)).toBe(true);
+    expect(verifyPayload(payload, await signPayload(payload, root), rootPublicKey)).toBe(true);
+    expect(verifyPayload(payload, await signPayload(payload, deviceKey), devicePublicKey)).toBe(true);
+    expect(verifyPayload(payload, await signPayload(payload, deviceKey), rootPublicKey)).toBe(false);
+  });
+
+  it('accepts a high-S signature, as the server and WebCrypto both produce them', () => {
+    const [event] = vectors.device_keys.genesis_chain;
+    expect(
+      verifyPayload(
+        event.statement,
+        event.signature_base64,
+        spkiBase64ToUncompressedPoint(vectors.device_keys.root_wrap.root_public_key),
+      ),
+    ).toBe(true);
+  });
+
+  it('keeps the device signing key non-extractable', async () => {
+    await expect(crypto.subtle.exportKey('pkcs8', device.signingKey)).rejects.toThrow();
   });
 });
 
-describe('the signature is bound to everything in its payload', () => {
+describe('the signature is bound to everything in its payload', async () => {
   const payload = buildActionPayload(CHALLENGE, TIMESTAMP, 'secret-delete', ['request-1']);
-  const signature = signPayload(payload, privateKey);
+  const signature = await signPayload(payload, deviceKey);
 
   it('verifies against its own payload', () => {
-    expect(verifyPayload(payload, signature, publicKey)).toBe(true);
+    expect(verifyPayload(payload, signature, devicePublicKey)).toBe(true);
   });
 
   it('is bound to the challenge', () => {
     const other = buildActionPayload('b'.repeat(64), TIMESTAMP, 'secret-delete', ['request-1']);
-    expect(verifyPayload(other, signature, publicKey)).toBe(false);
+    expect(verifyPayload(other, signature, devicePublicKey)).toBe(false);
   });
 
   it('is bound to the timestamp', () => {
     const other = buildActionPayload(CHALLENGE, TIMESTAMP + 1, 'secret-delete', ['request-1']);
-    expect(verifyPayload(other, signature, publicKey)).toBe(false);
+    expect(verifyPayload(other, signature, devicePublicKey)).toBe(false);
   });
 
   it('is bound to the action label', () => {
     const other = buildActionPayload(CHALLENGE, TIMESTAMP, 'note-delete', ['request-1']);
-    expect(verifyPayload(other, signature, publicKey)).toBe(false);
+    expect(verifyPayload(other, signature, devicePublicKey)).toBe(false);
   });
 
   it('is bound to the arguments', () => {
     const other = buildActionPayload(CHALLENGE, TIMESTAMP, 'secret-delete', ['request-2']);
-    expect(verifyPayload(other, signature, publicKey)).toBe(false);
+    expect(verifyPayload(other, signature, devicePublicKey)).toBe(false);
   });
 });
 
 describe('a sign-in signature can never be used as an action signature', () => {
-  it('refuses in both directions — two fields can never collide with three or more', () => {
+  it('refuses in both directions — two fields can never collide with three or more', async () => {
     const authPayload = buildAuthPayload(CHALLENGE, TIMESTAMP);
-    const authSignature = signPayload(authPayload, privateKey);
+    const authSignature = await signPayload(authPayload, root);
+    const actionPayload = buildActionPayload(CHALLENGE, TIMESTAMP, 'account-delete', [userAddress]);
+    const actionSignature = await signPayload(actionPayload, root);
 
-    const actionPayload = buildActionPayload(CHALLENGE, TIMESTAMP, 'account-delete', [
-      userAddress,
-    ]);
-    const actionSignature = signPayload(actionPayload, privateKey);
-
-    expect(verifyPayload(actionPayload, authSignature, publicKey)).toBe(false);
-    expect(verifyPayload(authPayload, actionSignature, publicKey)).toBe(false);
+    expect(verifyPayload(actionPayload, authSignature, rootPublicKey)).toBe(false);
+    expect(verifyPayload(authPayload, actionSignature, rootPublicKey)).toBe(false);
   });
 
   it('never produces an action payload with only two fields', () => {
@@ -184,157 +204,138 @@ describe('the four batchable delete actions', () => {
   });
 });
 
-describe('the action table matches the authoritative spec', () => {
-  it('covers all 13 actions', () => {
-    expect(Object.keys(ACTIONS)).toHaveLength(13);
+describe('the action table matches signed-actions.md', () => {
+  it('covers all 29 actions', () => {
+    expect(Object.keys(ACTIONS)).toHaveLength(29);
   });
 
-  it('binds the counterparty or the item into every sharing signature', () => {
-    expect(ACTIONS['connection-invite'].args).toEqual(['recipient_username', 'pqxdh_blob']);
-    expect(ACTIONS['share-create'].args).toEqual(['connection_id', 'item_type', 'item_id']);
+  it('leaves writing a credential unsigned, which is what keeps an extension on the JWT side', () => {
+    expect(Object.keys(ACTIONS).filter((action) => action.startsWith('credential-'))).toEqual([
+      'credential-delete',
+      'credential-prune',
+      'credential-rekey',
+    ]);
+  });
 
-    for (const action of [
-      'connection-invite',
-      'connection-accept',
-      'connection-delete',
-      'share-create',
-      'share-delete',
-    ] as const) {
-      expect(ACTIONS[action].secondFactor).toBe(true);
-      expect(ACTIONS[action]).not.toHaveProperty('variadic');
+  it('makes every re-wrap variadic and device-signed, like the delete it resembles', () => {
+    for (const action of ['secret-rekey', 'note-rekey', 'document-rekey', 'file-rekey'] as const) {
+      expect(ACTIONS[action].signer).toBe('device');
+      expect(ACTIONS[action].pinProof).toBe(false);
+      expect(ACTIONS[action].variadic).toBe(true);
     }
   });
 
-  it('keeps username-update single-argument, and behind the second factor', () => {
-    expect(ACTIONS['username-update']).toMatchObject({
-      args: ['username'],
-      secondFactor: true,
-      signer: 'owner',
-    });
-    expect(ACTIONS['username-update']).not.toHaveProperty('variadic');
+  it('names the root as the signer of exactly the account-level actions', () => {
+    const rootActions = Object.entries(ACTIONS)
+      .filter(([, spec]) => spec.signer === 'root')
+      .map(([action]) => action)
+      .sort();
+    expect(rootActions).toEqual(
+      [
+        'account-delete',
+        'chain-read',
+        'device-enrol',
+        'enable-second-factor',
+        'pin-evaluate',
+        'rotate-second-factor',
+        'second-factor-begin',
+      ].sort(),
+    );
+  });
+
+  it('takes a PIN proof on the root actions that can hurt a Paranoid account, and never on a device action', () => {
+    for (const [action, spec] of Object.entries(ACTIONS)) {
+      const expected = ['account-delete', 'chain-read', 'device-enrol', 'rotate-second-factor', 'second-factor-begin'].includes(action);
+      expect(spec.pinProof).toBe(expected);
+    }
+  });
+
+  it('binds both generations into an invitation, and the counterparty or item into every sharing signature', () => {
+    expect(ACTIONS['connection-invite'].args).toEqual([
+      'recipient_username',
+      'pqxdh_blob',
+      'sender_key_generation',
+      'recipient_key_generation',
+    ]);
+    expect(ACTIONS['share-create'].args).toEqual(['connection_id', 'item_type', 'item_id']);
+    expect(ACTIONS['connection-keys'].args).toEqual(['connection_id', 'keys_digest']);
+    expect(ACTIONS['address-book-update'].args).toEqual(['expected_revision', 'ciphertext_digest']);
+    expect(ACTIONS['folder-delete'].args).toEqual(['scope', 'folder_id']);
+    expect(ACTIONS['folders-update'].args).toEqual(['scope', 'expected_revision', 'ciphertext_digest']);
+  });
+
+  it('makes the four deletes batchable and signed by the device', () => {
+    for (const action of ['secret-delete', 'note-delete', 'document-delete', 'file-delete'] as const) {
+      expect(ACTIONS[action]).toMatchObject({ signer: 'device', pinProof: false, variadic: true });
+    }
+  });
+
+  it('keeps username-update single-argument and signed by the device', () => {
+    expect(ACTIONS['username-update']).toMatchObject({ args: ['username'], signer: 'device' });
     expect(() => normalizeActionArgs('username-update', ['pedrosilva', 'psilva'])).toThrow(
       /expected 1 argument/,
     );
   });
-
-  it('makes file-delete batchable, since the drive gained DELETE /files', () => {
-    expect(ACTIONS['file-delete']).toMatchObject({
-      args: ['file_id'],
-      secondFactor: true,
-      signer: 'owner',
-      variadic: true,
-    });
-  });
-
-  it('treats DELETE /files/{id} as the one-element case of the same label', () => {
-    const id = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
-
-    expect(buildActionPayload(CHALLENGE, TIMESTAMP, 'file-delete', [id])).toBe(
-      `${CHALLENGE}:${TIMESTAMP}:file-delete:${id}`,
-    );
-  });
-
-  it('sorts and de-duplicates a file selection before signing', () => {
-    const first = '0c892e57-93cf-423a-a9e9-fee5a9f87681';
-    const second = 'ba7816bf-8f01-4fea-9411-2b4c3f5a1e77';
-
-    expect(normalizeActionArgs('file-delete', [second, first, second])).toEqual([first, second]);
-  });
-
-  it('makes document-delete batchable, like secret-delete and note-delete', () => {
-    expect(ACTIONS['document-delete']).toMatchObject({
-      args: ['document_id'],
-      secondFactor: true,
-      signer: 'owner',
-      variadic: true,
-    });
-  });
-
-  it('makes note-delete batchable, like secret-delete', () => {
-    expect(ACTIONS['note-delete']).toMatchObject({
-      args: ['note_id'],
-      secondFactor: true,
-      signer: 'owner',
-      variadic: true,
-    });
-  });
-
-  it('normalizes note-delete ids the way the server rebuilds them — sorted and de-duplicated', () => {
-    const a = '0c892e57-93cf-423a-a9e9-fee5a9f87681';
-    const b = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
-    const c = 'ba7816bf-8f01-4fea-9411-2b4c3f5a1e77';
-
-    expect(normalizeActionArgs('note-delete', [c, a, b, a])).toEqual([a, b, c]);
-    expect(() => normalizeActionArgs('note-delete', [])).toThrow(/at least one/);
-  });
-
-  it('encodes the one structural second-factor carve-out', () => {
-    expect(ACTIONS['enable-second-factor'].secondFactor).toBe(false);
-  });
-
-  it('demands the second factor everywhere else', () => {
-    for (const [action, spec] of Object.entries(ACTIONS)) {
-      expect(spec.secondFactor).toBe(action !== 'enable-second-factor');
-    }
-  });
-
-  it('records who signs; every action today is the account owner acting on itself', () => {
-    for (const spec of Object.values(ACTIONS)) {
-      expect(spec.signer).toBe('owner');
-    }
-  });
 });
 
-describe('second factor attachment', () => {
-  it('attaches password on a Paranoid auth envelope and omits it on Standard', () => {
-    expect(signAuthEnvelope(identity, { paranoid: true }).password).toBe(serverAuthToken);
-    expect(signAuthEnvelope(identity, { paranoid: false }).password).toBeUndefined();
+describe('who signs what', () => {
+  it('signs sign-in and device actions with the device, carrying no password and no proof', async () => {
+    const auth = await signAuthEnvelope(deviceKey);
+    expect(auth).not.toHaveProperty('password');
+    expect(verifyPayload(buildAuthPayload(auth.challenge, auth.timestamp), auth.signature, devicePublicKey)).toBe(true);
+
+    const action = await signActionEnvelope('secret-delete', ['id-1'], deviceKey);
+    expect(action).not.toHaveProperty('password');
+    expect(action).not.toHaveProperty('pin_proof');
   });
 
-  it('attaches password when the action demands it and the account is Paranoid', () => {
-    expect(signActionEnvelope('account-delete', [userAddress], identity, { paranoid: true }).password)
-      .toBe(serverAuthToken);
+  it('refuses to sign a root action with the device helper, and a device action with the root helper', async () => {
+    await expect(
+      signActionEnvelope('account-delete' as never, [userAddress], deviceKey),
+    ).rejects.toThrow(/root/);
+    await expect(signRootAction('secret-delete' as never, ['id'], root)).rejects.toThrow(/device/);
   });
 
-  it('omits password on a Standard account even for a second-factor action', () => {
+  it('sends no pin_proof for a Standard account', async () => {
+    const envelope = await signRootAction('account-delete', [userAddress], root);
+    expect(envelope).not.toHaveProperty('pin_proof');
+  });
+
+  it('proves the PIN over the very digest the root signature covers', async () => {
+    const proofSeed = hexToBytes(vectors.pin_oprf.account_registration.account_proof_seed_hex);
+    const envelope = await signRootAction('account-delete', [userAddress], root, (digest) =>
+      ed25519.sign(digest, proofSeed),
+    );
+    const payload = buildActionPayload(envelope.challenge, envelope.timestamp, 'account-delete', [
+      userAddress,
+    ]);
+
+    expect(verifyPayload(payload, envelope.signature, rootPublicKey)).toBe(true);
     expect(
-      signActionEnvelope('account-delete', [userAddress], identity, { paranoid: false }).password,
-    ).toBeUndefined();
+      ed25519.verify(
+        base64ToBytes(envelope.pin_proof as string),
+        payloadDigest(payload),
+        base64ToBytes(vectors.pin_oprf.account_registration.proof_public_key_base64),
+      ),
+    ).toBe(true);
   });
 
-  it('omits password for the carve-outs even on a Paranoid account', () => {
-    for (const action of ['enable-second-factor'] as const) {
-      const args = ACTIONS[action].args.map((name) => `${name}-value`);
-      expect(signActionEnvelope(action, args, identity, { paranoid: true }).password).toBeUndefined();
-    }
-  });
-
-  it('refuses to sign a Paranoid request with no token held', () => {
-    expect(() =>
-      signActionEnvelope('account-delete', [userAddress], { privateKey }, { paranoid: true }),
-    ).toThrow(/Server_Auth_Token/);
-    expect(() => signAuthEnvelope({ privateKey }, { paranoid: true })).toThrow(/Server_Auth_Token/);
+  it('refuses a proof on an action that never carries one', async () => {
+    await expect(
+      signRootAction('enable-second-factor', ['key'], root, () => new Uint8Array(64)),
+    ).rejects.toThrow(/never carries/);
   });
 });
 
 describe('envelopes are fresh per call', () => {
-  it('never reuses a challenge across two signings of the same action', () => {
-    const first = signActionEnvelope('note-delete', ['id-1'], identity, { paranoid: false });
-    const second = signActionEnvelope('note-delete', ['id-1'], identity, { paranoid: false });
+  it('never reuses a challenge across two signings of the same action', async () => {
+    const first = await signActionEnvelope('note-delete', ['id-1'], deviceKey);
+    const second = await signActionEnvelope('note-delete', ['id-1'], deviceKey);
     expect(first.challenge).not.toBe(second.challenge);
     expect(first.signature).not.toBe(second.signature);
   });
 
-  it('produces an envelope whose signature verifies over its own rebuilt payload', () => {
-    const envelope = signActionEnvelope('account-delete', ['a-user-address'], identity, {
-      paranoid: true,
-    });
-    const payload = buildActionPayload(
-      envelope.challenge,
-      envelope.timestamp,
-      'account-delete',
-      ['a-user-address'],
-    );
-    expect(verifyPayload(payload, envelope.signature, publicKey)).toBe(true);
+  it('emits a timestamp in unix seconds', () => {
+    expect(currentTimestamp()).toBeLessThan(10_000_000_000);
   });
 });

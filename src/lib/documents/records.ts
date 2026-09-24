@@ -6,6 +6,9 @@ export const SNAPSHOT_CIPHERTEXT_BUDGET = 6 * 1024 * 1024;
 
 export interface DocumentMetaRecord {
   id: string;
+  folder_id?: string;
+  wrapped_dek: string;
+  key_generation: number;
   snapshot_seq: number;
   latest_seq: number;
   revision: number;
@@ -17,6 +20,7 @@ export interface DocumentMetaRecord {
 export interface DocumentRecord {
   id: string;
   wrapped_dek: string;
+  key_generation: number;
   snapshot_ciphertext: string;
   snapshot_seq: number;
   revision: number;

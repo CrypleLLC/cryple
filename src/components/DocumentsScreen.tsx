@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { DragEvent } from 'react';
 import {
   createDocument,
   deleteDocuments,
@@ -8,12 +9,14 @@ import {
   loadDocumentSummaries,
   type DocumentSummary,
 } from '@/lib/documents';
+import { moveItemsToFolder } from '@/lib/folders';
 import {
   DOCUMENT_MINIATURE_TEXT_SHARE,
   DOCUMENT_MINIATURE_TITLE_SHARE,
   buildDocumentTiles,
   defaultIconSize,
   documentCountLabel,
+  DOCUMENT_NOUNS,
   documentDeleteConfirmation,
   documentHref,
   gridTemplate,
@@ -26,14 +29,17 @@ import {
   type DocumentTile,
   type IconSize,
 } from '@/lib/app';
+import { openWithSessionHandoff } from '@/lib/session/handoff';
 import { useAuthedContext, useCryple } from './CrypleProvider';
-import { CheckIcon, DocumentsIcon, PlusIcon, SharingIcon, TrashIcon } from './icons';
-import { Button, Card, Empty, Notice, SizeStepper, Spinner } from './ui';
+import { CheckIcon, DocumentsIcon, SharingIcon, TrashIcon } from './icons';
+import { Button, Card, Empty, FloatingAddButton, Notice, SizeStepper, Spinner } from './ui';
 import ShareItemDialog from './ShareItemDialog';
+import { startItemDrag } from './FolderTabs';
+import { FolderPath, FolderTile, MoveToFolder, useFolderTree } from './FolderBrowser';
 
 export default function DocumentsScreen() {
   const context = useAuthedContext();
-  const { reportError } = useCryple();
+  const { reportError, fullDevice } = useCryple();
 
   const [summaries, setSummaries] = useState<DocumentSummary[]>();
   const [message, setMessage] = useState<string>();
@@ -51,9 +57,20 @@ export default function DocumentsScreen() {
     writeIconSize('documents', next);
   }, []);
 
+  const reloadDocuments = useRef<() => void>(() => undefined);
+  const itemsChanged = useCallback(() => reloadDocuments.current(), []);
+  const tree = useFolderTree('documents', itemsChanged);
+  const listing = tree.listing;
+  const openFolder = tree.current;
+
   const load = useCallback(async () => {
+    if (listing === undefined) {
+      return;
+    }
     try {
-      const metas = await listDocumentsMeta(context);
+      const metas = await listDocumentsMeta(context, {
+        folder: listing === '' ? undefined : listing,
+      });
       const loaded = await loadDocumentSummaries(context, metas);
 
       setSummaries(loaded);
@@ -68,11 +85,20 @@ export default function DocumentsScreen() {
       setMessage(reportError(error));
       setSummaries([]);
     }
-  }, [context, reportError]);
+  }, [context, reportError, listing]);
 
   useEffect(() => {
+    reloadDocuments.current = () => void load();
+  }, [load]);
+
+  useEffect(() => {
+    setSelecting(false);
+    setSelected([]);
+    setConfirming(false);
     void load();
   }, [load]);
+
+  const sameIds = useCallback((ids: string[]) => ids, []);
 
   const tiles = useMemo(
     () => (summaries === undefined ? undefined : buildDocumentTiles(summaries)),
@@ -80,13 +106,16 @@ export default function DocumentsScreen() {
   );
 
   const openInNewTab = useCallback((id: string) => {
-    window.open(documentHref(id), '_blank', 'noopener');
+    openWithSessionHandoff(documentHref(id));
   }, []);
 
   const create = useCallback(async () => {
     setBusy(true);
     try {
       const { document } = await createDocument(context);
+      if (openFolder !== null) {
+        await moveItemsToFolder(context, 'documents', [document.id], openFolder);
+      }
       openInNewTab(document.id);
       await load();
     } catch (error) {
@@ -94,7 +123,7 @@ export default function DocumentsScreen() {
     } finally {
       setBusy(false);
     }
-  }, [context, load, openInNewTab, reportError]);
+  }, [context, load, openFolder, openInNewTab, reportError]);
 
   const removeSelected = useCallback(async () => {
     setBusy(true);
@@ -119,12 +148,30 @@ export default function DocumentsScreen() {
     openInNewTab(id);
   }
 
+  const path = (
+    <FolderPath
+      state={tree}
+      rootLabel="Documents"
+      rootIcon={<DocumentsIcon className="h-4 w-4 shrink-0" />}
+      itemIdsFor={sameIds}
+    />
+  );
+
   if (tiles === undefined) {
-    return <Spinner />;
+    return (
+      <div className="space-y-5">
+        {path}
+        <Spinner />
+      </div>
+    );
   }
+
+  const folderTiles = tree.invalid ? [] : tree.children;
 
   return (
     <div className="space-y-5">
+      {path}
+
       {message !== undefined && <Notice tone="danger">{message}</Notice>}
 
       {sharing ? (
@@ -137,12 +184,16 @@ export default function DocumentsScreen() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-compact text-ink-muted">
-          {tiles.length === 0 ? 'No documents yet' : documentCountLabel(tiles.length)}
+          {tiles.length > 0
+            ? documentCountLabel(tiles.length)
+            : openFolder === null
+              ? 'No documents yet'
+              : 'No documents in this folder'}
           {selecting && selected.length > 0 && ` · ${selected.length} selected`}
         </p>
 
         <div className="flex flex-wrap items-center gap-2">
-          {tiles.length > 0 && (
+          {tiles.length + folderTiles.length > 0 && (
             <SizeStepper
               size={pageSize}
               onChange={resize}
@@ -164,17 +215,14 @@ export default function DocumentsScreen() {
             </Button>
           )}
 
-          {selecting && selected.length > 0 && (
+          {selecting && <MoveToFolder state={tree} itemIds={selected} rootLabel="Documents" />}
+
+          {fullDevice && selecting && selected.length > 0 && (
             <Button variant="danger" disabled={busy} onClick={() => setConfirming(true)}>
               <TrashIcon className="h-4 w-4" />
               Delete
             </Button>
           )}
-
-          <Button variant="accent" disabled={busy} onClick={() => void create()}>
-            <PlusIcon className="h-4 w-4" />
-            New document
-          </Button>
         </div>
       </div>
 
@@ -192,11 +240,12 @@ export default function DocumentsScreen() {
         </Notice>
       )}
 
-      {tiles.length === 0 ? (
+      {tiles.length === 0 && folderTiles.length === 0 ? (
         <Card>
           <Empty icon={<DocumentsIcon className="h-6 w-6" />}>
-            Long-form writing, encrypted on this device before it is stored. Documents open in
-            their own tab.
+            {openFolder === null
+              ? 'Long-form writing, encrypted on this device before it is stored. Documents open in their own tab.'
+              : 'This folder is empty. Drag documents onto it, or create one while it is open.'}
           </Empty>
         </Card>
       ) : (
@@ -204,6 +253,16 @@ export default function DocumentsScreen() {
           className="grid gap-x-4 gap-y-6"
           style={{ gridTemplateColumns: gridTemplate('documents', pageSize) }}
         >
+          {folderTiles.map((folder) => (
+            <FolderTile
+              key={folder.id}
+              state={tree}
+              folder={folder}
+              nouns={DOCUMENT_NOUNS}
+              frameClass="aspect-[210/297] w-full"
+              itemIdsFor={sameIds}
+            />
+          ))}
           {tiles.map((tile) => (
             <DocumentFile
               key={tile.id}
@@ -214,6 +273,9 @@ export default function DocumentsScreen() {
               selected={selected.includes(tile.id)}
               busy={busy}
               onOpen={() => activate(tile.id)}
+              onDragStart={(event) =>
+                startItemDrag(event, selected.includes(tile.id) ? selected : [tile.id])
+              }
               onShare={() => setSharing(tile.id)}
               onToggle={() => {
                 setSelecting(true);
@@ -222,6 +284,15 @@ export default function DocumentsScreen() {
             />
           ))}
         </ul>
+      )}
+
+      {selecting ? null : (
+        <FloatingAddButton
+          label="New document"
+          spread
+          disabled={busy}
+          onClick={() => void create()}
+        />
       )}
     </div>
   );
@@ -237,6 +308,7 @@ function DocumentFile({
   onOpen,
   onShare,
   onToggle,
+  onDragStart,
 }: {
   tile: DocumentTile;
   textPixels: number;
@@ -247,9 +319,10 @@ function DocumentFile({
   onOpen: () => void;
   onShare: () => void;
   onToggle: () => void;
+  onDragStart: (event: DragEvent) => void;
 }) {
   return (
-    <li className="group relative">
+    <li className="group relative" draggable={!busy} onDragStart={onDragStart}>
       <button
         type="button"
         onClick={onOpen}

@@ -83,6 +83,20 @@ different on a username route than it does anywhere else:
 that comes back with it; `fallbackCode` is deliberately not taught about `422`, since a body
 without the code would be a server that stopped answering the way this route is specified.
 
+### The device-model codes and rate limits
+
+| Code | Predicate | Renders |
+| --- | --- | --- |
+| `429 TOO_MANY_REQUESTS`, any route | `isRateLimited`, `retryAfterSeconds` from `Retry-After` | `rateLimitMessage`: when to try again, and that it says nothing about the account or the PIN. **Checked before the auth mapping**, so a `429` on `/sign-in` is never shown as a sign-in failure |
+| `409 STALE_KEY_GENERATION` | `isStaleKeyGeneration` | `STALE_KEYS`. A write retries once first (`lib/keyrings` → `withCurrentGeneration`); this is only what a second refusal says |
+| `409 TOO_MANY_DEVICES` | `isTooManyDevices` | `TOO_MANY_DEVICES`. Enrolment turns it into a list of devices to remove |
+| `400 INVALID_BATCH` | `isInvalidBatch` | `DEVICE_CHANGE_REFUSED` |
+| `404` on a scoped route (`/secrets`, `/notes`, `/documents`, `/files`, `/connections`, `/sharing`) | `scopeForPath` | `SCOPE_MISSING` when `userMessageFor(error, { deviceScopes })` shows the device lacks the scope; the ordinary *no longer exists* otherwise |
+| `401 UNAUTHORIZED` | `isSessionOver` | `SESSION_ENDED`. The provider signs in again silently; `DEVICE_REMOVED` if that is refused |
+
+`/devices/enrol` and `/devices/enrol/chain` join the auth routes whose `404` is the one generic
+sign-in message.
+
 ## Optional fields
 
 Optional fields are **absent, never `null`**. Types use `?` / `| undefined`, and checks use
@@ -114,8 +128,11 @@ otherwise echo back exactly the string the API gave you.
 read the `exp` claim without verifying it (the client cannot — it has no HMAC key).
 
 - Default lifetime **24 hours**. `get()` self-clears an expired token.
-- **There is no refresh, revocation or logout endpoint.** Deleting our copy *is* logout.
-  `signOut` in [`lib/auth`](../auth/README.md) does that and locks the keystore.
+- **There is no refresh endpoint.** An unlocked device signs in again with its own key, silently
+  (`lib/account` → `renewSignIn`), shortly before the token expires and after a `401 UNAUTHORIZED`.
+- **The token names the device, and a removed device's token fails at once** with `401
+  UNAUTHORIZED`. When signing in again is refused too, the device was removed, and the phrase is
+  needed.
 - **Never tell the user that changing their PIN signed out their other devices.** It did not.
   Do not build a session or device list — nothing server-side backs one.
 - `401 UNAUTHORIZED` anywhere means the session is over; clear and restart the challenge flow.

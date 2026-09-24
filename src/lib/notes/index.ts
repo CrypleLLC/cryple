@@ -3,13 +3,8 @@ import { normalizeActionArgs, signActionEnvelope } from '@/lib/signing';
 import { toPlainText } from '@/lib/note-format';
 import { requireToken, type AuthedContext } from '@/lib/context';
 import { sha256Hex, utf8ToBytes, zeroBytes } from '@/lib/encoding';
-import {
-  generateDek,
-  openText,
-  sealText,
-  vaultKekDekWrapper,
-  type DekWrapper,
-} from '@/lib/secrets';
+import { generateDek, openText, sealText, type DekWrapper } from '@/lib/secrets';
+import { scopeDekWrapper, withCurrentGeneration } from '@/lib/keyrings';
 
 export const NOTE_VERSION = 'v1';
 export const MAX_NOTE_CHARACTERS = 5000;
@@ -20,6 +15,7 @@ export interface NoteRecord {
   id: string;
   ciphertext: string;
   wrapped_dek: string;
+  key_generation: number;
   version: string;
   created_at: string;
   updated_at: string;
@@ -27,6 +23,8 @@ export interface NoteRecord {
 
 export interface NoteMetaRecord {
   id: string;
+  wrapped_dek: string;
+  key_generation: number;
   ciphertext_sha256: string;
   ciphertext_bytes: number;
   version: string;
@@ -39,7 +37,7 @@ export interface NotesContext extends AuthedContext {
 }
 
 function wrapper(context: NotesContext): DekWrapper {
-  return context.dek ?? vaultKekDekWrapper(context.session.vaultKek);
+  return context.dek ?? scopeDekWrapper(context, 'notes');
 }
 
 export function noteCharacterCount(text: string): number {
@@ -82,15 +80,16 @@ export async function createNote(
 
   try {
     const ciphertext = assertWithinCiphertextCeiling(await sealText(plaintext, dek));
-    const wrapped_dek = await wrapper(context).wrapDek(dek);
 
-    const response = await request<NoteRecord>({
-      method: 'POST',
-      path: '/notes',
-      token: requireToken(context),
-      timeoutMs: context.timeoutMs,
-      body: { id, ciphertext, wrapped_dek, version: NOTE_VERSION },
-    });
+    const response = await withCurrentGeneration(context, async () =>
+      request<NoteRecord>({
+        method: 'POST',
+        path: '/notes',
+        token: requireToken(context),
+        timeoutMs: context.timeoutMs,
+        body: { id, ciphertext, ...(await wrapper(context).wrapDek(dek)), version: NOTE_VERSION },
+      }),
+    );
 
     return { note: response.data, created: response.status === 201 };
   } finally {
@@ -106,17 +105,26 @@ export async function updateNote(
   assertWithinCharacterLimit(plaintext);
 
   const id = assertCanonicalUuid(note.id);
-  const dek = await wrapper(context).unwrapDek(note.wrapped_dek);
+  const dek = await wrapper(context).unwrapDek(note);
 
   try {
     const ciphertext = assertWithinCiphertextCeiling(await sealText(plaintext, dek));
 
-    const response = await request<NoteRecord>({
-      method: 'PUT',
-      path: `/notes/${id}`,
-      token: requireToken(context),
-      timeoutMs: context.timeoutMs,
-      body: { ciphertext, wrapped_dek: note.wrapped_dek, version: note.version || NOTE_VERSION },
+    let wrapped = { wrapped_dek: note.wrapped_dek, key_generation: note.key_generation };
+    const response = await withCurrentGeneration(context, async () => {
+      if (context.dek === undefined) {
+        const current = context.session.currentGeneration('notes');
+        if (wrapped.key_generation !== current) {
+          wrapped = await wrapper(context).wrapDek(dek);
+        }
+      }
+      return request<NoteRecord>({
+        method: 'PUT',
+        path: `/notes/${id}`,
+        token: requireToken(context),
+        timeoutMs: context.timeoutMs,
+        body: { ciphertext, ...wrapped, version: note.version || NOTE_VERSION },
+      });
     });
 
     return response.data;
@@ -174,7 +182,7 @@ export async function listNotes(
 }
 
 export async function openNote(context: NotesContext, note: NoteRecord): Promise<string> {
-  const dek = await wrapper(context).unwrapDek(note.wrapped_dek);
+  const dek = await wrapper(context).unwrapDek(note);
   try {
     return await openText(note.ciphertext, dek);
   } finally {
@@ -185,15 +193,7 @@ export async function openNote(context: NotesContext, note: NoteRecord): Promise
 export async function deleteNote(context: NotesContext, id: string): Promise<void> {
   const canonical = assertCanonicalUuid(id);
 
-  const envelope = signActionEnvelope(
-    'note-delete',
-    [canonical],
-    {
-      privateKey: context.session.identityPrivateKey,
-      serverAuthToken: context.session.serverAuthToken(),
-    },
-    { paranoid: context.paranoid },
-  );
+  const envelope = await signActionEnvelope('note-delete', [canonical], context.session.signer());
 
   await request<void>({
     method: 'DELETE',
@@ -216,15 +216,7 @@ export async function deleteNotes(
   const canonical = ids.map((id) => assertCanonicalUuid(id));
   const normalized = normalizeActionArgs('note-delete', canonical);
 
-  const envelope = signActionEnvelope(
-    'note-delete',
-    normalized,
-    {
-      privateKey: context.session.identityPrivateKey,
-      serverAuthToken: context.session.serverAuthToken(),
-    },
-    { paranoid: context.paranoid },
-  );
+  const envelope = await signActionEnvelope('note-delete', normalized, context.session.signer());
 
   const response = await request<BatchDeleteNotesResult>({
     method: 'DELETE',

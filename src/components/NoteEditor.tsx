@@ -11,6 +11,7 @@ import {
   noteTitle,
   NOTE_AUTOSAVE_DELAY_MS,
   NOTE_SAVE_LABELS,
+  PRIVATE_TEXT_PROPS,
   UNTITLED_NOTE,
   type OpenedNote,
 } from '@/lib/app';
@@ -46,7 +47,7 @@ export default function NoteEditor({
   onSaved: (record: NoteRecord, plaintext: string) => void;
 }) {
   const context = useAuthedContext();
-  const { reportError } = useCryple();
+  const { reportError, fullDevice } = useCryple();
 
   const [record, setRecord] = useState(opened?.record);
   const [saved, setSaved] = useState(opened?.plaintext);
@@ -265,7 +266,7 @@ export default function NoteEditor({
           >
             {NOTE_SAVE_LABELS[status]}
           </span>
-          {record !== undefined ? (
+          {record !== undefined && fullDevice ? (
             <Button
               variant="danger"
               disabled={busy || saving}
@@ -325,7 +326,7 @@ export default function NoteEditor({
         tabIndex={0}
         contentEditable={!unreadable}
         suppressContentEditableWarning
-        spellCheck
+        {...PRIVATE_TEXT_PROPS}
         data-empty={isNoteEmpty(draft)}
         data-placeholder="Write your note. The first line becomes its name."
         style={{ fontSize: `${NOTE_FONT_DEFAULT_PX}px` }}

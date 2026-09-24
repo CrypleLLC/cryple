@@ -8,7 +8,13 @@ import Link from 'next/link';
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react';
 import type { Editor } from '@tiptap/react';
 import { META_MAP, readTitle, writeTitle, type SyncState } from '@/lib/documents';
-import { documentCountsLabel, saveStatusLabel, UNTITLED_DOCUMENT } from '@/lib/app';
+import {
+  documentCountsLabel,
+  PRIVATE_TEXT_ATTRIBUTES,
+  PRIVATE_TEXT_PROPS,
+  saveStatusLabel,
+  UNTITLED_DOCUMENT,
+} from '@/lib/app';
 import { Notice, Spinner } from '@/components/ui';
 import { documentExtensions } from './extensions';
 import { pageCountOf } from './pagination';
@@ -54,7 +60,7 @@ function DocumentSurface({ doc, state }: { doc: YDoc; state: SyncState }) {
     editorProps: {
       attributes: {
         class: 'cryple-prose focus:outline-none',
-        spellcheck: 'true',
+        ...PRIVATE_TEXT_ATTRIBUTES,
       },
     },
   });
@@ -210,10 +216,6 @@ function TitleInput({ doc }: { doc: YDoc }) {
     return () => meta.unobserve(observer);
   }, [doc]);
 
-  useEffect(() => {
-    document.title = title.trim().length > 0 ? `${title} — Cryple` : `${UNTITLED_DOCUMENT} — Cryple`;
-  }, [title]);
-
   const onChange = useCallback(
     (next: string) => {
       setTitle(next);
@@ -225,6 +227,7 @@ function TitleInput({ doc }: { doc: YDoc }) {
   return (
     <input
       aria-label="Document title"
+      {...PRIVATE_TEXT_PROPS}
       value={title}
       placeholder={UNTITLED_DOCUMENT}
       onChange={(event) => onChange(event.target.value)}

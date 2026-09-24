@@ -1,3 +1,4 @@
+import { openTestSession } from '@/test/session';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import vectors from '@/test/fixtures/test-vectors.json';
 import {
@@ -7,34 +8,26 @@ import {
   USERNAME_MALFORMED,
   USERNAME_UNAVAILABLE,
 } from '@/lib/api';
-import { SessionKeystore } from '@/lib/session';
-import { deriveServerAuthToken } from '@/lib/pin';
-import { buildActionPayload, verifyPayload } from '@/lib/signing';
-import { deriveKeyTreeFromSeed } from '@/lib/keys';
-import { hexToBytes } from '@/lib/encoding';
+import { ed25519 } from '@noble/curves/ed25519.js';
+import { buildActionPayload, payloadDigest, rawKeySigner, verifyPayload } from '@/lib/signing';
+import { deriveRootKeys, mnemonicToSeed } from '@/lib/keys';
+import { base64ToBytes } from '@/lib/encoding';
 import type { AuthedContext } from '@/lib/context';
 import {
   deleteAccount,
-  enableSecondFactor,
   MalformedUsernameError,
   fetchAccountMode,
   getMe,
   getPublicKeys,
   lookupUsername,
   resolveUsername,
-  rotateSecondFactor,
   updateUsername,
 } from './index';
 
-const mnemonic = vectors.seed_and_user_address.mnemonic;
 const userAddress = vectors.seed_and_user_address.user_address;
-const pin = vectors.server_auth_token.pin;
-const currentToken = vectors.server_auth_token.server_auth_token_hex;
-
-const publicKey = (await deriveKeyTreeFromSeed(hexToBytes(vectors.seed_and_user_address.seed_hex)))
-  .identity.publicKeyUncompressed;
-
-const NEW_PIN = '719284';
+const root = await deriveRootKeys(await mnemonicToSeed(vectors.seed_and_user_address.mnemonic));
+const shared = await openTestSession();
+const publicKey = shared.devicePublicKey;
 
 interface Call {
   url: string;
@@ -71,14 +64,13 @@ function mockFetch(...specs: { status: number; body?: unknown }[]) {
 }
 
 async function newContext(paranoid = true): Promise<AuthedContext> {
-  const session = new SessionKeystore({ idleTimeoutMs: 0 });
-  await session.unlockWithMnemonic(mnemonic, pin);
+  const { session } = shared.context;
   const tokens = new TokenStore();
   tokens.set('jwt-token');
   return { session, tokens, paranoid };
 }
 
-const meBody = (has_password: boolean) => ({
+const meBody = (paranoid: boolean) => ({
   status: 200,
   body: {
     message: 'Account retrieved successfully',
@@ -86,7 +78,7 @@ const meBody = (has_password: boolean) => ({
       user_address: userAddress,
       username: '62a772f85e4b',
       uuid: '0c892e57-93cf-423a-a9e9-fee5a9f87681',
-      has_password,
+      paranoid,
       created_at: '2026-07-26T12:00:00Z',
     },
   },
@@ -101,11 +93,11 @@ describe('GET /users/me is the source of truth for the mode', () => {
 
     expect(calls[0].url).toBe('http://localhost:8080/users/me');
     expect(calls[0].headers.Authorization).toBe('Bearer jwt-token');
-    expect(account.has_password).toBe(false);
+    expect(account.paranoid).toBe(false);
     expect(account.username).toBe('62a772f85e4b');
   });
 
-  it('maps has_password to the Paranoid flag rather than guessing', async () => {
+  it('reads paranoid from the server rather than guessing', async () => {
     mockFetch(meBody(true));
     expect((await fetchAccountMode(await newContext())).paranoid).toBe(true);
 
@@ -132,7 +124,7 @@ describe('lookup and public keys', () => {
     await expect(lookupUsername('nope')).rejects.toThrow(/64 lowercase hex/);
   });
 
-  it('fetches a subject’s hybrid encryption keys by canonical uuid', async () => {
+  it('fetches a subject’s root key, current sharing keys and proof path by canonical uuid', async () => {
     const uuid = '0f5c8b1e-4f89-11d3-9a0c-0305e82c3301';
     const calls = mockFetch({
       status: 200,
@@ -140,8 +132,10 @@ describe('lookup and public keys', () => {
         message: 'ok',
         data: {
           uuid,
-          encryption_public_key_x25519: 'x',
-          encryption_public_key_mlkem: 'm',
+          user_address: userAddress,
+          root_public_key: 'root',
+          sharing_keys: { generation: 1, encryption_public_key_x25519: 'x', encryption_public_key_mlkem: 'm' },
+          proof: [],
         },
       },
     });
@@ -183,14 +177,13 @@ describe('PUT /users/username — claiming a name', () => {
     ).toBe(true);
   });
 
-  it('demands the second factor on a Paranoid account and omits it on a Standard one', async () => {
-    const paranoidCalls = mockFetch({ status: 204 });
-    await updateUsername(await newContext(true), 'pedrosilva');
-    expect(paranoidCalls[0].body!.password).toBe(currentToken);
-
-    const standardCalls = mockFetch({ status: 204 });
-    await updateUsername(await newContext(false), 'pedrosilva');
-    expect(standardCalls[0].body).not.toHaveProperty('password');
+  it('is signed by the device and sends no password or PIN proof, in either mode', async () => {
+    for (const paranoid of [true, false]) {
+      const calls = mockFetch({ status: 204 });
+      await updateUsername(await newContext(paranoid), 'pedrosilva');
+      expect(calls[0].body).not.toHaveProperty('password');
+      expect(calls[0].body).not.toHaveProperty('pin_proof');
+    }
   });
 
   it('refuses a malformed name before sending, with copy the UI can render', async () => {
@@ -268,156 +261,66 @@ describe('GET /users/resolve — a username in, an account out', () => {
   });
 });
 
-describe('POST /users/second-factor — Standard to Paranoid', () => {
-  it('signs the new token itself, and sends no password', async () => {
+describe('DELETE /users needs the root', () => {
+  it('signs account-delete with the root, never with the device', async () => {
     const calls = mockFetch({ status: 204 });
-    const context = await newContext(false);
-
-    const outcome = await enableSecondFactor(context, NEW_PIN);
-    expect(outcome).toEqual({ status: 'enabled' });
-
-    const body = calls[0].body!;
-    const newToken = await deriveServerAuthToken(NEW_PIN, userAddress);
-
-    expect(body.new_password).toBe(newToken);
-    expect(body).not.toHaveProperty('password');
-    expect(
-      verifyPayload(
-        buildActionPayload(
-          body.challenge as string,
-          body.timestamp as number,
-          'enable-second-factor',
-          [newToken],
-        ),
-        body.signature as string,
-        publicKey,
-      ),
-    ).toBe(true);
-  });
-
-  it('updates the held token so the PIN is never re-prompted', async () => {
-    mockFetch({ status: 204 });
-    const context = await newContext(false);
-
-    expect(context.session.serverAuthToken()).toBe(currentToken);
-    await enableSecondFactor(context, NEW_PIN);
-    expect(context.session.serverAuthToken()).toBe(
-      await deriveServerAuthToken(NEW_PIN, userAddress),
-    );
-  });
-
-  it('resolves the ambiguous 401 on retry with GET /users/me instead of looping', async () => {
-    const calls = mockFetch(
-      { status: 401, body: { code: 'INVALID_CREDENTIALS' } },
-      meBody(true),
-    );
-    const context = await newContext(false);
-
-    expect(await enableSecondFactor(context, NEW_PIN)).toEqual({
-      status: 'already-enabled',
-    });
-    expect(calls).toHaveLength(2);
-    expect(calls[1].url).toContain('/users/me');
-  });
-
-  it('rethrows the 401 when the read-back says the factor never landed', async () => {
-    mockFetch({ status: 401, body: { code: 'INVALID_CREDENTIALS' } }, meBody(false));
-    await expect(enableSecondFactor(await newContext(false), NEW_PIN)).rejects.toThrow(
-      /INVALID_CREDENTIALS/,
-    );
-  });
-});
-
-describe('PUT /users/password — rotation', () => {
-  it('presents the current token and signs the new one', async () => {
-    const calls = mockFetch({ status: 204 });
-    const context = await newContext(true);
-
-    await rotateSecondFactor(context, NEW_PIN);
-
-    const body = calls[0].body!;
-    const newToken = await deriveServerAuthToken(NEW_PIN, userAddress);
-
-    expect(calls[0].method).toBe('PUT');
-    expect(body.password).toBe(currentToken);
-    expect(body.new_password).toBe(newToken);
-    expect(
-      verifyPayload(
-        buildActionPayload(
-          body.challenge as string,
-          body.timestamp as number,
-          'rotate-second-factor',
-          [newToken],
-        ),
-        body.signature as string,
-        publicKey,
-      ),
-    ).toBe(true);
-  });
-
-  it('replaces the held token after a successful rotation', async () => {
-    mockFetch({ status: 204 });
-    const context = await newContext(true);
-    await rotateSecondFactor(context, NEW_PIN);
-    expect(context.session.serverAuthToken()).toBe(
-      await deriveServerAuthToken(NEW_PIN, userAddress),
-    );
-  });
-});
-
-describe('DELETE /users', () => {
-  it('sends the required body carrying the account-delete signature', async () => {
-    const calls = mockFetch({ status: 204 });
-    const context = await newContext(true);
-
-    await deleteAccount(context);
+    await deleteAccount(await newContext(false), rawKeySigner(root.signing.privateKey));
 
     const body = calls[0].body!;
     expect(calls[0].method).toBe('DELETE');
-    expect(body).toBeDefined();
-    expect(body.password).toBe(currentToken);
+    const payload = buildActionPayload(
+      body.challenge as string,
+      body.timestamp as number,
+      'account-delete',
+      [userAddress],
+    );
+    expect(verifyPayload(payload, body.signature as string, root.signing.publicKeyUncompressed)).toBe(true);
+    expect(verifyPayload(payload, body.signature as string, publicKey)).toBe(false);
+  });
+
+  it('sends no PIN proof for a Standard account', async () => {
+    const calls = mockFetch({ status: 204 });
+    await deleteAccount(await newContext(false), rawKeySigner(root.signing.privateKey));
+    expect(calls[0].body).not.toHaveProperty('pin_proof');
+    expect(calls[0].body).not.toHaveProperty('password');
+  });
+
+  it('sends a PIN proof over the same digest the root signs, on a Paranoid account', async () => {
+    const proofSeed = new Uint8Array(32).fill(3);
+    const calls = mockFetch({ status: 204 });
+    await deleteAccount(await newContext(true), rawKeySigner(root.signing.privateKey), (digest) =>
+      ed25519.sign(digest, proofSeed),
+    );
+
+    const body = calls[0].body!;
+    const payload = buildActionPayload(
+      body.challenge as string,
+      body.timestamp as number,
+      'account-delete',
+      [userAddress],
+    );
     expect(
-      verifyPayload(
-        buildActionPayload(
-          body.challenge as string,
-          body.timestamp as number,
-          'account-delete',
-          [userAddress],
-        ),
-        body.signature as string,
-        publicKey,
+      ed25519.verify(
+        base64ToBytes(body.pin_proof as string),
+        payloadDigest(payload),
+        ed25519.getPublicKey(proofSeed),
       ),
     ).toBe(true);
   });
 
-  it('omits password on a Standard account', async () => {
-    const calls = mockFetch({ status: 204 });
-    await deleteAccount(await newContext(false));
-    expect(calls[0].body).not.toHaveProperty('password');
-  });
-
-  it('drops the token and locks the keystore afterwards', async () => {
-    mockFetch({ status: 204 });
-    const context = await newContext(true);
-    await deleteAccount(context);
-
-    expect(context.tokens.get()).toBeUndefined();
-    expect(context.session.isUnlocked).toBe(false);
-  });
-
-  it('treats the retry 401 as success — the account row is already gone', async () => {
+  it('surfaces a refused proof instead of pretending the account is gone', async () => {
     mockFetch({ status: 401, body: { code: 'INVALID_CREDENTIALS' } });
-    const context = await newContext(true);
-
-    await expect(deleteAccount(context)).resolves.toBeUndefined();
-    expect(context.tokens.get()).toBeUndefined();
+    await expect(
+      deleteAccount(await newContext(true), rawKeySigner(root.signing.privateKey), () => new Uint8Array(64)),
+    ).rejects.toBeInstanceOf(ApiError);
   });
 });
 
 describe('there is no way to turn the second factor off', () => {
   it('exports no disable affordance', async () => {
     const users = await import('./index');
-    const names = Object.keys(users).join(' ');
+    const oprf = await import('@/lib/oprf');
+    const names = [...Object.keys(users), ...Object.keys(oprf)].join(' ');
     expect(names).not.toMatch(/disable|removeSecondFactor|downgrade/i);
   });
 });

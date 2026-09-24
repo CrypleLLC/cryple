@@ -2,24 +2,24 @@
 
 The client half of the drive: **the format**, and the transport that carries it. Tasks
 [109.1–109.3](../../../tasks/tasks.md). The design is
-[storage-plan.md § 3.3](../../../../api-general/.docs/storage-plan.md) and the wire contract is
+[storage-plan.md § 3.3](../../../../api-general/docs/storage-plan.md) and the wire contract is
 [front-end-endpoints.md § 17](../../../front-end-endpoints.md#17-files-endpoints); neither is
 restated here.
 
 ## Files
 
-| File | Role |
-| --- | --- |
-| `layout.ts` | The arithmetic: padding, chunk counts, stored sizes, byte ranges |
-| `chunks.ts` | Sealing and opening one chunk, and the position header that makes reordering detectable |
-| `manifest.ts` | The sealed manifest — where a filename lives — and the check that refuses a mismatched object |
-| `thumbnails.ts` | Deriving a preview locally, telling a preview's row apart from a file's, and opening one |
-| `cache.ts` | The OPFS cache of **sealed** objects, and the pruning that keeps it honest |
-| `records.ts` | The wire types, and the small predicates a screen needs (`isInVault`, `remainingBytes`, `fits`) |
-| `api.ts` | The eight routes |
-| `upload.ts` | The whole upload: stream in, pad, chunk, seal, `PUT`, hash — one pass. And resuming one |
-| `download.ts` | Resolving a file, streaming decryption, and the ranged read that makes seeking possible |
-| `handles.ts` | Remembering which file an unfinished upload came from, so resuming does not ask for it again |
+| File            | Role                                                                                            |
+| --------------- | ----------------------------------------------------------------------------------------------- |
+| `layout.ts`     | The arithmetic: padding, chunk counts, stored sizes, byte ranges                                |
+| `chunks.ts`     | Sealing and opening one chunk, and the position header that makes reordering detectable         |
+| `manifest.ts`   | The sealed manifest — where a filename lives — and the check that refuses a mismatched object   |
+| `thumbnails.ts` | Deriving a preview locally, telling a preview's row apart from a file's, and opening one        |
+| `cache.ts`      | The OPFS cache of **sealed** objects, and the pruning that keeps it honest                      |
+| `records.ts`    | The wire types, and the small predicates a screen needs (`isInVault`, `remainingBytes`, `fits`) |
+| `api.ts`        | The eight routes                                                                                |
+| `upload.ts`     | The whole upload: stream in, pad, chunk, seal, `PUT`, hash — one pass. And resuming one         |
+| `download.ts`   | Resolving a file, streaming decryption, and the ranged read that makes seeking possible         |
+| `handles.ts`    | Remembering which file an unfinished upload came from, so resuming does not ask for it again    |
 
 `layout`, `chunks` and `manifest` do no I/O at all, which is why the whole format is tested in a
 suite with no DOM and no network.
@@ -36,11 +36,11 @@ manifest, no index.
 
 ## Three numbers, and why each is what it is
 
-| | Value | Set by |
-| --- | --- | --- |
-| Chunk payload | 8 MiB | **Transport, not privacy.** One chunk is one R2 multipart part, and R2's minimum part size is 5 MiB. 1 MiB is below the floor and was never viable |
-| Chunk overhead | 37 | `1` version ‖ `12` IV ‖ **`8` position header** ‖ `16` tag |
-| Padding bucket | 64 KiB | **Privacy.** It is what quantises the length the server sees |
+|                | Value  | Set by                                                                                                                                             |
+| -------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chunk payload  | 8 MiB  | **Transport, not privacy.** One chunk is one R2 multipart part, and R2's minimum part size is 5 MiB. 1 MiB is below the floor and was never viable |
+| Chunk overhead | 37     | `1` version ‖ `12` IV ‖ **`8` position header** ‖ `16` tag                                                                                         |
+| Padding bucket | 64 KiB | **Privacy.** It is what quantises the length the server sees                                                                                       |
 
 **The overhead is 37, not 29.** 29 is the same envelope without the position header, which is what
 this format was while the chunk index lived in AEAD additional data. The frozen envelope has no
@@ -50,7 +50,7 @@ its GCM tag.
 
 **Padding and chunking are separate decisions and must stay that way.** The design once specified
 rounding a file up to a whole chunk; at 8 MiB that turns a 40 KB note into an 8 MiB object, a 200×
-inflation. Padding is applied to the plaintext *before* chunking, so a 40 KB note is 64 KiB and
+inflation. Padding is applied to the plaintext _before_ chunking, so a 40 KB note is 64 KiB and
 uploads as a single `PUT` — no multipart, and therefore no minimum part size.
 
 ## The stored size is derived, never guessed
@@ -64,7 +64,7 @@ size_bytes  = padded + chunk_count × 37
 **`size_bytes` is not `chunk_count × stride`.** The last chunk is short, so that identity holds only
 when the payload exactly fills its chunks. A 64 KiB file is one chunk and 65,573 stored bytes; the
 product form expects 8,388,645. [The design specified the product form until
-2026-09-09](../../../../api-general/.docs/storage-plan.md) — a client implementing it literally
+2026-09-09](../../../../api-general/docs/storage-plan.md) — a client implementing it literally
 would have refused nearly every file it uploaded, and the refusal would have looked like a working
 safety check. `layout.test.ts` pins both the correct arithmetic and the rejection of the old form.
 
@@ -74,12 +74,12 @@ exactly**, which is the usual shape of this architecture.
 
 ## What each field defends against
 
-| Attack | Defence | Test |
-| --- | --- | --- |
-| Reorder chunks within a file | `chunk_index` mismatches where it was read from | `chunks.test.ts` |
-| Drop or truncate trailing chunks | `chunk_count` disagrees with how many arrived | `chunks.test.ts` |
-| Splice in a chunk from another file | Different DEK, so the GCM tag fails | `chunks.test.ts` |
-| Alter a chunk in storage | The GCM tag fails | `chunks.test.ts` |
+| Attack                              | Defence                                         | Test             |
+| ----------------------------------- | ----------------------------------------------- | ---------------- |
+| Reorder chunks within a file        | `chunk_index` mismatches where it was read from | `chunks.test.ts` |
+| Drop or truncate trailing chunks    | `chunk_count` disagrees with how many arrived   | `chunks.test.ts` |
+| Splice in a chunk from another file | Different DEK, so the GCM tag fails             | `chunks.test.ts` |
+| Alter a chunk in storage            | The GCM tag fails                               | `chunks.test.ts` |
 
 `openChunk` takes the index and count the caller **read it from** and verifies the header against
 them. It does not return the position for the caller to check, because a check the caller has to
@@ -102,7 +102,7 @@ file's own DEK and stored in `ciphertext` exactly like `secrets.ciphertext`. The
 column, and `files.size_bytes` on the wire is the padded length rather than the real one.
 
 `assertManifestMatchesRow` is the refusal from
-[§5.5](../../../../api-general/.docs/storage-plan.md): if the manifest and the ledger row do not
+[§5.5](../../../../api-general/docs/storage-plan.md): if the manifest and the ledger row do not
 describe the same object, the client stops rather than decrypting and hoping.
 
 **It reads as a data error, not a security alert.** The overwhelmingly likely cause is a bug in an
@@ -119,7 +119,7 @@ upload and contains neither "attack" nor "tamper".
   `GET /files/{id}/upload` without re-sending the body. `createFile` therefore reports `created`
   from the status rather than assuming a `POST` created anything.
 - **The listing pages through `collectPages`.** It was written against an envelope the API did not
-  send yet, and stopped after one page until [Task 111](../../../../tasks.md#task-111) landed on
+  send yet, and stopped after one page until [Task 111](../../../../tasks-closed.md#task-111) landed on
   2026-09-10; nothing here changed when it did. **Do not synthesise a cursor** — there is no legal
   value to send, and a short page is not the last page.
 - **`completeUpload` sorts parts by number**, because that is the order R2 completes a multipart in,
@@ -129,7 +129,7 @@ upload and contains neither "attack" nor "tamper".
 
 `abandonUpload` is `DELETE /files/{id}/upload`: no body, no signature, and **a `404` is success**.
 The row it removes is a reservation the same token created, not stored data
-([Task 112](../../../../tasks.md#task-112)), so a repeat, a row the sweep already collected, and one
+([Task 112](../../../../tasks-closed.md#task-112)), so a repeat, a row the sweep already collected, and one
 that completed in between all mean the same thing — stop worrying about it.
 
 It exists because `POST /files` checks the quota **before** signing anything, so the row holds its
@@ -142,8 +142,8 @@ cost the user its whole size until a 24-hour sweep ran.
 the single route is the one-element case of the same label. `deleteFiles` runs the ids through
 `normalizeActionArgs`, which **sorts ascending and de-duplicates**, and sends `ids` in exactly that
 order — the server rebuilds the list its own way, so a differently-ordered body verifies against
-nothing. One signature covers the whole selection, which is the point: *n* files used to mean *n*
-challenges, *n* signatures and, on a Paranoid account, *n* second-factor checks.
+nothing. One signature covers the whole selection, which is the point: _n_ files used to mean _n_
+challenges, _n_ signatures and, on a Paranoid account, _n_ second-factor checks.
 
 The batch answers `{requested, deleted}` rather than `204`. **A shortfall is not a failure** — those
 ids matched no row, so the list was stale; `fileBatchDeleteSummary` turns it into copy that says so.
@@ -158,10 +158,10 @@ number. An earlier draft of this module took a row chunk count that does not exi
 
 ### Two error codes are unique to the drive
 
-| | Status | Code | Handling |
-| --- | --- | --- | --- |
-| Quota | `507` | `QUOTA_EXCEEDED` | The only `5xx` in the API that is **not** a server fault. Never retry it unchanged. `userMessageFor` says the space returns within a minute, because deleted rows count until the reconciler runs |
-| Object too large | `413` | `BAD_REQUEST` | **Shares its code with an ordinary field rejection**, so `isObjectTooLarge` branches on the status. Anything switching on `code` alone gets this wrong |
+|                  | Status | Code             | Handling                                                                                                                                                                                          |
+| ---------------- | ------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Quota            | `507`  | `QUOTA_EXCEEDED` | The only `5xx` in the API that is **not** a server fault. Never retry it unchanged. `userMessageFor` says the space returns within a minute, because deleted rows count until the reconciler runs |
+| Object too large | `413`  | `BAD_REQUEST`    | **Shares its code with an ordinary field rejection**, so `isObjectTooLarge` branches on the status. Anything switching on `code` alone gets this wrong                                            |
 
 ## Upload is a single pass
 
@@ -174,13 +174,13 @@ It was two passes until 2026-09-10, and the reason it could not be one is worth 
 the sealed bytes could not be regenerated — so the whole ciphertext had to be held in between. Two
 changes removed that, and both matter here:
 
-- **The hash moved to `PATCH`** ([Task 110](../../../../tasks.md#task-110)). It describes the
+- **The hash moved to `PATCH`** ([Task 110](../../../../tasks-closed.md#task-110)). It describes the
   finished object, so completion is the first moment it can exist.
 - **The chunk IV is derived**, `IV(n) = 0x00 × 8 ‖ u32be(n)`, so a chunk can be re-sealed
   byte-for-byte instead of held. See
-  [storage-plan.md § 3.3](../../../../api-general/.docs/storage-plan.md#the-chunk-iv-is-derived-not-random)
+  [storage-plan.md § 3.3](../../../../api-general/docs/storage-plan.md#the-chunk-iv-is-derived-not-random)
   and the amendment in
-  [ECDSA.md](../../../../api-general/.docs/crypto/ECDSA.md#sealed-blob-format).
+  [ECDSA.md](../../../../api-general/docs/crypto/ECDSA.md#sealed-blob-format).
 
 ### What the derived IV obliges
 
@@ -190,6 +190,13 @@ recoverable from two messages under one nonce, which lets an attacker forge tags
 in the table above is a tag. `chunks.test.ts` pins the construction; **nothing outside `lib/files`
 uses it**, and secrets, notes, documents and `wrapped_dek` must keep random IVs.
 
+The test that pins it: two `uploadFile` calls on the same bytes produce different DEKs, and so
+different ciphertext. It must stay.
+
+**Spilling sealed chunks to OPFS was rejected, not deferred.** It solves what the derived IV and the
+single pass solve without touching the API or the crypto, at the cost of a temporary encrypted copy
+of the file on disk. It stays written down as the fallback if the derived IV is ever reverted.
+
 Three smaller things:
 
 - **A one-chunk file is a single `PUT`, not a multipart upload.** The ticket's `multipart` flag says
@@ -198,7 +205,7 @@ Three smaller things:
   concurrent `PUT`s do not finish in one.
 - **A `PUT` task never rejects.** It records the first failure and the loop raises it. A part that
   fails while others are still in flight would otherwise abandon them, and their own rejections
-  would surface as *unhandled* rather than as this upload's error — visible only at
+  would surface as _unhandled_ rather than as this upload's error — visible only at
   `concurrency > 1`, which is why the first version passed its tests.
 - **A missing `ETag` is caught before `PATCH`, and only for a multipart object.** A cross-origin
   response exposes only the safelisted headers, so a bucket without `ExposeHeaders: ["ETag"]` hands
@@ -263,7 +270,7 @@ file behind it can have been edited since, and `first_chunk_sha256` is what noti
 ### Nothing here reads an ETag
 
 `PartPutter` returns nothing. The server completes a multipart from R2's own `ListParts`
-([Task 114](../../../../tasks.md#task-114)), so the client neither collects ETags nor sends a
+([Task 114](../../../../tasks-closed.md#task-114)), so the client neither collects ETags nor sends a
 `parts` array, and the bucket does not need `ETag` under CORS `ExposeHeaders`. A resumed upload
 could not have supplied that list anyway — the ETags it would need belong to a page load that is
 gone.
@@ -271,7 +278,7 @@ gone.
 ## Thumbnails are files
 
 A preview is **an ordinary file of its own** — its own row, its own DEK, its own object key — and the
-only thing that links it to its parent is `thumbnail_id` inside the parent's *sealed* manifest. The
+only thing that links it to its parent is `thumbnail_id` inside the parent's _sealed_ manifest. The
 backend therefore cannot tell a thumbnail from a small document, which is the entire point: a
 `parent_id` column, or a "do not replicate" flag on `POST`, would tell it that one blob is derived
 from another, and that tells it the parent is an image.
@@ -307,7 +314,7 @@ holding **exactly the bytes R2 holds**. Reading one still costs a decrypt; it co
   outside their control, which is the one thing this architecture exists to prevent. The DEK stays
   in memory and is zeroed after every read.
 - **A cached object can never be stale**, because a file is immutable: editing produces a new `id`.
-  There is no revalidation, no ETag, no expiry — the id *is* the version.
+  There is no revalidation, no ETag, no expiry — the id _is_ the version.
 - **A hit needs no round trip at all**, not even for the key. `GET /files` already returns every
   row's `wrapped_dek` and sealed manifest, so a preview whose bytes are cached is decrypted entirely
   from what the listing carried. A miss goes through `fetchSealedObject`, which is the only path
@@ -325,11 +332,11 @@ pressure. That is correct for a cache and the reason nothing here is a source of
 
 ## Download
 
-`openFile` resolves the row, unwraps the DEK under the vault KEK, opens the manifest and **runs the
+`openFile` resolves the row, unwraps the DEK under the `files` scope KEK of the row's `key_generation`, opens the manifest and **runs the
 layout check before anything is decrypted**. `downloadFile` streams the object through
 `decryptStream` and hands back plaintext.
 
-- **Each chunk is verified before its bytes are released**, not after assembly — the GCM tag *and*
+- **Each chunk is verified before its bytes are released**, not after assembly — the GCM tag _and_
   the position header. That is what makes streaming a large file safe rather than trusting four
   gigabytes on a hash that cannot be computed until the end.
 - **The padding is trimmed with `size` from the manifest**, which is the only place the true length

@@ -2,7 +2,8 @@ import { assertCanonicalUuid, request } from '@/lib/api';
 import { normalizeActionArgs, signActionEnvelope } from '@/lib/signing';
 import { requireToken, type AuthedContext } from '@/lib/context';
 import { sha256Hex, utf8ToBytes, zeroBytes } from '@/lib/encoding';
-import { generateDek, vaultKekDekWrapper, type DekWrapper } from './dek';
+import { scopeDekWrapper, withCurrentGeneration } from '@/lib/keyrings';
+import { generateDek, type DekWrapper } from './dek';
 import { openText, sealText } from './codec';
 
 export const MAX_PLAINTEXT_BYTES = 700 * 1024;
@@ -12,12 +13,15 @@ export interface SecretRecord {
   id: string;
   ciphertext: string;
   wrapped_dek: string;
+  key_generation: number;
   version: string;
   created_at: string;
   updated_at: string;
 }
 
 export interface SecretMetaRecord {
+  wrapped_dek: string;
+  key_generation: number;
   id: string;
   ciphertext_sha256: string;
   ciphertext_bytes: number;
@@ -31,7 +35,7 @@ export interface SecretsContext extends AuthedContext {
 }
 
 function wrapper(context: SecretsContext): DekWrapper {
-  return context.dek ?? vaultKekDekWrapper(context.session.vaultKek);
+  return context.dek ?? scopeDekWrapper(context, 'secrets');
 }
 
 export interface CreateSecretResult {
@@ -56,15 +60,16 @@ export async function createSecret(
 
   try {
     const ciphertext = await sealText(plaintext, dek);
-    const wrapped_dek = await wrapper(context).wrapDek(dek);
 
-    const response = await request<SecretRecord>({
-      method: 'POST',
-      path: '/secrets',
-      token: requireToken(context),
-      timeoutMs: context.timeoutMs,
-      body: { id, ciphertext, wrapped_dek, version: SECRET_VERSION },
-    });
+    const response = await withCurrentGeneration(context, async () =>
+      request<SecretRecord>({
+        method: 'POST',
+        path: '/secrets',
+        token: requireToken(context),
+        timeoutMs: context.timeoutMs,
+        body: { id, ciphertext, ...(await wrapper(context).wrapDek(dek)), version: SECRET_VERSION },
+      }),
+    );
 
     return { secret: response.data, created: response.status === 201 };
   } finally {
@@ -112,7 +117,7 @@ export async function openSecret(
   context: SecretsContext,
   secret: SecretRecord,
 ): Promise<string> {
-  const dek = await wrapper(context).unwrapDek(secret.wrapped_dek);
+  const dek = await wrapper(context).unwrapDek(secret);
   try {
     return await openText(secret.ciphertext, dek);
   } finally {
@@ -127,15 +132,7 @@ export async function hashReceivedCiphertext(ciphertext: string): Promise<string
 export async function deleteSecret(context: SecretsContext, id: string): Promise<void> {
   const canonical = assertCanonicalUuid(id);
 
-  const envelope = signActionEnvelope(
-    'secret-delete',
-    [canonical],
-    {
-      privateKey: context.session.identityPrivateKey,
-      serverAuthToken: context.session.serverAuthToken(),
-    },
-    { paranoid: context.paranoid },
-  );
+  const envelope = await signActionEnvelope('secret-delete', [canonical], context.session.signer());
 
   await request<void>({
     method: 'DELETE',
@@ -158,15 +155,7 @@ export async function deleteSecrets(
   const canonical = ids.map((id) => assertCanonicalUuid(id));
   const normalized = normalizeActionArgs('secret-delete', canonical);
 
-  const envelope = signActionEnvelope(
-    'secret-delete',
-    normalized,
-    {
-      privateKey: context.session.identityPrivateKey,
-      serverAuthToken: context.session.serverAuthToken(),
-    },
-    { paranoid: context.paranoid },
-  );
+  const envelope = await signActionEnvelope('secret-delete', normalized, context.session.signer());
 
   const response = await request<BatchDeleteResult>({
     method: 'DELETE',

@@ -8,13 +8,13 @@ Task 4 of [tasks.md](../../../tasks/tasks.md).
 ## Why this module exists
 
 The same P-256 public key travels in **three different encodings**, and mixing them is the
-most common Cryple integration bug ([crypto/ECDSA.md § Public Key Encodings](../../../../api-general/.docs/crypto/ECDSA.md#public-key-encodings)):
+most common Cryple integration bug ([crypto/ECDSA.md § Public Key Encodings](../../../../api-general/docs/crypto/ECDSA.md#public-key-encodings)):
 
-| Encoding | Where it is used | Size |
-| --- | --- | --- |
-| SPKI DER, base64 | `users.public_key` on the wire — **always 124 chars** | 91 bytes |
-| Raw `(X, Y)` | On-chain ERC-4337 / RIP-7212 signer pair | 2 × 32 bytes |
-| Uncompressed point `0x04‖X‖Y` | Intermediate between the two | 65 bytes |
+| Encoding                      | Where it is used                                      | Size         |
+| ----------------------------- | ----------------------------------------------------- | ------------ |
+| SPKI DER, base64              | `users.public_key` on the wire — **always 124 chars** | 91 bytes     |
+| Raw `(X, Y)`                  | On-chain ERC-4337 / RIP-7212 signer pair              | 2 × 32 bytes |
+| Uncompressed point `0x04‖X‖Y` | Intermediate between the two                          | 65 bytes     |
 
 Routing every conversion through one module is what keeps a call site from sending an
 uncompressed point where the API expects SPKI.
@@ -23,7 +23,7 @@ uncompressed point where the API expects SPKI.
 
 ### Hex
 
-`bytesToHex` emits **lowercase** — `user_address`, `Server_Auth_Token` and every signed
+`bytesToHex` emits **lowercase** — `user_address`, event hashes and every signed
 payload argument are specified as lowercase hex, so this is a correctness property, not a
 style choice. `hexToBytes` accepts either case and rejects odd-length or non-hex input
 rather than silently truncating.
@@ -37,8 +37,8 @@ the wire this way: X25519 → 44 chars, ML-KEM-768 → 1580 chars.
 ### UTF-8
 
 `utf8ToBytes` / `bytesToUtf8`. Note that `utf8ToBytes` is what produces the **64-byte**
-`Server_Auth_Token` salt from the 64-character `user_address` string — see
-[`lib/pin`](../pin/README.md) for why that distinction matters.
+account-PIN Argon2id salt from the 64-character `user_address` string, not the 32 raw bytes it
+encodes — see [`lib/oprf`](../oprf/README.md).
 
 ### P-256 point encodings
 

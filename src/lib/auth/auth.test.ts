@@ -1,35 +1,52 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ed25519 } from '@noble/curves/ed25519.js';
 import vectors from '@/test/fixtures/test-vectors.json';
-import { TokenStore, GENERIC_AUTH_FAILURE } from '@/lib/api';
-import { SessionKeystore } from '@/lib/session';
-import { buildAuthPayload, verifyPayload } from '@/lib/signing';
-import { deriveKeyTreeFromSeed } from '@/lib/keys';
-import { hexToBytes } from '@/lib/encoding';
-import { AuthRejectedError, restore, signIn, signOut, signUp } from './index';
+import { TokenStore, GENERIC_AUTH_FAILURE, userMessageFor, ApiError } from '@/lib/api';
+import { ChainState, batchDigest, eventHash } from '@/lib/chain';
+import { deviceDeclaration, deviceSigner, generateDeviceKeys } from '@/lib/device/keys';
+import { base64ToBytes, spkiBase64ToUncompressedPoint } from '@/lib/encoding';
+import { deriveRootKeys, mnemonicToSeed } from '@/lib/keys';
+import { buildGenesis, wrapKekForRoot } from '@/lib/keyrings';
+import { FULL_DEVICE_SCOPES } from '@/lib/scopes';
+import {
+  buildActionPayload,
+  buildAuthPayload,
+  payloadDigest,
+  rawKeySigner,
+  verifyPayload,
+} from '@/lib/signing';
+import {
+  AuthRejectedError,
+  enrolWithRoot,
+  readChainWithRoot,
+  signInDevice,
+  signOut,
+  signUpWithGenesis,
+} from './index';
 
-const mnemonic = vectors.seed_and_user_address.mnemonic;
-const userAddress = vectors.seed_and_user_address.user_address;
-const pin = vectors.server_auth_token.pin;
-const serverAuthToken = vectors.server_auth_token.server_auth_token_hex;
-const identityVector = vectors.identity_key_p256;
+const root = await deriveRootKeys(await mnemonicToSeed(vectors.seed_and_user_address.mnemonic));
+const rootSigner = rawKeySigner(root.signing.privateKey);
+const device = await generateDeviceKeys({ preferWebCryptoX25519: false });
+const devicePublicKey = spkiBase64ToUncompressedPoint(device.signingPublicKey);
 
-const publicKey = (await deriveKeyTreeFromSeed(hexToBytes(vectors.seed_and_user_address.seed_hex)))
-  .identity.publicKeyUncompressed;
-
-async function newSession() {
-  const session = new SessionKeystore({ idleTimeoutMs: 0 });
-  await session.unlockWithMnemonic(mnemonic, pin);
-  return session;
+async function genesis() {
+  return buildGenesis({
+    userAddress: root.userAddress,
+    rootPublicKey: root.signing.publicKeySpkiBase64,
+    root: rootSigner,
+    wrapForRoot: (kek) => wrapKekForRoot(root.wrapKey, kek),
+    device: deviceDeclaration(device, FULL_DEVICE_SCOPES),
+  });
 }
 
 function mockFetch(...specs: { status: number; body?: unknown }[]) {
-  const bodies: Record<string, unknown>[] = [];
+  const calls: { url: string; body: Record<string, unknown> }[] = [];
   let index = 0;
 
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (_url: string, init: RequestInit) => {
-      bodies.push(JSON.parse(init.body as string));
+    vi.fn(async (url: string, init: RequestInit) => {
+      calls.push({ url, body: JSON.parse(init.body as string) });
       const spec = specs[Math.min(index++, specs.length - 1)];
       const text = spec.body === undefined ? '' : JSON.stringify(spec.body);
       return {
@@ -41,199 +58,215 @@ function mockFetch(...specs: { status: number; body?: unknown }[]) {
     }),
   );
 
-  return bodies;
+  return calls;
 }
 
-const created = { status: 201, body: { message: 'Account created', data: { access_token: 'jwt-new' } } };
-const existing = {
-  status: 200,
-  body: { message: 'Authentication successful', data: { access_token: 'jwt-existing' } },
-};
+const grant = (status: number) => ({
+  status,
+  body: { data: { access_token: 'jwt', device_id: device.deviceId } },
+});
 const rejected = { status: 404, body: { code: 'NOT_FOUND' } };
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('sign-up enrolls all three public keys', () => {
-  it('sends the identity key as SPKI base64 and both encryption keys', async () => {
-    const bodies = mockFetch(created);
-    const session = await newSession();
-    await signUp({ session, paranoid: false });
-
-    expect(bodies[0]).toMatchObject({
-      user_address: userAddress,
-      public_key: identityVector.public_key_spki_base64,
-      encryption_public_key_x25519: vectors.x25519_key.public_key_base64,
-      encryption_public_key_mlkem: vectors.mlkem768_key.public_key_base64,
+describe('sign-up carries the genesis, signed by the root', () => {
+  it('sends the root key, a root signature over challenge:timestamp and three verifying genesis events', async () => {
+    const calls = mockFetch(grant(201));
+    const built = await genesis();
+    const outcome = await signUpWithGenesis({
+      userAddress: root.userAddress,
+      rootPublicKey: root.signing.publicKeySpkiBase64,
+      root: rootSigner,
+      batch: built.batch,
     });
+
+    const body = calls[0].body;
+    expect(calls[0].url).toMatch(/\/sign-up$/);
+    expect(body.public_key).toBe(vectors.device_keys.root_wrap.root_public_key);
+    expect(body.user_address).toBe(vectors.seed_and_user_address.user_address);
+    expect(
+      verifyPayload(
+        buildAuthPayload(body.challenge as string, body.timestamp as number),
+        body.signature as string,
+        root.signing.publicKeyUncompressed,
+      ),
+    ).toBe(true);
+    expect(body).not.toHaveProperty('password');
+    expect(body).not.toHaveProperty('encryption_public_key_x25519');
+
+    const replayed = ChainState.replay(
+      root.userAddress,
+      root.signing.publicKeySpkiBase64,
+      built.batch.events.map((event, index) => ({
+        ...event,
+        seq: index + 1,
+        event_hash: eventHash(event.statement, event.signer, event.signature),
+      })),
+    );
+    expect(replayed.activeDeviceIds()).toEqual([device.deviceId]);
+    expect(outcome).toEqual({ grant: { access_token: 'jwt', device_id: device.deviceId }, created: true });
   });
 
-  it('signs challenge:timestamp with the identity key', async () => {
-    const bodies = mockFetch(created);
-    const session = await newSession();
-    await signUp({ session, paranoid: false });
-
-    const { challenge, timestamp, signature } = bodies[0] as {
-      challenge: string;
-      timestamp: number;
-      signature: string;
-    };
-    expect(challenge).toMatch(/^[0-9a-f]{64}$/);
-    expect(Number.isInteger(timestamp)).toBe(true);
-    expect(verifyPayload(buildAuthPayload(challenge, timestamp), signature, publicKey)).toBe(true);
+  it('reads a retry of the same genesis (200) as the same device, not a new account', async () => {
+    mockFetch(grant(200));
+    const built = await genesis();
+    const outcome = await signUpWithGenesis({
+      userAddress: root.userAddress,
+      rootPublicKey: root.signing.publicKeySpkiBase64,
+      root: rootSigner,
+      batch: built.batch,
+    });
+    expect(outcome.created).toBe(false);
+    expect(outcome.grant.device_id).toBe(device.deviceId);
   });
 
-  it('reports 201 as created and 200 as already existed — both carry a token', async () => {
-    mockFetch(created);
-    const first = await signUp({ session: await newSession(), paranoid: false });
-    expect(first).toEqual({ accessToken: 'jwt-new', created: true });
-
-    mockFetch(existing);
-    const second = await signUp({ session: await newSession(), paranoid: false });
-    expect(second).toEqual({ accessToken: 'jwt-existing', created: false });
+  it('never puts the phrase, the seed, a PIN or a private key on the wire', async () => {
+    const calls = mockFetch(grant(201));
+    const built = await genesis();
+    await signUpWithGenesis({
+      userAddress: root.userAddress,
+      rootPublicKey: root.signing.publicKeySpkiBase64,
+      root: rootSigner,
+      batch: built.batch,
+    });
+    const wire = JSON.stringify(calls[0].body);
+    for (const word of vectors.seed_and_user_address.mnemonic.split(' ').slice(0, 1)) {
+      expect(wire).not.toContain(` ${word} `);
+    }
+    expect(wire).not.toContain(vectors.seed_and_user_address.seed_hex);
+    expect(wire).not.toContain(vectors.identity_key_p256.private_key_hex);
+    expect(wire).not.toContain(vectors.vault_kek.vault_kek_base64);
   });
 
-  it('chooses the mode by sending password or not', async () => {
-    const standard = mockFetch(created);
-    await signUp({ session: await newSession(), paranoid: false });
-    expect(standard[0]).not.toHaveProperty('password');
-
-    const paranoid = mockFetch(created);
-    await signUp({ session: await newSession(), paranoid: true });
-    expect(paranoid[0].password).toBe(serverAuthToken);
-  });
-
-  it('enrols a Standard account from a session that never saw a PIN', async () => {
-    const bodies = mockFetch(created);
-    const session = new SessionKeystore({ idleTimeoutMs: 0 });
-    await session.unlockWithMnemonic(mnemonic);
-
-    await signUp({ session, paranoid: false });
-
-    expect(bodies[0]).toMatchObject({ user_address: userAddress });
-    expect(bodies[0]).not.toHaveProperty('password');
-  });
-
-  it('refuses to enrol a Paranoid account from a session with no second factor', async () => {
-    mockFetch(created);
-    const session = new SessionKeystore({ idleTimeoutMs: 0 });
-    await session.unlockWithMnemonic(mnemonic);
-
-    await expect(signUp({ session, paranoid: true })).rejects.toThrow(/Server_Auth_Token/);
-  });
-
-  it('never puts the PIN or the seed phrase on the wire', async () => {
-    const bodies = mockFetch(created);
-    await signUp({ session: await newSession(), paranoid: true });
-
-    const serialized = JSON.stringify(bodies[0]);
-    expect(serialized).not.toContain(pin);
-    expect(serialized).not.toContain('abandon');
-    expect(serialized).not.toContain(identityVector.private_key_hex);
+  it('renders a rejected sign-up with the one generic copy', async () => {
+    mockFetch(rejected);
+    const built = await genesis();
+    const error = await signUpWithGenesis({
+      userAddress: root.userAddress,
+      rootPublicKey: root.signing.publicKeySpkiBase64,
+      root: rootSigner,
+      batch: built.batch,
+    }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(AuthRejectedError);
+    expect((error as AuthRejectedError).userMessage).toBe(GENERIC_AUTH_FAILURE);
   });
 });
 
-describe('sign-in', () => {
-  it('sends only the address and the envelope — no key fields', async () => {
-    const bodies = mockFetch(existing);
-    await signIn({ session: await newSession(), paranoid: false });
+describe('sign-in is the device signing with its own key', () => {
+  it('sends the device id and a device signature, and nothing about the account', async () => {
+    const calls = mockFetch(grant(200));
+    const tokens = new TokenStore();
+    await signInDevice({ deviceId: device.deviceId, signer: deviceSigner(device), tokens });
 
-    expect(Object.keys(bodies[0]).sort()).toEqual([
-      'challenge',
-      'signature',
-      'timestamp',
-      'user_address',
+    const body = calls[0].body;
+    expect(Object.keys(body).sort()).toEqual(['challenge', 'device_id', 'signature', 'timestamp']);
+    expect(
+      verifyPayload(
+        buildAuthPayload(body.challenge as string, body.timestamp as number),
+        body.signature as string,
+        devicePublicKey,
+      ),
+    ).toBe(true);
+    expect(tokens.get()).toBe('jwt');
+  });
+
+  it('uses a fresh challenge on every attempt', async () => {
+    const calls = mockFetch(rejected, grant(200));
+    await signInDevice({ deviceId: device.deviceId, signer: deviceSigner(device) }).catch(() => undefined);
+    await signInDevice({ deviceId: device.deviceId, signer: deviceSigner(device) });
+    expect(calls[0].body.challenge).not.toBe(calls[1].body.challenge);
+  });
+
+  it('leaves the token store untouched when the device is refused', async () => {
+    mockFetch(rejected);
+    const tokens = new TokenStore();
+    tokens.set('previous');
+    await expect(
+      signInDevice({ deviceId: device.deviceId, signer: deviceSigner(device), tokens }),
+    ).rejects.toBeInstanceOf(AuthRejectedError);
+    expect(tokens.get()).toBe('previous');
+  });
+
+  it('signs out by dropping the token and locking', () => {
+    const tokens = new TokenStore();
+    tokens.set('jwt');
+    const lock = vi.fn();
+    signOut(tokens, { lock });
+    expect(tokens.get()).toBeUndefined();
+    expect(lock).toHaveBeenCalledOnce();
+  });
+});
+
+describe('enrolment is root-signed over the batch it carries', () => {
+  it('signs device-enrol over the address and the digest of the statements', async () => {
+    const built = await genesis();
+    const calls = mockFetch({
+      status: 201,
+      body: { data: { access_token: 'jwt', device_id: device.deviceId, chain: [], root_keyrings: { current: {}, generations: [] } } },
+    });
+    await enrolWithRoot({ userAddress: root.userAddress, root: rootSigner, batch: built.batch });
+
+    const body = calls[0].body;
+    expect(calls[0].url).toMatch(/\/devices\/enrol$/);
+    expect(body).not.toHaveProperty('pin_proof');
+    expect(
+      verifyPayload(
+        buildActionPayload(body.challenge as string, body.timestamp as number, 'device-enrol', [
+          root.userAddress,
+          batchDigest(built.batch.events),
+        ]),
+        body.signature as string,
+        root.signing.publicKeyUncompressed,
+      ),
+    ).toBe(true);
+  });
+
+  it('carries a PIN proof over the same digest on a Paranoid account', async () => {
+    const built = await genesis();
+    const seed = new Uint8Array(32).fill(7);
+    const calls = mockFetch({
+      status: 201,
+      body: { data: { access_token: 'jwt', device_id: device.deviceId } },
+    });
+    await enrolWithRoot({
+      userAddress: root.userAddress,
+      root: rootSigner,
+      batch: built.batch,
+      pinProof: (digest) => ed25519.sign(digest, seed),
+    });
+
+    const body = calls[0].body;
+    const payload = buildActionPayload(body.challenge as string, body.timestamp as number, 'device-enrol', [
+      root.userAddress,
+      batchDigest(built.batch.events),
     ]);
+    expect(
+      ed25519.verify(base64ToBytes(body.pin_proof as string), payloadDigest(payload), ed25519.getPublicKey(seed)),
+    ).toBe(true);
   });
 
-  it('attaches the Server_Auth_Token on a Paranoid account', async () => {
-    const bodies = mockFetch(existing);
-    await signIn({ session: await newSession(), paranoid: true });
-    expect(bodies[0].password).toBe(serverAuthToken);
-  });
-});
+  it('reads the chain it builds on with the root, before holding any token', async () => {
+    const calls = mockFetch({ status: 200, body: { data: { chain: [], devices: [] } } });
+    await readChainWithRoot({ userAddress: root.userAddress, root: rootSigner });
 
-describe('every auth 404 renders one generic message', () => {
-  it('refuses sign-in with the generic copy, never "user not found"', async () => {
-    mockFetch(rejected);
-    const error = await signIn({ session: await newSession(), paranoid: false }).catch((e) => e);
-
-    expect(error).toBeInstanceOf(AuthRejectedError);
-    expect(error.userMessage).toBe(GENERIC_AUTH_FAILURE);
-    expect(error.userMessage).not.toMatch(/not found|no such|exist/i);
-  });
-
-  it('surfaces the derivation-mismatch diagnostic on a rejected sign-up', async () => {
-    mockFetch(rejected);
-    const error = await signUp({ session: await newSession(), paranoid: false }).catch((e) => e);
-
-    expect(error).toBeInstanceOf(AuthRejectedError);
-    expect(error.userMessage).toBe(GENERIC_AUTH_FAILURE);
-    expect(error.diagnostic).toMatch(/derivation mismatch|test-vectors/i);
-  });
-});
-
-describe('restore on a new device', () => {
-  it('re-runs sign-up and reports that the account already existed', async () => {
-    mockFetch(existing);
-    const outcome = await restore({ session: await newSession(), paranoid: false });
-    expect(outcome).toEqual({
-      accessToken: 'jwt-existing',
-      created: false,
-      accountExisted: true,
-    });
+    const body = calls[0].body;
+    expect(calls[0].url).toMatch(/\/devices\/enrol\/chain$/);
+    expect(
+      verifyPayload(
+        buildActionPayload(body.challenge as string, body.timestamp as number, 'chain-read', [
+          root.userAddress,
+        ]),
+        body.signature as string,
+        root.signing.publicKeyUncompressed,
+      ),
+    ).toBe(true);
   });
 
-  it('reports a 201 as "no account existed for this seed"', async () => {
-    mockFetch(created);
-    const outcome = await restore({ session: await newSession(), paranoid: false });
-    expect(outcome.accountExisted).toBe(false);
-  });
-
-  it('re-sends all three keys so the server can compare them', async () => {
-    const bodies = mockFetch(existing);
-    await restore({ session: await newSession(), paranoid: false });
-    expect(bodies[0]).toHaveProperty('encryption_public_key_x25519');
-    expect(bodies[0]).toHaveProperty('encryption_public_key_mlkem');
-  });
-});
-
-describe('token lifecycle', () => {
-  it('stores the token from a successful auth', async () => {
-    mockFetch(created);
-    const tokens = new TokenStore();
-    await signUp({ session: await newSession(), paranoid: false, tokens });
-    expect(tokens.get()).toBe('jwt-new');
-  });
-
-  it('leaves the store untouched when auth is rejected', async () => {
-    mockFetch(rejected);
-    const tokens = new TokenStore();
-    await signIn({ session: await newSession(), paranoid: false, tokens }).catch(() => undefined);
-    expect(tokens.get()).toBeUndefined();
-  });
-
-  it('signs out by dropping our copy and locking the keystore', async () => {
-    mockFetch(created);
-    const tokens = new TokenStore();
-    const session = await newSession();
-    await signUp({ session, paranoid: false, tokens });
-
-    signOut(tokens, session);
-
-    expect(tokens.get()).toBeUndefined();
-    expect(session.isUnlocked).toBe(false);
-  });
-});
-
-describe('a fresh challenge per attempt', () => {
-  it('never reuses the triple across a retry', async () => {
-    const bodies = mockFetch(rejected, created);
-
-    const session = await newSession();
-    await signIn({ session, paranoid: false }).catch(() => undefined);
-    await signIn({ session, paranoid: false }).catch(() => undefined);
-
-    expect(bodies[0].challenge).not.toBe(bodies[1].challenge);
-    expect(bodies[0].signature).not.toBe(bodies[1].signature);
+  it('renders every enrolment 404 with the generic copy', () => {
+    for (const endpoint of ['POST /devices/enrol', 'POST /devices/enrol/chain', 'POST /sign-in']) {
+      expect(userMessageFor(new ApiError({ code: 'NOT_FOUND', status: 404, endpoint }))).toBe(
+        GENERIC_AUTH_FAILURE,
+      );
+    }
   });
 });

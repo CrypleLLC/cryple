@@ -1,9 +1,12 @@
 import { p256 } from '@noble/curves/nist.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToBase64, bytesToHex, utf8ToBytes } from '@/lib/encoding';
 import {
   getActionSpec,
   normalizeActionArgs,
   type ActionLabel,
+  type DeviceActionLabel,
+  type RootActionLabel,
 } from './actions';
 
 export const CHALLENGE_BYTES = 32;
@@ -14,12 +17,31 @@ export interface SignatureEnvelope {
   challenge: string;
   timestamp: number;
   signature: string;
-  password?: string;
 }
 
-export interface SigningIdentity {
-  privateKey: Uint8Array;
-  serverAuthToken?: string;
+export interface RootActionEnvelope extends SignatureEnvelope {
+  pin_proof?: string;
+}
+
+export interface Signer {
+  signBytes(message: Uint8Array): Promise<Uint8Array>;
+}
+
+export type PinProofSigner = (digest: Uint8Array) => Uint8Array | Promise<Uint8Array>;
+
+export function rawKeySigner(privateKey: Uint8Array): Signer {
+  return {
+    signBytes: async (message) => p256.sign(message, privateKey, { format: 'compact' }),
+  };
+}
+
+export function cryptoKeySigner(privateKey: CryptoKey): Signer {
+  return {
+    signBytes: async (message) =>
+      new Uint8Array(
+        await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, privateKey, message),
+      ),
+  };
 }
 
 export function createChallenge(): string {
@@ -43,8 +65,12 @@ export function buildActionPayload(
   return [challenge, timestamp, action, ...normalizeActionArgs(action, args)].join(':');
 }
 
-export function signPayload(payload: string, privateKey: Uint8Array): string {
-  const signature = p256.sign(utf8ToBytes(payload), privateKey, { format: 'compact' });
+export function payloadDigest(payload: string): Uint8Array {
+  return sha256(utf8ToBytes(payload));
+}
+
+export async function signPayload(payload: string, signer: Signer): Promise<string> {
+  const signature = await signer.signBytes(utf8ToBytes(payload));
   if (signature.length !== SIGNATURE_BYTES) {
     throw new Error(
       `expected a ${SIGNATURE_BYTES}-byte IEEE P1363 signature, got ${signature.length}`,
@@ -58,56 +84,71 @@ export function verifyPayload(
   signatureBase64: string,
   publicKeyUncompressed: Uint8Array,
 ): boolean {
-  const signature = Uint8Array.from(atob(signatureBase64), (c) => c.charCodeAt(0));
+  let signature: Uint8Array;
+  try {
+    signature = Uint8Array.from(atob(signatureBase64), (c) => c.charCodeAt(0));
+  } catch {
+    return false;
+  }
   if (signature.length !== SIGNATURE_BYTES) {
     return false;
   }
-  return p256.verify(signature, utf8ToBytes(payload), publicKeyUncompressed, {
-    format: 'compact',
-  });
+  try {
+    return p256.verify(signature, utf8ToBytes(payload), publicKeyUncompressed, {
+      format: 'compact',
+      lowS: false,
+    });
+  } catch {
+    return false;
+  }
 }
 
-export function signAuthEnvelope(
-  identity: SigningIdentity,
-  options: { paranoid: boolean },
-): SignatureEnvelope {
+export async function signAuthEnvelope(signer: Signer): Promise<SignatureEnvelope> {
   const challenge = createChallenge();
   const timestamp = currentTimestamp();
-  const signature = signPayload(buildAuthPayload(challenge, timestamp), identity.privateKey);
-
-  const envelope: SignatureEnvelope = { challenge, timestamp, signature };
-
-  if (options.paranoid) {
-    if (identity.serverAuthToken === undefined) {
-      throw new Error('a Paranoid Mode account must send the Server_Auth_Token');
-    }
-    envelope.password = identity.serverAuthToken;
-  }
-
-  return envelope;
+  const signature = await signPayload(buildAuthPayload(challenge, timestamp), signer);
+  return { challenge, timestamp, signature };
 }
 
-export function signActionEnvelope(
-  action: ActionLabel,
+export async function signActionEnvelope(
+  action: DeviceActionLabel,
   args: readonly (string | number)[],
-  identity: SigningIdentity,
-  options: { paranoid: boolean },
-): SignatureEnvelope {
-  const spec = getActionSpec(action);
+  device: Signer,
+): Promise<SignatureEnvelope> {
+  if (getActionSpec(action).signer !== 'device') {
+    throw new Error(`${action} is signed by the root, not by a device`);
+  }
   const challenge = createChallenge();
   const timestamp = currentTimestamp();
   const payload = buildActionPayload(challenge, timestamp, action, args);
-  const signature = signPayload(payload, identity.privateKey);
+  return { challenge, timestamp, signature: await signPayload(payload, device) };
+}
 
-  const envelope: SignatureEnvelope = { challenge, timestamp, signature };
+export async function signRootAction(
+  action: RootActionLabel,
+  args: readonly (string | number)[],
+  root: Signer,
+  pinProof?: PinProofSigner,
+): Promise<RootActionEnvelope> {
+  const spec = getActionSpec(action);
+  if (spec.signer !== 'root') {
+    throw new Error(`${action} is signed by a device, not by the root`);
+  }
+  if (pinProof !== undefined && !spec.pinProof) {
+    throw new Error(`${action} never carries a PIN proof`);
+  }
 
-  if (spec.secondFactor && options.paranoid) {
-    if (identity.serverAuthToken === undefined) {
-      throw new Error(
-        `${action} requires the second factor on a Paranoid Mode account, but no Server_Auth_Token was provided`,
-      );
-    }
-    envelope.password = identity.serverAuthToken;
+  const challenge = createChallenge();
+  const timestamp = currentTimestamp();
+  const payload = buildActionPayload(challenge, timestamp, action, args);
+  const envelope: RootActionEnvelope = {
+    challenge,
+    timestamp,
+    signature: await signPayload(payload, root),
+  };
+
+  if (pinProof !== undefined) {
+    envelope.pin_proof = bytesToBase64(await pinProof(payloadDigest(payload)));
   }
 
   return envelope;

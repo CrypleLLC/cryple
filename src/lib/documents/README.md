@@ -21,11 +21,11 @@ no server intelligence at all, which is exactly what a zero-knowledge backend ca
 
 Three Yjs properties keep the server dumb, and each one buys this module a simplification:
 
-| Property | What it buys |
-| --- | --- |
-| Commutative | `seq` is a **cursor**, not a correctness-bearing order |
-| Idempotent | Re-applying a delta is a no-op, so over-fetching is always safe |
-| Self-describing binary | Nothing inspects a delta, here or on the server |
+| Property               | What it buys                                                    |
+| ---------------------- | --------------------------------------------------------------- |
+| Commutative            | `seq` is a **cursor**, not a correctness-bearing order          |
+| Idempotent             | Re-applying a delta is a no-op, so over-fetching is always safe |
+| Self-describing binary | Nothing inspects a delta, here or on the server                 |
 
 Sync is on `seq`, never on a Yjs state vector. A state vector is plaintext structural metadata —
 client count and per-client operation counts — so sending one would leak document structure for
@@ -33,24 +33,26 @@ no gain.
 
 ## Files
 
-| File | Role |
-| --- | --- |
-| `records.ts` | Wire types, server ceilings, and the contiguity rules |
-| `api.ts` | The nine endpoints, DEK wrapping, and the `document-delete` signature |
-| `crypto.ts` | Sealing deltas and snapshots under the per-document DEK |
-| `content.ts` | The `Y.Doc` layout: `body` fragment, `meta.title` |
-| `sync.ts` | `DocumentSync` — the engine: open, pull, debounce, push, compact |
-| `summaries.ts` | Decrypting enough of each document to render the dashboard list |
-| `outline.ts` | Headings out of a ProseMirror document, nested into a tree |
-| `pagination.ts` | Where the page breaks fall, given block heights |
+| File            | Role                                                                  |
+| --------------- | --------------------------------------------------------------------- |
+| `records.ts`    | Wire types, server ceilings, and the contiguity rules                 |
+| `api.ts`        | The nine endpoints, DEK wrapping, and the `document-delete` signature |
+| `crypto.ts`     | Sealing deltas and snapshots under the per-document DEK               |
+| `content.ts`    | The `Y.Doc` layout: `body` fragment, `meta.title`                     |
+| `sync.ts`       | `DocumentSync` — the engine: open, pull, debounce, push, compact      |
+| `summaries.ts`  | Decrypting enough of each document to render the dashboard list       |
+| `outline.ts`    | Headings out of a ProseMirror document, nested into a tree            |
+| `pagination.ts` | Where the page breaks fall, given block heights                       |
 
 ## Sealing
 
 Deltas and snapshots are **binary**, so they use `sealBlob` / `openBlob` from
 [`lib/sealed`](../sealed/README.md) directly — not `sealText`, which is what `lib/notes` uses.
-The DEK is per document and wrapped under the vault KEK by the shared
-`vaultKekDekWrapper` ([`lib/secrets/dek.ts`](../secrets/README.md)), the same seam every other
-domain uses.
+The DEK is per document and wrapped under the current `documents` scope KEK, with the row's
+`key_generation`, by `scopeDekWrapper` ([`lib/keyrings`](../keyrings/README.md)), the same seam
+every item domain uses. Re-wrapping a document under a newer generation is `PUT /documents/keys`,
+a signed batch shared with the other item domains ([`lib/keyrings`](../keyrings/README.md)). `createDocumentFromSnapshot` creates a document from a snapshot, which is how a
+shared document is copied into the recipient's account.
 
 **One DEK seals the snapshot and every delta**, so one wrapped key covers the whole log however
 long it grows. It is also why rotating a document's DEK means re-encrypting everything — compact
@@ -63,7 +65,7 @@ Both of these produce silent, permanent data loss rather than an error, and both
 ### `seq` restarts after a full prune
 
 `seq` is `MAX(seq) + 1` **over the remaining rows**. Prune the whole log during compaction and
-the next append is `seq = 1` again — *below* the `snapshot_seq` it follows. A client that opens
+the next append is `seq = 1` again — _below_ the `snapshot_seq` it follows. A client that opens
 at `cursor = snapshot_seq` will therefore never see it.
 
 `DocumentSync` opens at **`cursor = 0`** and pulls the whole surviving log, re-applying anything
@@ -86,10 +88,10 @@ the next pull re-reads the range, harmlessly.
 
 ## Contiguity, and why it is a client obligation
 
-`.docs/storage-plan.md` used to call for sequence numbers in AES-GCM AAD so a compromised backend
-could not reorder chunks, which the frozen sealed-blob format in `.docs/crypto/ECDSA.md` makes
+`docs/storage-plan.md` used to call for sequence numbers in AES-GCM AAD so a compromised backend
+could not reorder chunks, which the frozen sealed-blob format in `docs/crypto/ECDSA.md` makes
 impossible — it specifies **no AAD**. **That contradiction was resolved on 2026-09-06**: the drive
-now binds a chunk's position inside the *authenticated plaintext* (`storage-plan.md` § 3.3), which
+now binds a chunk's position inside the _authenticated plaintext_ (`storage-plan.md` § 3.3), which
 GCM covers just as AAD would have.
 
 **It does not resolve anything here, and the obligation below stands.** That fix applies to the
@@ -144,7 +146,7 @@ a design one.
 
 The obvious alternative is what most editors do: give each heading a stable `id` attribute and
 address it by that. An attribute is part of the CRDT, so minting ids appends sealed deltas — and an
-id minted during render appends them on *every* device that opens the document, forever, for a
+id minted during render appends them on _every_ device that opens the document, forever, for a
 value that can be recomputed in microseconds. Everything in [§ Debounce is a storage
 decision](#debounce-is-a-storage-decision) applies with none of the compensating benefit.
 
@@ -179,7 +181,7 @@ carried to the next page with the content it introduces, so a section title neve
 the foot of a page. The pull-back stops if carrying the heading would not actually fit, and it
 never empties a page to rescue a heading that opens it — both cases are tested.
 
-The one thing that legitimately *is* content is an explicit page break: the user asked for it, so
+The one thing that legitimately _is_ content is an explicit page break: the user asked for it, so
 `pageBreak` is a real node in the document. `breaksAfter` ends the page wherever it sits.
 
 `paginate` builds a prefix-sum array first, so asking how much of a page a run of blocks fills is

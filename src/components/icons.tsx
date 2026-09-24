@@ -34,6 +34,17 @@ export function VaultIcon(props: IconProps) {
   );
 }
 
+export function PasswordsIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="8" cy="12" r="3.5" />
+      <path d="M11.5 12H20" />
+      <path d="M17 12v3" />
+      <path d="M20 12v2.2" />
+    </Icon>
+  );
+}
+
 export function SecurityIcon(props: IconProps) {
   return (
     <Icon {...props}>
@@ -232,6 +243,54 @@ export function TaskListIcon(props: IconProps) {
       <path d="M11 7h9" />
       <path d="M11 16h9" />
     </Icon>
+  );
+}
+
+export function FolderIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h3.6a2 2 0 0 1 1.5.7l1.1 1.3h6.8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-10Z" />
+    </Icon>
+  );
+}
+
+export function FolderPlusIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h3.6a2 2 0 0 1 1.5.7l1.1 1.3h6.8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-10Z" />
+      <path d="M12 11.5v5" />
+      <path d="M9.5 14h5" />
+    </Icon>
+  );
+}
+
+export function PencilIcon(props: IconProps) {
+  return (
+    <Icon strokeWidth={1.7} className="h-4 w-4 shrink-0" {...props}>
+      <path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17l-1 3Z" />
+      <path d="m14.5 7.5 2 2" />
+    </Icon>
+  );
+}
+
+export function FolderGlyph({ open = false, ...props }: IconProps & { open?: boolean }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 48 48" fill="none" className="h-full w-full" {...props}>
+      <path
+        d="M4 11.5A3.5 3.5 0 0 1 7.5 8h11.1a3.5 3.5 0 0 1 2.6 1.2l2.4 2.8h16.9a3.5 3.5 0 0 1 3.5 3.5V38a3.5 3.5 0 0 1-3.5 3.5h-33A3.5 3.5 0 0 1 4 38V11.5Z"
+        className="fill-folder-back"
+      />
+      <path d="M8 16h32v6H8z" className="fill-surface" opacity={0.85} />
+      <path
+        d={
+          open
+            ? 'M8.6 19.5h36a2.4 2.4 0 0 1 2.3 3.1l-4.4 16A3.5 3.5 0 0 1 39.1 41.5H7.5A3.5 3.5 0 0 1 4 38V23.5a4 4 0 0 1 4.6-4Z'
+            : 'M4 21.5a3.5 3.5 0 0 1 3.5-3.5h33a3.5 3.5 0 0 1 3.5 3.5V38a3.5 3.5 0 0 1-3.5 3.5h-33A3.5 3.5 0 0 1 4 38V21.5Z'
+        }
+        className="fill-folder-front"
+      />
+      <path d="M7.5 18h33a3.5 3.5 0 0 1 3.4 2.6" className="stroke-folder-shine" strokeWidth={1.2} strokeLinecap="round" />
+    </svg>
   );
 }
 

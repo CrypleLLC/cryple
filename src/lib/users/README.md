@@ -1,87 +1,46 @@
 # `lib/users` — the users domain
 
-Account identity, the mode read, and the two one-way second-factor transitions.
-
-Task 11 of [tasks.md](../../../tasks/tasks.md). Endpoints per
-[front-end-endpoints.md § 8](../../../front-end-endpoints.md).
+Account identity, the mode read, usernames, contacts' published keys, and account deletion.
+Endpoints per [front-end-endpoints.md § 8 and § 19](../../../front-end-endpoints.md#8-users-endpoints).
 
 ## API
 
-| Function | Endpoint | Signed action |
+| Function | Endpoint | Signed by |
 | --- | --- | --- |
 | `getMe` / `fetchAccountMode` | `GET /users/me` 🔒 | — |
 | `lookupUsername` | `GET /users/lookup?address=` public | — |
 | `resolveUsername` | `GET /users/resolve?username=` 🔒 | — |
-| `updateUsername` | `PUT /users/username` 🔒 | `username-update` |
+| `updateUsername` | `PUT /users/username` 🔒 | this device (`username-update`) |
 | `getPublicKeys` | `GET /users/{uuid}/public-keys` 🔒 | — |
-| `enableSecondFactor` | `POST /users/second-factor` 🔒 | `enable-second-factor` |
-| `rotateSecondFactor` | `PUT /users/password` 🔒 | `rotate-second-factor` |
-| `deleteAccount` | `DELETE /users` 🔒 | `account-delete` |
+| `deleteAccount` | `DELETE /users` 🔒 | the **root** (`account-delete`), plus the PIN proof on Paranoid |
 
-## `has_password` is the only source of truth for the mode
+Turning Paranoid on and changing the account PIN are [`lib/oprf`](../oprf/README.md).
 
-`GET /users/me` answers "who am I", and `has_password` is the one fact a client cannot derive
-and must not cache across launches: local state does not survive a reinstall, and *restore on
-a new device* is the normal path in a seed-phrase product, not an edge case.
+## `paranoid` is the only source of truth for the mode
 
-`fetchAccountMode` maps it to the `paranoid` flag that
-[`lib/signing`](../signing/README.md) needs. **Never guess it, never ask the user "did you set
-a PIN?"** — that is exactly what someone restoring a lost device cannot answer.
+`GET /users/me` answers "who am I", and `paranoid` is the one fact a client cannot derive and
+must not cache: a browser added with the phrase knows nothing about the account yet. **Never
+guess it, never ask the user "did you set a PIN?"** Where the mode must be known before any
+token exists (adding a browser), `lib/account` tries without a proof and then with one; the
+account PIN evaluation always answers, so the attempt reveals nothing.
 
-Probing `/sign-in` instead burns a challenge, pays the 350 ms public floor, and returns the
-same `404` for a wrong PIN, a wrong seed and a nonexistent account.
+**There is no "disable Paranoid" affordance and there never will be.** A test asserts that
+neither this module nor `lib/oprf` exports anything matching `/disable|removeSecondFactor|downgrade/`.
 
-## Mode transitions are one-directional
+## `getPublicKeys`
 
-| Transition | Function | Needs |
-| --- | --- | --- |
-| Standard → Paranoid | `enableSecondFactor` | JWT + signature over the **new** token |
-| Paranoid → Paranoid (rotate) | `rotateSecondFactor` | JWT + the **current** token + signature over the new one |
-| Paranoid → Standard | — | **Does not exist** |
-
-**There is no "disable PIN" affordance and there never will be.** Nothing writes `NULL` back
-to `users.password`. The asymmetry is deliberate: the PIN's whole threat model is a
-compromised seed, so the seed key alone must never replace a PIN that is already set. A test
-asserts this module exports nothing matching `/disable|removeSecondFactor|downgrade/`.
-
-Both transitions **sign the new token itself**, not merely the intent. Without that, anything
-between client and server could keep a valid signature and swap in a token of its own, and
-the account would finish the upgrade with an attacker-known second factor.
-
-Both call `session.rekeySecondFactor(newPin)` on success, so the keystore holds the new token
-and the user is never re-prompted mid-session. On a Standard account that session held **no**
-second factor at all until this call ([`lib/session`](../session/README.md)), which is exactly
-what `rekeySecondFactor` is for.
-
-**The upgrade is not complete when this function returns.** A Standard account also has no local
-seed vault, because there was no PIN to wrap one under — so the caller must create it, and that
-needs the recovery phrase, which the keystore deliberately does not retain. `PinScreen` asks
-for the phrase alongside the new PIN, checks it derives to the signed-in `user_address` before
-sending anything, then calls `createSeedVault` **after** this succeeds. Creating it first would
-leave a Standard account holding a vault if the request failed.
-
-### The one ambiguous retry in the whole API
-
-`POST /users/second-factor` answers `401 INVALID_CREDENTIALS` for **both** "your signature was
-wrong" and "enrolment already succeeded, so this retry is refused" — the already-enrolled
-check runs after the signature check. Reporting "a PIN already exists" to a caller holding
-only a seed key is precisely what Paranoid Mode refuses to do, so the API will not distinguish
-them.
-
-`enableSecondFactor` resolves it the documented way: on a `401` it reads
-`GET /users/me` and returns `{ status: 'already-enabled' }` when `has_password` is now `true`,
-otherwise it rethrows. That costs one unfloored request and no challenge. **Never retry
-enrolment in a loop.**
+Returns the contact's `user_address`, `root_public_key`, current `sharing_keys` with their
+generation, and the `proof` path from the root to their announcement. **Never trust the keys
+without verifying the path against the pinned root** — [`lib/sharing`](../sharing/README.md)
+does, before every invitation and every send.
 
 ## `DELETE /users`
 
-Irreversible, and cascades to secrets, notes and documents. The body is
-**required** — an absent body is `400 INVALID_BODY`, not a successful delete.
-
-A retry answers `401 INVALID_CREDENTIALS` rather than `404`: the account row is gone, so the
-call fails at the account lookup before anything else. `deleteAccount` treats that as success
-— the token is useless either way — and clears the token and locks the keystore in a `finally`
-so local state never outlives the account.
+Irreversible, and cascades to every device, keyring, item, connection and share. **It is signed
+by the root**, so the phrase must be typed: a stolen device alone can never delete the account.
+On a Paranoid account the account PIN's proof goes with it. `deleteAccount` sends the request and
+surfaces any refusal; `lib/account` → `deleteAccountWithPhrase` derives the root, gets the proof,
+calls it, and then forgets everything local.
 
 ## Usernames
 

@@ -1,7 +1,8 @@
 import { ApiError, assertCanonicalUuid, collectPages, request, type PageRequest } from '@/lib/api';
 import { requireToken, type AuthedContext } from '@/lib/context';
 import { normalizeActionArgs, signActionEnvelope } from '@/lib/signing';
-import { vaultKekDekWrapper, type DekWrapper } from '@/lib/secrets';
+import type { DekWrapper } from '@/lib/secrets';
+import { scopeDekWrapper } from '@/lib/keyrings';
 import {
   FILE_VERSION,
   type CompletedPart,
@@ -18,13 +19,14 @@ export interface FilesContext extends AuthedContext {
 }
 
 export function wrapper(context: FilesContext): DekWrapper {
-  return context.dek ?? vaultKekDekWrapper(context.session.vaultKek);
+  return context.dek ?? scopeDekWrapper(context, 'files');
 }
 
 export interface CreateFileRequest {
   id?: string;
   ciphertext: string;
   wrapped_dek: string;
+  key_generation: number;
   size_bytes: number;
   chunk_count: number;
 }
@@ -58,6 +60,7 @@ export async function createFile(
       id,
       ciphertext: body.ciphertext,
       wrapped_dek: body.wrapped_dek,
+      key_generation: body.key_generation,
       size_bytes: body.size_bytes,
       chunk_count: body.chunk_count,
       version: FILE_VERSION,
@@ -69,14 +72,14 @@ export async function createFile(
 
 export async function listFiles(
   context: FilesContext,
-  options: { limit?: number } = {},
+  options: { limit?: number; folder?: string } = {},
 ): Promise<FileRecord[]> {
   return collectPages<FileRecord>(
     (page: PageRequest) =>
       request<FileRecord[]>({
         method: 'GET',
         path: '/files',
-        query: { limit: page.limit, cursor: page.cursor },
+        query: { limit: page.limit, cursor: page.cursor, folder: options.folder },
         token: requireToken(context),
         timeoutMs: context.timeoutMs,
       }),
@@ -146,15 +149,7 @@ export async function completeUpload(
 export async function deleteFile(context: FilesContext, id: string): Promise<void> {
   const canonical = assertCanonicalUuid(id);
 
-  const envelope = signActionEnvelope(
-    'file-delete',
-    [canonical],
-    {
-      privateKey: context.session.identityPrivateKey,
-      serverAuthToken: context.session.serverAuthToken(),
-    },
-    { paranoid: context.paranoid },
-  );
+  const envelope = await signActionEnvelope('file-delete', [canonical], context.session.signer());
 
   await request<void>({
     method: 'DELETE',
@@ -193,15 +188,7 @@ export async function deleteFiles(
   const canonical = ids.map((id) => assertCanonicalUuid(id));
   const normalized = normalizeActionArgs('file-delete', canonical);
 
-  const envelope = signActionEnvelope(
-    'file-delete',
-    normalized,
-    {
-      privateKey: context.session.identityPrivateKey,
-      serverAuthToken: context.session.serverAuthToken(),
-    },
-    { paranoid: context.paranoid },
-  );
+  const envelope = await signActionEnvelope('file-delete', normalized, context.session.signer());
 
   const response = await request<BatchDeleteFilesResult>({
     method: 'DELETE',

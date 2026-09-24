@@ -1,7 +1,6 @@
+import { openTestSession } from '@/test/session';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import vectors from '@/test/fixtures/test-vectors.json';
 import { TokenStore } from '@/lib/api';
-import { SessionKeystore } from '@/lib/session';
 import type { AuthedContext } from '@/lib/context';
 import {
   MissingUploadTicketError,
@@ -17,14 +16,12 @@ import {
 import { buildManifest, openManifest, sealManifest } from './manifest';
 import { openChunk } from './chunks';
 import { CHUNK_PAYLOAD_BYTES, layoutFor } from './layout';
-import { vaultKekDekWrapper } from '@/lib/secrets';
+import { scopeDekWrapper, type WrappedDek } from '@/lib/keyrings';
 
-const mnemonic = vectors.seed_and_user_address.mnemonic;
 const ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
 
 async function newContext(): Promise<AuthedContext> {
-  const session = new SessionKeystore({ idleTimeoutMs: 0 });
-  await session.unlockWithMnemonic(mnemonic, '481937');
+  const { session } = (await openTestSession()).context;
   const tokens = new TokenStore();
   tokens.set('jwt-token');
   return { session, tokens, paranoid: false };
@@ -80,6 +77,7 @@ function mockApi(options: { createStatus?: number } = {}): Api {
               id: sent.id,
               ciphertext: sent.ciphertext,
               wrapped_dek: sent.wrapped_dek,
+              key_generation: sent.key_generation,
               size_bytes: sent.size_bytes,
               ciphertext_sha256: sent.ciphertext_sha256,
               version: 'v1',
@@ -188,7 +186,7 @@ describe('uploading a file', () => {
     const post = api.bodies[0] as { ciphertext: string; wrapped_dek: string };
     expect(JSON.stringify(post)).not.toContain('passport-scan');
 
-    const dek = await vaultKekDekWrapper(context.session.vaultKek).unwrapDek(post.wrapped_dek);
+    const dek = await scopeDekWrapper(context, 'files').unwrapDek(post as unknown as WrappedDek);
     const manifest = await openManifest(post.ciphertext, dek);
 
     expect(manifest.name).toBe('passport-scan.pdf');
@@ -208,7 +206,7 @@ describe('uploading a file', () => {
     });
 
     const post = api.bodies[0] as { wrapped_dek: string };
-    const dek = await vaultKekDekWrapper(context.session.vaultKek).unwrapDek(post.wrapped_dek);
+    const dek = await scopeDekWrapper(context, 'files').unwrapDek(post as unknown as WrappedDek);
     const opened = await openChunk(captured[0], 0, 1, dek);
 
     expect(opened.subarray(0, 1000).every((byte) => byte === 0xab)).toBe(true);
@@ -404,6 +402,7 @@ describe('resuming an upload after a reload', () => {
         id: ID,
         ciphertext: post.ciphertext,
         wrapped_dek: post.wrapped_dek,
+        key_generation: 1,
         size_bytes: post.size_bytes,
       },
     };
@@ -520,7 +519,7 @@ describe('resuming an upload after a reload', () => {
     const row = {
       id: ID,
       ciphertext: await sealManifest(manifest, dek),
-      wrapped_dek: await vaultKekDekWrapper(context.session.vaultKek).wrapDek(dek),
+      ...(await scopeDekWrapper(context, 'files').wrapDek(dek)),
       size_bytes: layoutFor(40_000).storedBytes,
     };
 

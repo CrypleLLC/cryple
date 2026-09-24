@@ -1,13 +1,21 @@
-import { assertCanonicalUuid, request } from '@/lib/api';
-import { signActionEnvelope } from '@/lib/signing';
+import { ApiError, assertCanonicalUuid, request } from '@/lib/api';
+import { sha256Hex, utf8ToBytes } from '@/lib/encoding';
+import { signActionEnvelope, type DeviceActionLabel } from '@/lib/signing';
 import { normalizeUsername, isUsername, MalformedUsernameError } from '@/lib/users';
 import { requireToken, type AuthedContext } from '@/lib/context';
+import type { ItemScope } from '@/lib/scopes';
 
 export const ITEM_TYPES = ['secret', 'note', 'document', 'file'] as const;
 export type ItemType = (typeof ITEM_TYPES)[number];
 
 export type ConnectionStatus = 'pending' | 'accepted';
 export type ConnectionDirection = 'inbound' | 'outbound';
+
+export interface ConnectionKeyRecord {
+  scope: ItemScope;
+  key_generation: number;
+  wrapped_key: string;
+}
 
 export interface ConnectionRecord {
   id: string;
@@ -17,6 +25,9 @@ export interface ConnectionRecord {
   status: ConnectionStatus;
   pqxdh_blob?: string;
   sender_wrapped_key?: string;
+  sender_key_generation: number;
+  recipient_key_generation: number;
+  keys: ConnectionKeyRecord[];
   created_at: string;
 }
 
@@ -56,23 +67,13 @@ export interface CreateConnectionRequest {
   recipientUsername: string;
   pqxdhBlob: string;
   senderWrappedKey: string;
+  senderKeyGeneration: number;
+  recipientKeyGeneration: number;
   id?: string;
 }
 
-function sign(
-  context: AuthedContext,
-  action: Parameters<typeof signActionEnvelope>[0],
-  args: readonly string[],
-) {
-  return signActionEnvelope(
-    action,
-    args,
-    {
-      privateKey: context.session.identityPrivateKey,
-      serverAuthToken: context.session.serverAuthToken(),
-    },
-    { paranoid: context.paranoid },
-  );
+function sign(context: AuthedContext, action: DeviceActionLabel, args: readonly (string | number)[]) {
+  return signActionEnvelope(action, args, context.session.signer());
 }
 
 export async function createConnection(
@@ -96,11 +97,71 @@ export async function createConnection(
       recipient_username: username,
       pqxdh_blob: input.pqxdhBlob,
       sender_wrapped_key: input.senderWrappedKey,
-      ...sign(context, 'connection-invite', [username, input.pqxdhBlob]),
+      sender_key_generation: input.senderKeyGeneration,
+      recipient_key_generation: input.recipientKeyGeneration,
+      ...(await sign(context, 'connection-invite', [
+        username,
+        input.pqxdhBlob,
+        input.senderKeyGeneration,
+        input.recipientKeyGeneration,
+      ])),
     },
   });
+  return withKeys(response.data);
+}
 
+export async function listConnectionShares(
+  context: AuthedContext,
+  id: string,
+): Promise<{ id: string; wrapped_dek: string }[]> {
+  const response = await request<{ id: string; wrapped_dek: string }[]>({
+    method: 'GET',
+    path: `/connections/${assertCanonicalUuid(id)}/shares`,
+    token: requireToken(context),
+    timeoutMs: context.timeoutMs,
+  });
+  return response.data ?? [];
+}
+
+export interface ReestablishRequest {
+  pqxdhBlob: string;
+  senderWrappedKey: string;
+  senderKeyGeneration: number;
+  recipientKeyGeneration: number;
+  keys: readonly ConnectionKeyRecord[];
+  shares: readonly { id: string; wrapped_dek: string }[];
+}
+
+export async function putConnectionExchange(
+  context: AuthedContext,
+  id: string,
+  input: ReestablishRequest,
+): Promise<{ shares: number }> {
+  const response = await request<{ shares: number }>({
+    method: 'PUT',
+    path: `/connections/${assertCanonicalUuid(id)}/exchange`,
+    token: requireToken(context),
+    timeoutMs: context.timeoutMs,
+    body: {
+      pqxdh_blob: input.pqxdhBlob,
+      sender_wrapped_key: input.senderWrappedKey,
+      sender_key_generation: input.senderKeyGeneration,
+      recipient_key_generation: input.recipientKeyGeneration,
+      keys: input.keys,
+      shares: input.shares,
+      ...(await sign(context, 'connection-reestablish', [
+        assertCanonicalUuid(id),
+        input.pqxdhBlob,
+        input.senderKeyGeneration,
+        input.recipientKeyGeneration,
+      ])),
+    },
+  });
   return response.data;
+}
+
+function withKeys(connection: ConnectionRecord): ConnectionRecord {
+  return { ...connection, keys: connection.keys ?? [] };
 }
 
 export async function listConnections(
@@ -114,31 +175,51 @@ export async function listConnections(
     token: requireToken(context),
     timeoutMs: context.timeoutMs,
   });
-
-  return response.data ?? [];
+  return (response.data ?? []).map(withKeys);
 }
 
 export async function acceptConnection(context: AuthedContext, id: string): Promise<void> {
   assertCanonicalUuid(id);
-
   await request<void>({
     method: 'POST',
     path: `/connections/${id}/accept`,
     token: requireToken(context),
     timeoutMs: context.timeoutMs,
-    body: sign(context, 'connection-accept', [id]),
+    body: await sign(context, 'connection-accept', [id]),
   });
 }
 
 export async function deleteConnection(context: AuthedContext, id: string): Promise<void> {
   assertCanonicalUuid(id);
-
   await request<void>({
     method: 'DELETE',
     path: `/connections/${id}`,
     token: requireToken(context),
     timeoutMs: context.timeoutMs,
-    body: sign(context, 'connection-delete', [id]),
+    body: await sign(context, 'connection-delete', [id]),
+  });
+}
+
+export async function connectionKeysDigest(keys: readonly ConnectionKeyRecord[]): Promise<string> {
+  const lines = keys.map((key) => `${key.scope}:${key.key_generation}:${key.wrapped_key}`);
+  return sha256Hex(utf8ToBytes(lines.join('\n')));
+}
+
+export async function putConnectionKeys(
+  context: AuthedContext,
+  id: string,
+  keys: readonly ConnectionKeyRecord[],
+): Promise<void> {
+  assertCanonicalUuid(id);
+  await request<void>({
+    method: 'PUT',
+    path: `/connections/${id}/keys`,
+    token: requireToken(context),
+    timeoutMs: context.timeoutMs,
+    body: {
+      keys,
+      ...(await sign(context, 'connection-keys', [id, await connectionKeysDigest(keys)])),
+    },
   });
 }
 
@@ -167,22 +248,20 @@ export async function createShare(
       item_type: input.itemType,
       item_id: input.itemId,
       wrapped_dek: input.wrappedDek,
-      ...sign(context, 'share-create', [input.connectionId, input.itemType, input.itemId]),
+      ...(await sign(context, 'share-create', [input.connectionId, input.itemType, input.itemId])),
     },
   });
-
   return response.data;
 }
 
 export async function deleteShare(context: AuthedContext, id: string): Promise<void> {
   assertCanonicalUuid(id);
-
   await request<void>({
     method: 'DELETE',
     path: `/shares/${id}`,
     token: requireToken(context),
     timeoutMs: context.timeoutMs,
-    body: sign(context, 'share-delete', [id]),
+    body: await sign(context, 'share-delete', [id]),
   });
 }
 
@@ -197,7 +276,6 @@ export async function listInbox(
     token: requireToken(context),
     timeoutMs: context.timeoutMs,
   });
-
   return response.data ?? [];
 }
 
@@ -206,14 +284,12 @@ export async function getSharedItem(
   shareId: string,
 ): Promise<SharedItemRecord> {
   assertCanonicalUuid(shareId);
-
   const response = await request<SharedItemRecord>({
     method: 'GET',
     path: `/shares/${shareId}`,
     token: requireToken(context),
     timeoutMs: context.timeoutMs,
   });
-
   return response.data;
 }
 
@@ -222,14 +298,12 @@ export async function getSharedDownload(
   shareId: string,
 ): Promise<SharedDownloadRecord> {
   assertCanonicalUuid(shareId);
-
   const response = await request<SharedDownloadRecord>({
     method: 'GET',
     path: `/shares/${shareId}/download`,
     token: requireToken(context),
     timeoutMs: context.timeoutMs,
   });
-
   return response.data;
 }
 
@@ -239,13 +313,54 @@ export async function listItemRecipients(
   itemId: string,
 ): Promise<ItemRecipientRecord[]> {
   assertCanonicalUuid(itemId);
-
   const response = await request<ItemRecipientRecord[]>({
     method: 'GET',
     path: `/items/${itemType}/${itemId}/shares`,
     token: requireToken(context),
     timeoutMs: context.timeoutMs,
   });
-
   return response.data ?? [];
+}
+
+export interface AddressBookRecord {
+  ciphertext: string;
+  wrapped_dek: string;
+  key_generation: number;
+  revision: number;
+  updated_at: string;
+}
+
+export async function getAddressBook(context: AuthedContext): Promise<AddressBookRecord | undefined> {
+  try {
+    const response = await request<AddressBookRecord>({
+      method: 'GET',
+      path: '/sharing/address-book',
+      token: requireToken(context),
+      timeoutMs: context.timeoutMs,
+    });
+    return response.data;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+export async function putAddressBook(
+  context: AuthedContext,
+  input: { ciphertext: string; wrapped_dek: string; key_generation: number; expected_revision: number },
+): Promise<AddressBookRecord> {
+  const digest = await sha256Hex(utf8ToBytes(input.ciphertext));
+  const response = await request<AddressBookRecord>({
+    method: 'PUT',
+    path: '/sharing/address-book',
+    token: requireToken(context),
+    timeoutMs: context.timeoutMs,
+    body: {
+      ...input,
+      ...(await sign(context, 'address-book-update', [input.expected_revision, digest])),
+    },
+  });
+  return response.data;
 }

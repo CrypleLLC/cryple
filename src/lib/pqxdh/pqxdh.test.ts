@@ -57,8 +57,8 @@ describe('the info string is built exactly as specified', () => {
     ).toBe(`Cryple-PQXDH-v1|item-share|${'a'.repeat(64)}|${'b'.repeat(64)}`);
   });
 
-  it('defines exactly the sharing usage label', () => {
-    expect([...PQXDH_USAGES]).toEqual(['item-share']);
+  it('defines exactly the sharing and device keyring usage labels', () => {
+    expect([...PQXDH_USAGES]).toEqual(['item-share', 'device-keyring']);
   });
 });
 

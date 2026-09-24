@@ -32,8 +32,15 @@ const config = [
         {
           name: 'localStorage',
           message:
-            'Only the seed vault may reach persistent storage, and it stores one PIN-encrypted ' +
-            'blob. Go through src/lib/pin instead. See src/lib/pin/README.md.',
+            'Nothing secret lives in localStorage. The device record lives in IndexedDB through ' +
+            'src/lib/device. See src/lib/device/README.md.',
+        },
+        {
+          name: 'indexedDB',
+          message:
+            'IndexedDB holds exactly two things: this device record (src/lib/device/store.ts) and ' +
+            'unfinished upload handles (src/lib/files/handles.ts). A new use needs an argument ' +
+            'in its README and an exemption in eslint.config.mjs.',
         },
         {
           name: 'sessionStorage',
@@ -42,17 +49,61 @@ const config = [
             'memory by SessionKeystore. See src/lib/session/README.md.',
         },
       ],
+
+      'no-restricted-properties': [
+        'error',
+        ...['window', 'globalThis', 'self'].flatMap((object) => [
+          {
+            object,
+            property: 'localStorage',
+            message:
+              `${object}.localStorage is the same persistent store as the bare global, and ` +
+              'no-restricted-globals cannot see it. Only the exempt modules in eslint.config.mjs ' +
+              'may reach it.',
+          },
+          {
+            object,
+            property: 'indexedDB',
+            message:
+              `${object}.indexedDB is the same store as the bare global. Only the exempt modules ` +
+              'in eslint.config.mjs may reach it.',
+          },
+          {
+            object,
+            property: 'sessionStorage',
+            message:
+              `Nothing in Cryple is persisted to sessionStorage, through ${object} or otherwise. ` +
+              'See src/lib/session/README.md.',
+          },
+        ]),
+      ],
     },
   },
 
-  // The third exemption, added 2026-09-11: src/lib/app/icon-size.ts persists one
+  // The one localStorage exemption: src/lib/app/icon-size.ts persists one
   // of four literal words naming how large the drive's icons are drawn. It is a
   // view preference with no bearing on secrets, and losing it on every reload is
   // the kind of small wrongness a user notices on every visit.
   {
-    files: ['src/lib/pin/**', 'src/lib/app/mode-hint.ts', 'src/lib/app/icon-size.ts'],
+    files: ['src/lib/app/icon-size.ts'],
     rules: {
       'no-restricted-globals': 'off',
+      'no-restricted-properties': 'off',
+    },
+  },
+
+  // IndexedDB: the device record (src/lib/device/store.ts) holds
+  // this browser's non-extractable CryptoKeys, which only IndexedDB can store,
+  // and its PIN-sealed material. src/lib/files/handles.ts keeps one
+  // FileSystemFileHandle per unfinished upload.
+  // store.ts also reaches localStorage, to delete the PIN-wrapped seed an
+  // earlier deployment left in browsers that ran it. It only removes; it never
+  // reads or writes. See src/lib/device/README.md.
+  {
+    files: ['src/lib/device/store.ts', 'src/lib/files/handles.ts'],
+    rules: {
+      'no-restricted-globals': 'off',
+      'no-restricted-properties': 'off',
     },
   },
 

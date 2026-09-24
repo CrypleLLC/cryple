@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { describeReceived, UNREADABLE_SHARED_NAME } from './received';
 import type { ConnectionRecord, InboundShareRecord } from './api';
-import type { AuthedContext } from '@/lib/context';
+import { openTestSession } from '@/test/session';
 
-const context = {} as AuthedContext;
+const { context } = await openTestSession();
 
 function share(over: Partial<InboundShareRecord> = {}): InboundShareRecord {
   return {
@@ -25,6 +25,9 @@ const connection: ConnectionRecord = {
   user_address: 'a'.repeat(64),
   status: 'accepted',
   pqxdh_blob: 'not-a-real-blob',
+  sender_key_generation: 1,
+  recipient_key_generation: 1,
+  keys: [{ scope: 'files', key_generation: 1, wrapped_key: 'bm90LWEta2V5' }],
   created_at: '2026-09-11T00:00:00Z',
 };
 
@@ -43,7 +46,7 @@ describe('describing a received item that cannot be opened', () => {
     const item = await describeReceived(context, share(), connection, view, view);
 
     expect(item.problem).toMatch(
-      /deriving the connection key|unwrapping the item key|fetching the item|opening the payload/,
+      /unwrapping the item key|fetching the item|opening the payload/,
     );
   });
 
@@ -63,6 +66,12 @@ describe('describing a received item that cannot be opened', () => {
     );
 
     expect(item.problem).toMatch(/wrapped key/i);
+  });
+
+  it('fails at the unwrapping step when the connection holds no sub-key for that scope and cannot rebuild one', async () => {
+    const item = await describeReceived(context, share({ item_type: 'note' }), connection, view, view);
+    expect(item.readable).toBe(false);
+    expect(item.problem).toMatch(/unwrapping the item key/);
   });
 
   it('keeps the sender and the type even when it cannot read the payload', async () => {
