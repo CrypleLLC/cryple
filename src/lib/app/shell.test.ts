@@ -7,6 +7,9 @@ import {
   buildVaultRows,
   checkIntegrity,
   checkUpgrade,
+  CONTENT_GUTTER,
+  contentMeasure,
+  FLOATING_SPREAD_GUTTER,
   decodeSecretPayload,
   encodeSecretPayload,
   formatBytes,
@@ -254,5 +257,27 @@ describe("the shell's account chrome", () => {
     expect(accountInitial("ada")).toBe("A");
     expect(accountInitial("  ")).toBe("?");
     expect(accountInitial(undefined)).toBe("?");
+  });
+});
+
+describe('the floating add button frame', () => {
+  it('insets three times further than the old hand-rolled button on full-width screens', () => {
+    expect(FLOATING_SPREAD_GUTTER).toBe('px-18');
+    expect(18 * 4).toBe(3 * 24);
+  });
+
+  it('uses the shell gutter on measured screens, so the button tracks the content edge', () => {
+    expect(CONTENT_GUTTER).toBe('px-4 md:px-6');
+  });
+});
+
+describe('contentMeasure', () => {
+  it('constrains a normal screen and lets a miniatures grid run full width', () => {
+    expect(contentMeasure(false)).toBe('max-w-6xl');
+    expect(contentMeasure(true)).toBe('max-w-none');
+  });
+
+  it('is the single source the shell and the floating button both read', () => {
+    expect(contentMeasure(false)).not.toBe(contentMeasure(true));
   });
 });

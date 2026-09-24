@@ -72,14 +72,14 @@ export async function createFile(
 
 export async function listFiles(
   context: FilesContext,
-  options: { limit?: number } = {},
+  options: { limit?: number; folder?: string } = {},
 ): Promise<FileRecord[]> {
   return collectPages<FileRecord>(
     (page: PageRequest) =>
       request<FileRecord[]>({
         method: 'GET',
         path: '/files',
-        query: { limit: page.limit, cursor: page.cursor },
+        query: { limit: page.limit, cursor: page.cursor, folder: options.folder },
         token: requireToken(context),
         timeoutMs: context.timeoutMs,
       }),

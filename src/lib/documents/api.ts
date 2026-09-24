@@ -86,14 +86,14 @@ export async function createDocumentFromSnapshot(
 
 export async function listDocumentsMeta(
   context: DocumentsContext,
-  options: { limit?: number } = {},
+  options: { limit?: number; folder?: string } = {},
 ): Promise<DocumentMetaRecord[]> {
   return collectPages<DocumentMetaRecord>(
     (page: PageRequest) =>
       request<DocumentMetaRecord[]>({
         method: 'GET',
         path: '/documents',
-        query: { limit: page.limit, cursor: page.cursor },
+        query: { limit: page.limit, cursor: page.cursor, folder: options.folder },
         token: requireToken(context),
         timeoutMs: context.timeoutMs,
       }),

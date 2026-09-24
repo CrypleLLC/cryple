@@ -68,6 +68,12 @@ The modules are `lib/keys`, `lib/scopes`, `lib/chain`, `lib/keyrings`, `lib/devi
 `lib/session`, `lib/signing`, `lib/auth`, `lib/account`, `lib/rekey`, and the item and sharing
 domains. Each has a README.
 
+**`lib/credentials` is the password store**, and it is `lib/secrets` in a different shape: an edit
+is an **append** of a new revision, never a `PUT`. `GET /credentials` is the vault listing the
+Passwords tab draws, `GET /credentials/sync` is the browser extension's feed, and
+`GET /credentials?fields=meta` names **revision ids** for a rotation. `passwords` is in `DEK_SCOPES`
+but **not in `ITEM_SCOPES`**: `lib/rekey` does walk it, by revision id rather than item id.
+
 **Reproduce `test-vectors.json` before this client touches real data.** The fixture copy is in
 `src/test/fixtures/`. No Go test consumes the file, so this client's tests are the cross-client
 check. Regenerating it is a backend operation (`go run ./tools/cryplevectors` in

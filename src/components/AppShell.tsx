@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import type { Scope } from '@/lib/scopes';
 import {
+  contentMeasure,
   sessionExits,
   type SessionExit,
   type SessionExitId,
@@ -13,6 +14,7 @@ import {
 } from '@/lib/app';
 import { useCryple } from './CrypleProvider';
 import NotesScreen from './NotesScreen';
+import PasswordsScreen from './PasswordsScreen';
 import AccountMenu from './AccountMenu';
 import SharedScreen from './SharedScreen';
 import SettingsModal from './SettingsModal';
@@ -24,6 +26,7 @@ import {
   LockSessionIcon,
   LogOutIcon,
   NotesIcon,
+  PasswordsIcon,
   VaultIcon,
   type IconProps,
   SharingIcon,
@@ -61,6 +64,15 @@ const NAV_ITEMS = [
     actions: VaultRevealAction,
   },
   {
+    id: 'passwords',
+    scope: 'passwords',
+    label: 'Passwords',
+    description: 'Website logins, encrypted here and never looked up by the server.',
+    icon: PasswordsIcon,
+    screen: PasswordsScreen,
+    actions: VaultRevealAction,
+  },
+  {
     id: 'notes',
     scope: 'notes',
     label: 'Notes',
@@ -79,20 +91,20 @@ const NAV_ITEMS = [
     miniatures: true,
   },
   {
-    id: 'shared',
-    label: 'Shared',
-    description: 'What other accounts have sent you, decrypted on this device.',
-    icon: SharingIcon,
-    screen: SharedScreen,
-    miniatures: true,
-  },
-  {
     id: 'drive',
     scope: 'files',
     label: 'Drive',
     description: 'Files, encrypted on this device before they are stored.',
     icon: DriveIcon,
     screen: DriveScreen,
+    miniatures: true,
+  },
+  {
+    id: 'shared',
+    label: 'Shared',
+    description: 'What other accounts have sent you, decrypted on this device.',
+    icon: SharingIcon,
+    screen: SharedScreen,
     miniatures: true,
   },
 ] as const satisfies readonly NavItem[];
@@ -120,7 +132,7 @@ export default function AppShell() {
   const current: NavItem = navItems.find((item) => item.id === tab) ?? navItems[0];
   const Screen = current.screen;
   const ScreenActions = current.actions;
-  const measure = current.miniatures === true ? 'max-w-none' : 'max-w-6xl';
+  const measure = contentMeasure(current.miniatures === true);
 
   function run(exit: SessionExit) {
     if (exit.confirm !== undefined && confirming?.id !== exit.id) {
@@ -257,7 +269,7 @@ function NavButton({
     <button
       onClick={onSelect}
       aria-current={active ? 'page' : undefined}
-      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-compact font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 ${
+      className={`flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-compact font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 ${
         compact ? 'shrink-0' : 'w-full'
       } ${
         active

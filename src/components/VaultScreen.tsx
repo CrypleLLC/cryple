@@ -1,19 +1,33 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { createSecret, deleteSecret, listSecrets, openSecret } from '@/lib/secrets';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createSecret, deleteSecret, deleteSecrets, listSecrets, openSecret } from '@/lib/secrets';
+import { HOME_FOLDER_ID } from '@/lib/folders';
 import {
   buildVaultRows,
   encodeSecretPayload,
   formatBytes,
   MASKED_VALUE,
+  SECRET_NOUNS,
   type OpenedSecret,
   type VaultRow,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
 import { useVaultReveal } from './VaultReveal';
+import FolderTabs, { MoveToTab, startItemDrag, useFolderTabs } from './FolderTabs';
 import { SharingIcon, TrashIcon, VaultIcon } from './icons';
-import { Button, Card, CopyButton, Empty, Field, Notice, PanelGrid, SecretField, Spinner } from './ui';
+import {
+  Button,
+  Card,
+  CopyButton,
+  Empty,
+  Field,
+  FloatingAddButton,
+  Modal,
+  Notice,
+  SecretField,
+  Spinner,
+} from './ui';
 import ShareItemDialog from './ShareItemDialog';
 
 export default function VaultScreen() {
@@ -26,6 +40,7 @@ export default function VaultScreen() {
   const [busy, setBusy] = useState(false);
   const [sharing, setSharing] = useState<string>();
 
+  const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [value, setValue] = useState('');
   const [valueRevealed, setValueRevealed] = useState(false);
@@ -55,13 +70,37 @@ export default function VaultScreen() {
     void load();
   }, [load]);
 
+  const rowIds = useMemo(() => rows?.map((row) => row.id), [rows]);
+  const folders = useFolderTabs('secrets', rowIds);
+  const filterTab = folders.filter;
+  const visible = useMemo(
+    () => (rows === undefined ? undefined : filterTab(rows, (row) => row.id)),
+    [rows, filterTab],
+  );
+
+  const deleteTabItems = useCallback(
+    async (ids: string[]) => {
+      await deleteSecrets(context, ids);
+      await load();
+    },
+    [context, load],
+  );
+
+  function closeAdd() {
+    setAdding(false);
+    setName('');
+    setValue('');
+    setValueRevealed(false);
+  }
+
   async function addSecret() {
     setBusy(true);
     try {
-      await createSecret(context, encodeSecretPayload({ name: name.trim(), value }));
-      setName('');
-      setValue('');
-      setValueRevealed(false);
+      const { secret } = await createSecret(context, encodeSecretPayload({ name: name.trim(), value }));
+      if (folders.active !== HOME_FOLDER_ID) {
+        await folders.file(secret.id);
+      }
+      closeAdd();
       await load();
     } catch (error) {
       setMessage(reportError(error));
@@ -75,6 +114,7 @@ export default function VaultScreen() {
     try {
       await deleteSecret(context, id);
       await load();
+      await folders.forget([id]);
     } catch (error) {
       setMessage(reportError(error));
     } finally {
@@ -83,7 +123,9 @@ export default function VaultScreen() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      <FolderTabs state={folders} nouns={SECRET_NOUNS} label="Vault tabs" deleteItems={deleteTabItems} />
+
       <Card
         title="Stored items"
         subtitle="Names and values are encrypted on this device before they are stored."
@@ -94,12 +136,16 @@ export default function VaultScreen() {
           </div>
         ) : null}
 
-        {rows === undefined ? (
+        {rows === undefined || visible === undefined ? (
           <Spinner />
         ) : rows.length === 0 ? (
           <Empty icon={<VaultIcon className="h-6 w-6" />}>
             Nothing stored yet. Add your first secret below — it is encrypted here before it
             leaves this device.
+          </Empty>
+        ) : visible.length === 0 ? (
+          <Empty icon={<VaultIcon className="h-6 w-6" />}>
+            This tab is empty. Drag a secret onto its name, or add one while the tab is open.
           </Empty>
         ) : (
           <div className="overflow-x-auto">
@@ -113,8 +159,13 @@ export default function VaultScreen() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {rows.map((row) => (
-                  <tr key={row.id} className="transition-colors hover:bg-brand-50/40">
+                {visible.map((row) => (
+                  <tr
+                    key={row.id}
+                    draggable
+                    onDragStart={(event) => startItemDrag(event, [row.id])}
+                    className="cursor-grab transition-colors hover:bg-brand-50/40 active:cursor-grabbing"
+                  >
                     <td className="max-w-[16rem] truncate py-3.5 pl-5 pr-4 text-compact font-semibold text-ink">
                       {row.name}
                     </td>
@@ -127,6 +178,7 @@ export default function VaultScreen() {
                     <td className="py-3.5 pl-4 pr-5">
                       <div className="flex justify-end gap-2">
                         {row.readable ? <CopyButton value={row.value} label="Copy" /> : null}
+                        <MoveToTab state={folders} itemIds={[row.id]} label={`Move ${row.name} to another tab`} />
                         <Button
                           variant="ghost"
                           aria-label={`Share ${row.name}`}
@@ -159,8 +211,25 @@ export default function VaultScreen() {
         <ShareItemDialog itemType="secret" itemId={sharing} onClose={() => setSharing(undefined)} />
       ) : null}
 
-      <PanelGrid>
-        <Card title="Add a secret">
+      {adding ? (
+        <Modal
+          title="Add a secret"
+          subtitle="The name and the value are encrypted on this device before they are stored."
+          onClose={closeAdd}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" disabled={busy} onClick={closeAdd}>
+                Cancel
+              </Button>
+              <Button
+                disabled={busy || name.trim().length === 0 || value.length === 0}
+                onClick={() => void addSecret()}
+              >
+                Add secret
+              </Button>
+            </div>
+          }
+        >
           <div className="space-y-4">
             <Field
               label="Name"
@@ -175,15 +244,11 @@ export default function VaultScreen() {
               revealed={valueRevealed}
               onRevealedChange={setValueRevealed}
             />
-            <Button
-              disabled={busy || name.trim().length === 0 || value.length === 0}
-              onClick={() => void addSecret()}
-            >
-              Add secret
-            </Button>
           </div>
-        </Card>
-      </PanelGrid>
+        </Modal>
+      ) : null}
+
+      <FloatingAddButton label="Add a secret" disabled={busy} onClick={() => setAdding(true)} />
     </div>
   );
 }

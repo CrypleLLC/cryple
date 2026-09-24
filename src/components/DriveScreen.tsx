@@ -30,6 +30,7 @@ import {
   type ResumableFile,
   type UploadSource,
 } from '@/lib/files';
+import { moveItemsToFolder } from '@/lib/folders';
 import {
   advanceTransfer,
   beginTransfer,
@@ -45,6 +46,7 @@ import {
   fileCountLabel,
   fileExtension,
   fileDeleteConfirmation,
+  FILE_NOUNS,
   fileKind,
   fileName,
   defaultIconSize,
@@ -86,8 +88,10 @@ import {
   TrashIcon,
   UploadIcon,
 } from './icons';
-import { Button, Card, Empty, Notice, SizeStepper, Spinner } from './ui';
+import { Button, Card, Empty, FloatingAddButton, Notice, SizeStepper, Spinner } from './ui';
 import ShareItemDialog from './ShareItemDialog';
+import { startItemDrag } from './FolderTabs';
+import { FolderPath, FolderTile, isFileDrop, MoveToFolder, useFolderTree } from './FolderBrowser';
 
 interface DriveTile {
   id: string;
@@ -142,15 +146,34 @@ export default function DriveScreen() {
   const resuming = useRef<DriveTile>(undefined);
   const derivatives = useRef(new Map<string, FileRecord>());
 
+  const reloadFiles = useRef<() => void>(() => undefined);
+  const itemsChanged = useCallback(() => reloadFiles.current(), []);
+  const tree = useFolderTree('files', itemsChanged);
+  const listing = tree.listing;
+  const openFolder = tree.current;
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const everything = await listFiles(context);
+        await forgetSourcesExcept(everything.filter(isResumable).map((record) => record.id));
+        void pruneCachedObjects(new Set(everything.map((record) => record.id)));
+      } catch {
+        return;
+      }
+    })();
+  }, [context]);
+
   const load = useCallback(async () => {
+    if (listing === undefined) {
+      return;
+    }
     try {
       const [records, storage] = await Promise.all([
-        listFiles(context),
+        listFiles(context, { folder: listing === '' ? undefined : listing }),
         getStorageUsage(context),
       ]);
 
-      const unfinished = records.filter(isResumable).map((record) => record.id);
-      await forgetSourcesExcept(unfinished);
       const remembered = new Set(await rememberedSourceIds());
 
       const opened = await Promise.all(
@@ -161,7 +184,6 @@ export default function DriveScreen() {
       derivatives.current = new Map(
         records.filter((record) => previewIds.has(record.id)).map((record) => [record.id, record]),
       );
-      void pruneCachedObjects(new Set(records.map((record) => record.id)));
 
       setTiles(opened.filter((tile) => !previewIds.has(tile.id)));
       setStorageUsage(storage);
@@ -181,11 +203,26 @@ export default function DriveScreen() {
       setMessage({ text: reportError(error), tone: 'danger' });
       setTiles([]);
     }
-  }, [context, reportError]);
+  }, [context, reportError, listing]);
 
   useEffect(() => {
+    reloadFiles.current = () => void load();
+  }, [load]);
+
+  useEffect(() => {
+    setSelecting(false);
+    setSelected([]);
+    setConfirmingBatch(false);
     void load();
   }, [load]);
+
+  const withTheirThumbnails = useCallback(
+    (ids: string[]) => {
+      const chosen = (tiles ?? []).filter((tile) => ids.includes(tile.id));
+      return chosen.length === 0 ? ids : withThumbnails(chosen);
+    },
+    [tiles],
+  );
 
   const previews = useSyncExternalStore(subscribeToPreviews, previewUrls, previewUrls);
 
@@ -228,6 +265,7 @@ export default function DriveScreen() {
 
   const send = useCallback(
     async (sources: readonly UploadSource[]) => {
+      const destination = openFolder;
       for (const { file, handle } of sources) {
         const id = crypto.randomUUID();
         const key = `${file.name}:${id}`;
@@ -273,6 +311,15 @@ export default function DriveScreen() {
             await afterPauses(() => uploadThumbnail(context, preview, thumbnailId));
           }
 
+          if (destination !== null) {
+            await moveItemsToFolder(
+              context,
+              'files',
+              thumbnailId === undefined ? [id] : [id, thumbnailId],
+              destination,
+            );
+          }
+
           await forgetSource(id);
           dropTransfer(key);
         } catch (error) {
@@ -292,7 +339,7 @@ export default function DriveScreen() {
 
       await load();
     },
-    [context, load, reportError, usage],
+    [context, load, openFolder, reportError, usage],
   );
 
   const carryOn = useCallback(
@@ -446,6 +493,8 @@ export default function DriveScreen() {
     return <Spinner />;
   }
 
+  const folderTiles = tree.invalid ? [] : tree.children;
+
   if (unavailable) {
     return (
       <Card>
@@ -460,16 +509,29 @@ export default function DriveScreen() {
     <div
       className="space-y-5"
       onDragOver={(event: DragEvent) => {
+        if (!isFileDrop(event)) {
+          return;
+        }
         event.preventDefault();
         setDragging(true);
       }}
       onDragLeave={() => setDragging(false)}
       onDrop={(event: DragEvent) => {
+        if (!isFileDrop(event)) {
+          return;
+        }
         event.preventDefault();
         setDragging(false);
         void droppedSources(event.dataTransfer).then(send);
       }}
     >
+      <FolderPath
+        state={tree}
+        rootLabel="Drive"
+        rootIcon={<DriveIcon className="h-4 w-4 shrink-0" />}
+        itemIdsFor={withTheirThumbnails}
+      />
+
       {message !== undefined && <Notice tone={message.tone}>{message.text}</Notice>}
 
       {sharing ? (
@@ -481,9 +543,11 @@ export default function DriveScreen() {
           <p className="text-compact text-ink-muted" aria-live="polite">
             {selecting
               ? `${selected.length} selected`
-              : grid.length === 0
-                ? 'No files yet'
-                : fileCountLabel(grid.length)}
+              : grid.length > 0
+                ? fileCountLabel(grid.length)
+                : openFolder === null
+                  ? 'No files yet'
+                  : 'No files in this folder'}
           </p>
         </div>
 
@@ -512,7 +576,7 @@ export default function DriveScreen() {
               }
             }}
           />
-          {grid.length > 0 && (
+          {grid.length + folderTiles.length > 0 && (
             <SizeStepper
               size={iconSize}
               onChange={resize}
@@ -523,6 +587,11 @@ export default function DriveScreen() {
           )}
           {selecting ? (
             <>
+              <MoveToFolder
+                state={tree}
+                itemIds={withTheirThumbnails(selected)}
+                rootLabel="Drive"
+              />
               <Button
                 variant="secondary"
                 disabled={busy || selected.length === tiles.length}
@@ -551,10 +620,6 @@ export default function DriveScreen() {
                   Select
                 </Button>
               )}
-              <Button variant="accent" disabled={busy} onClick={() => void choose()}>
-                <UploadIcon className="h-4 w-4" />
-                Upload
-              </Button>
             </>
           )}
         </div>
@@ -592,12 +657,14 @@ export default function DriveScreen() {
         </Notice>
       )}
 
-      {grid.length === 0 ? (
+      {grid.length === 0 && folderTiles.length === 0 ? (
         <Card>
           <Empty icon={<DriveIcon className="h-6 w-6" />}>
             {dragging
               ? 'Drop the files here.'
-              : 'Nothing here yet. Drop a file anywhere on this page, or use Upload — it is encrypted on this device before it is stored.'}
+              : openFolder === null
+                ? 'Nothing here yet. Drop a file anywhere on this page, or use Upload — it is encrypted on this device before it is stored.'
+                : 'This folder is empty. Drop files here to upload them into it, or drag files onto it from elsewhere.'}
           </Empty>
         </Card>
       ) : (
@@ -605,6 +672,16 @@ export default function DriveScreen() {
           className="grid gap-1"
           style={{ gridTemplateColumns: gridTemplate('drive', iconSize) }}
         >
+          {folderTiles.map((folder) => (
+            <FolderTile
+              key={folder.id}
+              state={tree}
+              folder={folder}
+              nouns={FILE_NOUNS}
+              glyphPixels={iconScale(iconSize).glyphPixels}
+              itemIdsFor={withTheirThumbnails}
+            />
+          ))}
           {grid.map((tile) => {
             const transfer = byFile.get(tile.id);
 
@@ -633,6 +710,12 @@ export default function DriveScreen() {
                   fullDevice || tile.resume !== undefined ? () => setConfirming(tile) : undefined
                 }
                 onShare={() => setSharing(tile.id)}
+                onDragStart={(event) =>
+                  startItemDrag(
+                    event,
+                    withTheirThumbnails(selected.includes(tile.id) ? selected : [tile.id]),
+                  )
+                }
                 onResume={() => void resume(tile)}
                 onDismiss={transfer === undefined ? undefined : () => dropTransfer(transfer.key)}
               />
@@ -643,6 +726,15 @@ export default function DriveScreen() {
 
       {dragging && grid.length > 0 && (
         <p className="text-compact text-brand-700">Drop the files here.</p>
+      )}
+
+      {selecting ? null : (
+        <FloatingAddButton
+          label="Upload files"
+          spread
+          disabled={busy}
+          onClick={() => void choose()}
+        />
       )}
     </div>
   );
@@ -660,6 +752,7 @@ function DriveFile({
   onToggle,
   onDelete,
   onShare,
+  onDragStart,
   onResume,
   onDismiss,
 }: {
@@ -674,6 +767,7 @@ function DriveFile({
   onToggle: () => void;
   onDelete?: () => void;
   onShare: () => void;
+  onDragStart: (event: DragEvent) => void;
   onResume: () => void;
   onDismiss?: () => void;
 }) {
@@ -683,7 +777,7 @@ function DriveFile({
   const showing = preview !== undefined && preview !== '';
 
   return (
-    <li className="group relative">
+    <li className="group relative" draggable={!busy && !inert} onDragStart={onDragStart}>
       <button
         type="button"
         onClick={onOpen}

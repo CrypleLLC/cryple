@@ -25,6 +25,13 @@ export const ITEM_SCOPES = ['secrets', 'notes', 'documents', 'files'] as const s
 
 export type ItemScope = (typeof ITEM_SCOPES)[number];
 
+export const DEK_SCOPES = [
+  ...ITEM_SCOPES,
+  'passwords',
+] as const satisfies readonly KeyringScope[];
+
+export type DekScope = (typeof DEK_SCOPES)[number];
+
 export const FULL_DEVICE_SCOPES: readonly Scope[] = SCOPES;
 
 export const CANONICAL_SCOPE_LIST = SCOPES.join(',');

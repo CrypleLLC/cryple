@@ -16,6 +16,8 @@ export const ERROR_CODES = [
   'NOT_READY',
   'QUOTA_EXCEEDED',
   'USERNAME_UNAVAILABLE',
+  'FOLDER_TOO_DEEP',
+  'FOLDER_INTO_ITSELF',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

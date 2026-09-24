@@ -79,6 +79,12 @@ export const ACTIONS = {
     signer: 'device',
     pinProof: false,
   },
+  'folder-delete': { args: ['scope', 'folder_id'], signer: 'device', pinProof: false },
+  'folders-update': {
+    args: ['scope', 'expected_revision', 'ciphertext_digest'],
+    signer: 'device',
+    pinProof: false,
+  },
 } as const satisfies Record<string, ActionSpec>;
 
 export type ActionLabel = keyof typeof ACTIONS;

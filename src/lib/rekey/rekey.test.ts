@@ -179,18 +179,17 @@ describe('rewrapScope', () => {
 });
 
 describe('rewrapAfterRotation', () => {
-  it('visits only the item scopes that rotated and this device holds', async () => {
+  it('visits every scope that wraps DEKs, passwords included, and skips sharing', async () => {
     const { context } = await openTestSession({ generations: { secrets: 2, notes: 2 } });
     const calls = mockFetch({ status: 200, body: { data: [] } });
 
     const outcomes = await rewrapAfterRotation(context, ['secrets', 'sharing', 'passwords']);
 
-    expect(outcomes.map((outcome) => outcome.scope)).toEqual(['secrets']);
-    expect(calls).toHaveLength(1);
-    expect(calls[0].url).toContain('/secrets');
+    expect(outcomes.map((outcome) => outcome.scope)).toEqual(['secrets', 'passwords']);
+    expect(calls.map((call) => call.url.includes('/credentials'))).toContain(true);
   });
 
-  it('does nothing when a rotation touched no item scope', async () => {
+  it('does nothing when a rotation touched no scope that wraps DEKs', async () => {
     const { context } = await openTestSession();
     const calls = mockFetch({ status: 200, body: { data: [] } });
 
@@ -206,5 +205,122 @@ describe('rewrapAfterRotation', () => {
 
     expect(outcomes.map((outcome) => outcome.scope)).toEqual(['secrets']);
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe('the passwords pass', () => {
+  const revisionA = '11111111-0000-4000-8000-000000000001';
+  const revisionB = '22222222-0000-4000-8000-000000000002';
+
+  it('enumerates revisions from the metadata listing, not the vault listing', async () => {
+    const { context } = await openTestSession({ generations: { passwords: 2 } });
+    const calls = mockFetch({ status: 200, body: { data: [] } });
+
+    await rewrapScope(context, 'passwords');
+
+    expect(calls[0].url).toContain('/credentials');
+    expect(calls[0].url).toContain('fields=meta');
+  });
+
+  it('names each revision as revision_id and puts them to the credentials route', async () => {
+    const { context, keks } = await openTestSession({ generations: { passwords: 2 } });
+    const old = keks.get('passwords:1')!;
+    const dek = crypto.getRandomValues(new Uint8Array(32));
+
+    const calls = mockFetch(
+      {
+        status: 200,
+        body: {
+          data: [
+            {
+              credential_id: 'cccccccc-0000-4000-8000-00000000000c',
+              revision_id: revisionA,
+              wrapped_dek: await sealBlob(dek, old),
+              key_generation: 1,
+              created_at: '2026-09-24T10:00:00Z',
+            },
+          ],
+        },
+      },
+      { status: 200, body: { data: { requested: 1, rekeyed: 1 } } },
+    );
+
+    const outcome = await rewrapScope(context, 'passwords');
+
+    expect(outcome).toEqual({ scope: 'passwords', requested: 1, rekeyed: 1 });
+    expect(calls[1].url).toContain('/credentials/keys');
+
+    const body = bodyOf(calls[1].init);
+    const items = body.items as Record<string, string>[];
+    expect(items[0]).toHaveProperty('revision_id', revisionA);
+    expect(items[0]).not.toHaveProperty('id');
+
+    const reopened = await openBlob(items[0].wrapped_dek, keks.get('passwords:2')!);
+    expect([...reopened]).toEqual([...dek]);
+  });
+
+  it('signs the sorted revision ids under credential-rekey', async () => {
+    const { context, device, keks } = await openTestSession({ generations: { passwords: 2 } });
+    const old = keks.get('passwords:1')!;
+
+    const meta = async (revisionId: string) => ({
+      credential_id: 'cccccccc-0000-4000-8000-00000000000c',
+      revision_id: revisionId,
+      wrapped_dek: await sealBlob(crypto.getRandomValues(new Uint8Array(32)), old),
+      key_generation: 1,
+      created_at: '2026-09-24T10:00:00Z',
+    });
+
+    const calls = mockFetch(
+      { status: 200, body: { data: [await meta(revisionB), await meta(revisionA)] } },
+      { status: 200, body: { data: { requested: 2, rekeyed: 2 } } },
+    );
+
+    await rewrapScope(context, 'passwords');
+
+    const body = bodyOf(calls[1].init);
+    const payload = buildActionPayload(
+      String(body.challenge),
+      Number(body.timestamp),
+      'credential-rekey',
+      [revisionA, revisionB],
+    );
+
+    expect(
+      verifyPayload(
+        payload,
+        String(body.signature),
+        spkiBase64ToUncompressedPoint(device.signingPublicKey),
+      ),
+    ).toBe(true);
+  });
+
+  it('batches a long history, because a credential edited for years is many revisions', async () => {
+    const { context, keks } = await openTestSession({ generations: { passwords: 2 } });
+    const old = keks.get('passwords:1')!;
+    const wrapped = await sealBlob(crypto.getRandomValues(new Uint8Array(32)), old);
+
+    const revisions = await Promise.all(
+      Array.from({ length: REKEY_BATCH_SIZE + 1 }, (_unused, at) => ({
+        credential_id: 'cccccccc-0000-4000-8000-00000000000c',
+        revision_id: `${String(at).padStart(8, '0')}-0000-4000-8000-000000000000`,
+        wrapped_dek: wrapped,
+        key_generation: 1,
+        created_at: '2026-09-24T10:00:00Z',
+      })),
+    );
+
+    const calls = mockFetch(
+      { status: 200, body: { data: revisions } },
+      { status: 200, body: { data: { requested: REKEY_BATCH_SIZE, rekeyed: REKEY_BATCH_SIZE } } },
+      { status: 200, body: { data: { requested: 1, rekeyed: 1 } } },
+    );
+
+    const outcome = await rewrapScope(context, 'passwords');
+
+    expect(outcome.requested).toBe(REKEY_BATCH_SIZE + 1);
+    expect(calls).toHaveLength(3);
+    expect((bodyOf(calls[1].init).items as unknown[]).length).toBe(REKEY_BATCH_SIZE);
+    expect((bodyOf(calls[2].init).items as unknown[]).length).toBe(1);
   });
 });
