@@ -23,6 +23,8 @@ export interface NoteRecord {
 
 export interface NoteMetaRecord {
   id: string;
+  wrapped_dek: string;
+  key_generation: number;
   ciphertext_sha256: string;
   ciphertext_bytes: number;
   version: string;

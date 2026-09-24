@@ -4,7 +4,7 @@ Derives every key a Cryple account has from its BIP39 seed phrase. This is the t
 a wrong constant here does not throw, it produces a **different account**, and the failure
 surfaces long after the mistake was made.
 
-Implements [crypto/ECDSA.md](../../../../api-general/.docs/crypto/ECDSA.md) — a **FROZEN**
+Implements [crypto/ECDSA.md](../../../../api-general/docs/crypto/ECDSA.md) — a **FROZEN**
 spec. Task 3 of [tasks.md](../../../tasks/tasks.md).
 
 > Nothing in this module may be changed to "fix" a mismatch. Every path, label and length
@@ -27,7 +27,7 @@ BIP39 mnemonic (12 or 24 words)
   RESERVED, NEVER DERIVED:  m/44'/60'/…   — Cryple has no secp256k1 key and no EOA.
 ```
 
-**What the seed is for.** The seed is a cold root ([device-keys.md](../../../../api-general/.docs/crypto/device-keys.md)):
+**What the seed is for.** The seed is a cold root ([device-keys.md](../../../../api-general/docs/crypto/device-keys.md)):
 it is typed only to sign up, to add a device, and for the account-level actions, and is never
 stored. Its P-256 key is the **root signing key**, stored by the server as the account's
 `public_key`; it signs the genesis, enrolments and root actions. The `vault-kek` leaf is the
@@ -41,16 +41,16 @@ needs — `userAddress`, `signing`, `wrapKey` — and `zeroRootKeys` zeroes them
 
 ## API
 
-| Export | Purpose |
-| --- | --- |
-| `deriveKeyTree(mnemonic, passphrase?)` | Mnemonic → the whole tree. Validates the checksum first. |
-| `deriveKeyTreeFromSeed(seed)` | Same, from 64 raw seed bytes. Used by the tests. |
-| `deriveUserAddress(seed)` | `SHA-256(seed)` as lowercase hex. |
-| `deriveIdentityKey` / `deriveX25519Key` / `deriveMlKem768Key` / `deriveVaultKek` | Individual leaves. |
-| `zeroKeyTree(tree)` | Zeroes every private buffer in the tree in place. |
-| `deriveRootKeys` / `deriveRootKeysFromMnemonic` / `zeroRootKeys` | The root signing key, the root wrap key and the address, for one root flow |
-| `mnemonicToSeed` / `isValidMnemonic` / `generateMnemonic` | BIP39 layer, see below. |
-| `deriveHardenedPath` / `deriveMasterNode` / `deriveHardenedChild` | SLIP-0010 primitives. |
+| Export                                                                           | Purpose                                                                    |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `deriveKeyTree(mnemonic, passphrase?)`                                           | Mnemonic → the whole tree. Validates the checksum first.                   |
+| `deriveKeyTreeFromSeed(seed)`                                                    | Same, from 64 raw seed bytes. Used by the tests.                           |
+| `deriveUserAddress(seed)`                                                        | `SHA-256(seed)` as lowercase hex.                                          |
+| `deriveIdentityKey` / `deriveX25519Key` / `deriveMlKem768Key` / `deriveVaultKek` | Individual leaves.                                                         |
+| `zeroKeyTree(tree)`                                                              | Zeroes every private buffer in the tree in place.                          |
+| `deriveRootKeys` / `deriveRootKeysFromMnemonic` / `zeroRootKeys`                 | The root signing key, the root wrap key and the address, for one root flow |
+| `mnemonicToSeed` / `isValidMnemonic` / `generateMnemonic`                        | BIP39 layer, see below.                                                    |
+| `deriveHardenedPath` / `deriveMasterNode` / `deriveHardenedChild`                | SLIP-0010 primitives.                                                      |
 
 `CrypleKeyTree` carries the private material and its encodings; `identity.publicKeySpkiBase64` is the root `public_key` sent at sign-up (124 chars).
 
@@ -64,7 +64,7 @@ both values and that they differ.
 **SLIP-0010, not BIP32.** The HMAC key is `"Nist256p1 seed"` and the retry rules validate
 against **P-256's** order (`p256.Point.Fn.ORDER`). Deriving with a secp256k1 BIP32 library
 and reinterpreting the bytes is the exact mistake
-[ECDSA.md § Why Not BIP32](../../../../api-general/.docs/crypto/ECDSA.md#why-not-bip32-at-m4460)
+[ECDSA.md § Why Not BIP32](../../../../api-general/docs/crypto/ECDSA.md#why-not-bip32-at-m4460)
 exists to prevent: secp256k1's order is larger, so its retry rule never fires for the curve
 actually in use.
 
@@ -73,7 +73,7 @@ does hardened derivation; there is deliberately no non-hardened code path to rea
 
 **X25519 uses the 32 HKDF output bytes as the scalar directly.** RFC 7748 clamping happens
 inside the X25519 function, so this module does not pre-clamp. The vector's
-`private_key_or_seed_hex` is the *unclamped* HKDF output, which is what is stored.
+`private_key_or_seed_hex` is the _unclamped_ HKDF output, which is what is stored.
 
 **ML-KEM needs 64 bytes** because FIPS 203 keygen consumes `(d‖z)`. That is why this leaf is
 HKDF with `L=64` and not a 32-byte HD node — there is no client-invented expansion step.
@@ -92,7 +92,7 @@ decapsulation key that `@noble/post-quantum` returns.
   ML-KEM-768). This split is why the whole module is `async`.
 - **The seed is derived with WebCrypto, not `bip39.mnemonicToSeed`.** Byte-identical result,
   but it keeps `Buffer` out of the derivation path. `bip39` is still used for
-  `validateMnemonic` / `generateMnemonic`, as [ECDSA.md](../../../../api-general/.docs/crypto/ECDSA.md)
+  `validateMnemonic` / `generateMnemonic`, as [ECDSA.md](../../../../api-general/docs/crypto/ECDSA.md)
   names them.
   ⚠️ **Known integration item for Task 24**: every `bip39` entry point touches `Buffer`, so
   the onboarding screens will need a `Buffer` polyfill in the browser bundle, or these two

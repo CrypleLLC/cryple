@@ -26,6 +26,7 @@ import {
 import { createDocumentFromSnapshot, getDocument, openDocumentDek, openUpdate } from '@/lib/documents';
 import { downloadFile, uploadFile } from '@/lib/files';
 import { createNote, getNote, openNote } from '@/lib/notes';
+import { rewrapAfterRotation } from '@/lib/rekey';
 import { createSecret, getSecret, openSecret } from '@/lib/secrets';
 import { SessionKeystore } from '@/lib/session';
 import {
@@ -239,6 +240,37 @@ describe('127.8 items under keyrings and generations, 127.6 enrolment, 127.10 re
     expect(fresh.secret.key_generation).toBe(2);
     expect(await openSecret(ctx, await getSecret(ctx, fresh.secret.id))).toBe('after the rotation');
     expect(await openNote(ctx, await getNote(ctx, ids.note))).toBe('# Plan\nbody');
+
+    expect((await getSecret(ctx, ids.secret)).key_generation).toBe(1);
+  });
+
+  it('130: re-wraps what the rotation left behind, without touching a byte of ciphertext', async () => {
+    const ctx = context(second);
+    const before = await getSecret(ctx, ids.secret);
+
+    const outcomes = await rewrapAfterRotation(ctx, ['secrets', 'notes', 'documents', 'files', 'sharing']);
+
+    expect(outcomes.map((outcome) => outcome.scope)).toEqual(['secrets', 'notes', 'documents', 'files']);
+    for (const outcome of outcomes) {
+      expect(outcome.rekeyed).toBe(outcome.requested);
+      expect(outcome.requested).toBeGreaterThan(0);
+    }
+
+    const after = await getSecret(ctx, ids.secret);
+    expect(after.key_generation).toBe(2);
+    expect(after.wrapped_dek).not.toBe(before.wrapped_dek);
+    expect(after.ciphertext).toBe(before.ciphertext);
+    expect(await openSecret(ctx, after)).toBe('router password');
+
+    expect(await openNote(ctx, await getNote(ctx, ids.note))).toBe('# Plan\nbody');
+    const document = await getDocument(ctx, ids.document);
+    expect(document.key_generation).toBe(2);
+    expect(snapshotTitle(await openUpdate(document.snapshot_ciphertext, await openDocumentDek(ctx, document)))).toBe('Will');
+    const file = await downloadFile(ctx, ids.file);
+    expect(new TextDecoder().decode(file.bytes)).toBe('the deed');
+
+    const second_pass = await rewrapAfterRotation(ctx, ['secrets', 'notes', 'documents', 'files']);
+    expect(second_pass.every((outcome) => outcome.requested === 0)).toBe(true);
   });
 
   it('sends the removed browser to its phrase at unlock — its PIN registration went with it — and forgets it', async () => {
@@ -475,6 +507,40 @@ describe('127.11 sharing under the device model, 104.4 copies and 104.5 the addr
     expect(invitation.connection.recipient_key_generation).toBe(2);
     const inbound = await inboundFrom(recipientCtx, newcomer.username);
     await acceptInvitation(recipientCtx, inbound);
+  });
+
+  it('131: re-establishes the existing connection onto the new sharing keys, keeping every share open', async () => {
+    const ownerCtx = context(owner.browser);
+    const recipientCtx = context(recipient.browser);
+
+    const before = await outboundTo(ownerCtx, recipient.username);
+    expect(before.recipient_key_generation).toBe(1);
+
+    const { secret } = await createSecret(ownerCtx, 'before the re-exchange');
+    await shareItemById(ownerCtx, before, 'secret', secret.id);
+
+    const { forgetPublishedCounterparties, reestablishConnection } = await import('@/lib/sharing');
+    forgetPublishedCounterparties(ownerCtx.session);
+
+    const outcome = await reestablishConnection(ownerCtx, before);
+    expect(outcome.reestablished).toBe(true);
+    expect(outcome.shares).toBeGreaterThan(0);
+
+    const after = await outboundTo(ownerCtx, recipient.username);
+    expect(after.recipient_key_generation).toBe(2);
+    expect(after.pqxdh_blob).not.toBe(before.pqxdh_blob);
+
+    const inbound = await inboundFrom(recipientCtx, owner.username);
+    const arrived = (await listInbox(recipientCtx)).find((entry) => entry.item_id === secret.id)!;
+    expect(await openSharedText(recipientCtx, inbound, arrived.id)).toBe('before the re-exchange');
+
+    const { note } = await createNote(ownerCtx, '# After the re-exchange');
+    await shareItemById(ownerCtx, after, 'note', note.id);
+    const fresh = (await listInbox(recipientCtx)).find((entry) => entry.item_id === note.id)!;
+    expect(await openSharedText(recipientCtx, inbound, fresh.id)).toBe('# After the re-exchange');
+
+    forgetPublishedCounterparties(ownerCtx.session);
+    expect((await reestablishConnection(ownerCtx, after)).reestablished).toBe(false);
   });
 
   it('shares nicknames and root pins between two devices of one account, and merges concurrent edits', async () => {

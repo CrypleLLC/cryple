@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PASSWORD_MANAGER_IGNORE,
   TEXT_SECURITY_CLASS,
+  pinInputAttributes,
   secretInputAttributes,
   supportsTextSecurity,
 } from './secret-field';
@@ -64,5 +65,30 @@ describe('supportsTextSecurity', () => {
       }),
     ).toBe(false);
     expect(supportsTextSecurity(undefined)).toBe(false);
+  });
+});
+
+describe('pinInputAttributes', () => {
+  it('is a masked text input where the browser can mask one, so no manager offers to save the PIN', () => {
+    const attributes = pinInputAttributes(6, true);
+    expect(attributes.type).toBe('text');
+    expect(attributes.className).toBe(TEXT_SECURITY_CLASS);
+  });
+
+  it('falls back to a password input only where CSS masking is unavailable', () => {
+    expect(pinInputAttributes(6, false).type).toBe('password');
+  });
+
+  it('carries every password-manager opt-out in both states', () => {
+    for (const attributes of [pinInputAttributes(6, true), pinInputAttributes(6, false)]) {
+      expect(attributes.autoComplete).toBe('off');
+      expect(attributes).toMatchObject(PASSWORD_MANAGER_IGNORE);
+    }
+  });
+
+  it('asks for a numeric keypad and accepts exactly the PIN length', () => {
+    const attributes = pinInputAttributes(6, true);
+    expect(attributes.inputMode).toBe('numeric');
+    expect(attributes.maxLength).toBe(6);
   });
 });

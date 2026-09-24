@@ -13,6 +13,7 @@ import {
   inviteByUsername,
   listConnections,
   UnknownRecipientError,
+  reestablishConnection,
   verifyConnection,
   type ConnectionRecord,
   type ConnectionTrust,
@@ -67,6 +68,19 @@ export default function SharingScreen() {
     [context],
   );
 
+  const catchUpConnections = useCallback(
+    async (connections: readonly ConnectionRecord[]) => {
+      for (const connection of connections) {
+        try {
+          await reestablishConnection(context, connection);
+        } catch {
+          continue;
+        }
+      }
+    },
+    [context],
+  );
+
   const refresh = useCallback(async () => {
     try {
       const [connections, loadedBook] = await Promise.all([
@@ -76,10 +90,11 @@ export default function SharingScreen() {
       setBook(loadedBook);
       setGroups(groupConnections(connections));
       void checkConnections(connections);
+      void catchUpConnections(connections);
     } catch (error) {
       setMessage(reportError(error));
     }
-  }, [context, reportError, checkConnections]);
+  }, [context, reportError, checkConnections, catchUpConnections]);
 
   useEffect(() => {
     void refresh();

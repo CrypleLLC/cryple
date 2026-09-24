@@ -205,8 +205,24 @@ describe('the four batchable delete actions', () => {
 });
 
 describe('the action table matches signed-actions.md', () => {
-  it('covers all 19 actions', () => {
-    expect(Object.keys(ACTIONS)).toHaveLength(19);
+  it('covers all 27 actions', () => {
+    expect(Object.keys(ACTIONS)).toHaveLength(27);
+  });
+
+  it('leaves writing a credential unsigned, which is what keeps an extension on the JWT side', () => {
+    expect(Object.keys(ACTIONS).filter((action) => action.startsWith('credential-'))).toEqual([
+      'credential-delete',
+      'credential-prune',
+      'credential-rekey',
+    ]);
+  });
+
+  it('makes every re-wrap variadic and device-signed, like the delete it resembles', () => {
+    for (const action of ['secret-rekey', 'note-rekey', 'document-rekey', 'file-rekey'] as const) {
+      expect(ACTIONS[action].signer).toBe('device');
+      expect(ACTIONS[action].pinProof).toBe(false);
+      expect(ACTIONS[action].variadic).toBe(true);
+    }
   });
 
   it('names the root as the signer of exactly the account-level actions', () => {

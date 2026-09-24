@@ -8,13 +8,13 @@ Task 4 of [tasks.md](../../../tasks/tasks.md).
 ## Why this module exists
 
 The same P-256 public key travels in **three different encodings**, and mixing them is the
-most common Cryple integration bug ([crypto/ECDSA.md § Public Key Encodings](../../../../api-general/.docs/crypto/ECDSA.md#public-key-encodings)):
+most common Cryple integration bug ([crypto/ECDSA.md § Public Key Encodings](../../../../api-general/docs/crypto/ECDSA.md#public-key-encodings)):
 
-| Encoding | Where it is used | Size |
-| --- | --- | --- |
-| SPKI DER, base64 | `users.public_key` on the wire — **always 124 chars** | 91 bytes |
-| Raw `(X, Y)` | On-chain ERC-4337 / RIP-7212 signer pair | 2 × 32 bytes |
-| Uncompressed point `0x04‖X‖Y` | Intermediate between the two | 65 bytes |
+| Encoding                      | Where it is used                                      | Size         |
+| ----------------------------- | ----------------------------------------------------- | ------------ |
+| SPKI DER, base64              | `users.public_key` on the wire — **always 124 chars** | 91 bytes     |
+| Raw `(X, Y)`                  | On-chain ERC-4337 / RIP-7212 signer pair              | 2 × 32 bytes |
+| Uncompressed point `0x04‖X‖Y` | Intermediate between the two                          | 65 bytes     |
 
 Routing every conversion through one module is what keeps a call site from sending an
 uncompressed point where the API expects SPKI.

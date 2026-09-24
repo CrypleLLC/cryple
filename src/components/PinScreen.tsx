@@ -16,7 +16,7 @@ import {
   SECOND_FACTOR_COPY,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
-import { Button, Card, Field, Notice, TextArea } from './ui';
+import { Button, Card, Notice, PinField, TextArea } from './ui';
 
 function PinFields({
   label,
@@ -33,19 +33,9 @@ function PinFields({
 }) {
   return (
     <>
-      <Field
-        label={label}
-        type="password"
-        inputMode="numeric"
-        maxLength={6}
-        value={pin}
-        onChange={(event) => onPin(event.target.value)}
-      />
-      <Field
+      <PinField label={label} value={pin} onChange={(event) => onPin(event.target.value)} />
+      <PinField
         label={`Confirm ${label.toLowerCase()}`}
-        type="password"
-        inputMode="numeric"
-        maxLength={6}
         value={confirmation}
         onChange={(event) => onConfirmation(event.target.value)}
       />
@@ -247,11 +237,8 @@ function RotateAccountPinCard() {
           spellCheck={false}
           onChange={(event) => setMnemonic(event.target.value)}
         />
-        <Field
+        <PinField
           label="Current account PIN"
-          type="password"
-          inputMode="numeric"
-          maxLength={6}
           value={current}
           onChange={(event) => setCurrent(event.target.value)}
         />

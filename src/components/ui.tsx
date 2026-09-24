@@ -18,6 +18,7 @@ import {
   isLargestIconSize,
   isSmallestIconSize,
   largerIconSize,
+  pinInputAttributes,
   PRIVATE_TEXT_PROPS,
   scrollLockTransition,
   secretInputAttributes,
@@ -28,6 +29,7 @@ import {
   type IconSize,
   type SensitiveClipboard,
 } from '@/lib/app';
+import { PIN_LENGTH } from '@/lib/pin';
 import { CheckIcon, ClipboardIcon, CloseIcon, EyeIcon, EyeOffIcon, MinusIcon, PlusIcon } from './icons';
 
 export function PanelGrid({ children }: { children: ReactNode }) {
@@ -179,6 +181,20 @@ export function Field({
       {hint ? <span className={HINT_CLASS}>{hint}</span> : null}
     </label>
   );
+}
+
+export function PinField({
+  label,
+  ...props
+}: Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  'type' | 'inputMode' | 'maxLength' | 'autoComplete' | 'className'
+> & {
+  label: string;
+}) {
+  const [cssMasking] = useState(() => supportsTextSecurity());
+
+  return <Field label={label} {...pinInputAttributes(PIN_LENGTH, cssMasking)} {...props} />;
 }
 
 export function TextArea({

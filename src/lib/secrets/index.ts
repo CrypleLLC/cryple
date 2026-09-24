@@ -20,6 +20,8 @@ export interface SecretRecord {
 }
 
 export interface SecretMetaRecord {
+  wrapped_dek: string;
+  key_generation: number;
   id: string;
   ciphertext_sha256: string;
   ciphertext_bytes: number;

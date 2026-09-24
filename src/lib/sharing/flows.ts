@@ -30,7 +30,9 @@ import {
   createShare,
   getSharedDownload,
   getSharedItem,
+  listConnectionShares,
   putConnectionKeys,
+  putConnectionExchange,
   type ConnectionKeyRecord,
   type ConnectionRecord,
   type InboundShareRecord,
@@ -157,6 +159,125 @@ async function encapsulateTo(
   } catch (error) {
     zeroBytes(connectionKey);
     throw error;
+  }
+}
+
+export class ShareNotRewrappableError extends Error {
+  constructor(shareId: string) {
+    super(`share ${shareId} does not open under any sub-key of this connection`);
+    this.name = 'ShareNotRewrappableError';
+  }
+}
+
+export interface ReestablishOutcome {
+  reestablished: boolean;
+  shares: number;
+}
+
+export function connectionIsStale(
+  connection: ConnectionRecord,
+  publishedGeneration: number,
+): boolean {
+  return connection.recipient_key_generation < publishedGeneration;
+}
+
+async function rewrapShare(
+  share: { id: string; wrapped_dek: string },
+  oldKey: Uint8Array,
+  newKey: Uint8Array,
+): Promise<{ id: string; wrapped_dek: string }> {
+  for (const scope of ITEM_SCOPES) {
+    const oldSubkey = await deriveShareSubkey(oldKey, scope);
+    let dek: Uint8Array;
+    try {
+      dek = await unwrapUnderConnection(oldSubkey, share.wrapped_dek);
+    } catch {
+      continue;
+    } finally {
+      zeroBytes(oldSubkey);
+    }
+
+    const newSubkey = await deriveShareSubkey(newKey, scope);
+    try {
+      return { id: share.id, wrapped_dek: await wrapUnderConnection(newSubkey, dek) };
+    } finally {
+      zeroBytes(newSubkey, dek);
+    }
+  }
+
+  throw new ShareNotRewrappableError(share.id);
+}
+
+async function rewrapConnectionShares(
+  context: AuthedContext,
+  connection: ConnectionRecord,
+  oldKey: Uint8Array,
+  newKey: Uint8Array,
+): Promise<{ id: string; wrapped_dek: string }[]> {
+  const existing = await listConnectionShares(context, connection.id);
+  const rewrapped: { id: string; wrapped_dek: string }[] = [];
+
+  for (const share of existing) {
+    rewrapped.push(await rewrapShare(share, oldKey, newKey));
+  }
+
+  return rewrapped;
+}
+
+export async function reestablishConnection(
+  context: AuthedContext,
+  connection: ConnectionRecord,
+): Promise<ReestablishOutcome> {
+  if (connection.direction !== 'outbound' || connection.status !== 'accepted') {
+    return { reestablished: false, shares: 0 };
+  }
+  if (sharableScopes(context).length !== ITEM_SCOPES.length) {
+    return { reestablished: false, shares: 0 };
+  }
+
+  const published = await fetchPublishedCounterparty(context, connection.username);
+  if (published === undefined || published.userAddress !== connection.user_address) {
+    return { reestablished: false, shares: 0 };
+  }
+  if (!connectionIsStale(connection, published.sharingKeys.generation)) {
+    return { reestablished: false, shares: 0 };
+  }
+
+  const trust = await judgeCounterparty(context, published, { mayPin: false });
+  if (trust.status !== 'trusted') {
+    throw new ConnectionNotTrustedError(connection, trust);
+  }
+
+  const oldKey = await connectionKeyFor(context, connection);
+  const newKey = createConnectionKey();
+  try {
+    const shares = await rewrapConnectionShares(context, connection, oldKey, newKey);
+    const pqxdhBlob = await sealConnectionKey(
+      newKey,
+      publishedRecipientKeys(published.sharingKeys),
+      context.session.userAddress,
+      published.userAddress,
+    );
+    const { generation, kek } = context.session.currentKek('sharing');
+    const keys = await sealSubkeys(context, newKey);
+
+    const result = await putConnectionExchange(context, connection.id, {
+      pqxdhBlob,
+      senderWrappedKey: await sealBlob(newKey, kek),
+      senderKeyGeneration: generation,
+      recipientKeyGeneration: published.sharingKeys.generation,
+      keys,
+      shares,
+    });
+
+    connection.keys = keys;
+    connection.pqxdh_blob = pqxdhBlob;
+    connection.recipient_key_generation = published.sharingKeys.generation;
+    connection.sender_key_generation = generation;
+
+    return { reestablished: true, shares: result.shares };
+  } finally {
+    zeroBytes(oldKey, newKey);
   }
 }
 

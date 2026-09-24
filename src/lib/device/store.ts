@@ -78,3 +78,37 @@ export function browserDeviceStore(): DeviceRecordStore {
   }
   return indexedDbDeviceStore(indexedDB);
 }
+
+export const ABANDONED_LOCAL_STORAGE_KEYS = ['encrypted_seed', 'cryple_mode_hint'] as const;
+
+export const ABANDONED_LOCAL_STORAGE_PREFIXES = ['cryple.sharing.fingerprint.'] as const;
+
+function isAbandoned(key: string): boolean {
+  return (
+    (ABANDONED_LOCAL_STORAGE_KEYS as readonly string[]).includes(key) ||
+    ABANDONED_LOCAL_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix))
+  );
+}
+
+export function discardAbandonedLocalStorage(
+  storage: Storage | undefined = typeof localStorage === 'undefined' ? undefined : localStorage,
+): void {
+  if (storage === undefined) {
+    return;
+  }
+
+  try {
+    const abandoned: string[] = [];
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (key !== null && isAbandoned(key)) {
+        abandoned.push(key);
+      }
+    }
+    for (const key of abandoned) {
+      storage.removeItem(key);
+    }
+  } catch {
+    return;
+  }
+}

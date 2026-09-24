@@ -1,6 +1,6 @@
 # `lib/oprf` — both PINs over the OPRF
 
-The client half of [pin-oprf.md](../../../../api-general/.docs/auth/pin-oprf.md): RFC 9497
+The client half of [pin-oprf.md](../../../../api-general/docs/auth/pin-oprf.md): RFC 9497
 base mode, suite `ristretto255-SHA512`, on `@noble/curves`.
 
 ## `pin-keys.ts` — the derivations
@@ -13,11 +13,11 @@ ikm      = output ‖ argon
 leaf(l)  = HKDF-SHA256(ikm, salt = ∅, info = "Cryple-PIN-v1|" ‖ l, L = 32)
 ```
 
-| Leaf | Salt | Is |
-| --- | --- | --- |
-| `device-wrap` | 32 random bytes kept in the device record | The AES key sealing the device's material |
-| `device-confirm` | same | An Ed25519 seed; signs `Cryple-PIN-v1\|device-confirm\|<registration_id>\|<attempt_id>` |
-| `account-proof` | `utf8(user_address)` | An Ed25519 seed; signs the SHA-256 digest a root action's signature covers |
+| Leaf             | Salt                                      | Is                                                                                      |
+| ---------------- | ----------------------------------------- | --------------------------------------------------------------------------------------- |
+| `device-wrap`    | 32 random bytes kept in the device record | The AES key sealing the device's material                                               |
+| `device-confirm` | same                                      | An Ed25519 seed; signs `Cryple-PIN-v1\|device-confirm\|<registration_id>\|<attempt_id>` |
+| `account-proof`  | `utf8(user_address)`                      | An Ed25519 seed; signs the SHA-256 digest a root action's signature covers              |
 
 **The tests check RFC 9497's own vectors first** (taken from `cloudflare/circl`'s copy, which the
 server uses), then every value of `pin_oprf`, including both Ed25519 signatures byte for byte.
@@ -34,13 +34,13 @@ spec change, raised against `pin-oprf.md`.
 
 ## `api.ts` — the routes
 
-| Function | Route | Notes |
-| --- | --- | --- |
-| `registerDevicePin` | `POST /oprf/devices`, `/commit` | After sign-up or enrolment, and to change this browser's PIN. A commit replaces the previous registration |
+| Function            | Route                              | Notes                                                                                                                                                |
+| ------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `registerDevicePin` | `POST /oprf/devices`, `/commit`    | After sign-up or enrolment, and to change this browser's PIN. A commit replaces the previous registration                                            |
 | `evaluateDevicePin` | `POST /oprf/devices/{id}/evaluate` | Public. **`404` → `DeviceRegistrationGoneError`**: out of attempts, or the device was removed. A network failure → `OfflineError`, never "wrong PIN" |
-| `confirmDevicePin` | `/confirm` | After every successful open: it gives every attempt back |
-| `accountPinProof` | `POST /oprf/account/evaluate` | Root-signed `pin-evaluate`. **Always answers**; a wrong or throttled PIN only shows up as the root action failing |
-| `enableParanoid` | `/oprf/account/begin`, `/enable` | Root-signed, no proof |
-| `rotateAccountPin` | `/evaluate`, `/begin`, `/rotate` | Proof under the **current** PIN on `begin` and `rotate`, each over its own digest |
+| `confirmDevicePin`  | `/confirm`                         | After every successful open: it gives every attempt back                                                                                             |
+| `accountPinProof`   | `POST /oprf/account/evaluate`      | Root-signed `pin-evaluate`. **Always answers**; a wrong or throttled PIN only shows up as the root action failing                                    |
+| `enableParanoid`    | `/oprf/account/begin`, `/enable`   | Root-signed, no proof                                                                                                                                |
+| `rotateAccountPin`  | `/evaluate`, `/begin`, `/rotate`   | Proof under the **current** PIN on `begin` and `rotate`, each over its own digest                                                                    |
 
 Nothing here auto-retries an evaluation: every one counts as an attempt.

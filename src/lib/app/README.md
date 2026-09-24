@@ -20,7 +20,7 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | `username.ts` | The rename screen's validation and the copy that has to be on it |
 | `private-text.ts` | The attributes that stop the browser shipping typed text to a spelling, grammar or translation service |
 | `clipboard.ts` | Copying a secret, and clearing it off the clipboard afterwards |
-| `secret-field.ts` | Masking a secret while it is typed, without turning it into a password field |
+| `secret-field.ts` | Masking a secret or a PIN while it is typed, without turning it into a password field |
 
 ## Plaintext the browser would otherwise send away
 
@@ -102,6 +102,25 @@ encryption and into someone else's, which is the class of leak this client exist
 - **Masking hides the characters and nothing else.** The value can still be selected and copied out
   of the field by whoever is typing it, and the list's own *Show values* toggle is separate.
 
+## A PIN is not a password the browser may keep
+
+`pinInputAttributes(length, cssMasking)` is the section above applied to every PIN entry — sign-up,
+enrolment, unlock, enabling and rotating the account PIN — plus `inputMode="numeric"` and
+`maxLength`. The component is `PinField`; **a PIN must never be typed into a plain `Field` with
+`type="password"`**.
+
+The reason is sharper here than it is for a vault value. A `type="password"` input is what makes
+Chrome offer *Save password?*, and `autocomplete="off"` does not stop it — browsers' own managers
+ignore that attribute on password inputs, which is exactly why the masked **text** input is the
+mechanism and the attributes are only the belt. What a saved PIN costs:
+
+- **It leaves Cryple.** The device PIN is the second thing standing between a stolen browser
+  profile and the keyrings. Saved, it syncs to a vendor cloud and the seal is only as good as that
+  account.
+- **An autofilled wrong PIN is spent silently.** The device registration allows
+  `OPRF_DEVICE_MAX_ATTEMPTS` evaluations and is then deleted, so a manager filling a stale value on
+  each visit can walk an account off its own browser, and the fix is to type the recovery phrase.
+
 ## Onboarding
 
 The flow is a reducer, not scattered `useState` — every guard that matters is testable without
@@ -115,6 +134,18 @@ origin ─┬─ Sign up ─┐
 
 The sign-in tab takes the phrase **on the tab itself**, so `origin` and `import` are one screen: a
 tab that offers only a Continue button is a step that asks nothing.
+
+### The mode is chosen before the PIN, not after
+
+On the sign-up PIN step the Standard/Paranoid fieldset renders **above** the two PIN fields, and
+`MODE_COPY.oneWayDoor` appears the moment Paranoid is selected. The order is the point
+([Task 105](../../../../tasks-closed.md#task-105)): a PIN typed before reading what it commits you to was
+not a choice. Paranoid has no way back and no reset, so the sentence that says a forgotten account
+PIN ends the account for ever has to be on screen before the field is filled, not under it.
+
+Both modes carry a `summary` and a `tradeoff`, because a choice presented with only the safe option
+explained is not one either. `MODE_COPY` is asserted never to contain the words *disable*, *remove
+the PIN* or *turn off* — the mode change is one-way and the copy must never imply otherwise.
 
 ### The recovery kit comes after enrolment
 

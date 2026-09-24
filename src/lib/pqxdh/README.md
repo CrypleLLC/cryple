@@ -3,7 +3,7 @@
 The **only** way this client encrypts data for someone else.
 
 Task 14 of [tasks.md](../../../tasks/tasks.md). Implements
-[crypto/pqxdh.md](../../../../api-general/.docs/crypto/pqxdh.md) — a **FROZEN** spec.
+[crypto/pqxdh.md](../../../../api-general/docs/crypto/pqxdh.md) — a **FROZEN** spec.
 
 > ## Nothing calls this module today, and it is not dead code
 >
@@ -44,8 +44,16 @@ Base64-encoded for storage. A 32-byte DEK wraps to **1181 bytes → 1576 base64 
 ## API
 
 ```ts
-const blob = await pqxdhWrap(payload, { x25519PublicKey, mlkemPublicKey }, context);
-const opened = await pqxdhUnwrap(blob, { x25519PrivateKey, mlkemSecretKey }, context);
+const blob = await pqxdhWrap(
+  payload,
+  { x25519PublicKey, mlkemPublicKey },
+  context,
+);
+const opened = await pqxdhUnwrap(
+  blob,
+  { x25519PrivateKey, mlkemSecretKey },
+  context,
+);
 ```
 
 `context` is `{ usage, senderUserAddress, recipientUserAddress }`. Also exported:
@@ -53,10 +61,10 @@ const opened = await pqxdhUnwrap(blob, { x25519PrivateKey, mlkemSecretKey }, con
 
 ## Usage labels
 
-| Label | Context | Recipient key source |
-| --- | --- | --- |
-| `recovery-share` | *Retired.* Wrapping an SSS share of the REK for a guardian | Guardian's registered keys |
-| `recovery-session` | *Retired.* Guardian re-wrapping a share to a recovering device | Session `ephemeral_public_key` |
+| Label              | Context                                                        | Recipient key source           |
+| ------------------ | -------------------------------------------------------------- | ------------------------------ |
+| `recovery-share`   | _Retired._ Wrapping an SSS share of the REK for a guardian     | Guardian's registered keys     |
+| `recovery-session` | _Retired._ Guardian re-wrapping a share to a recovering device | Session `ephemeral_public_key` |
 
 **Both labels are dead**, and `PQXDH_USAGES` still lists them for one reason: `recovery-share`
 is the usage recorded in `test-vectors.json`, so the fixture test needs it. Task 102 assigns the
@@ -100,7 +108,7 @@ It protects the confidentiality of the wrapped payload against anyone lacking th
 private keys — including Cryple, and including a future quantum adversary, since breaking it
 requires breaking **both** X25519 and ML-KEM.
 
-It does **not** control *when* the recipient obtains the blob. The blob sits on Cryple's
+It does **not** control _when_ the recipient obtains the blob. The blob sits on Cryple's
 servers from setup time; release timing is enforced elsewhere and is a documented trust
 limitation.
 

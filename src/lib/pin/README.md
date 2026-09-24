@@ -1,6 +1,6 @@
 # `lib/pin` — the PIN format rules
 
-The rules of [two-factor-PIN.md § PIN Format Rules](../../../../api-general/.docs/auth/two-factor-PIN.md#pin-format-rules),
+The rules of [two-factor-PIN.md § PIN Format Rules](../../../../api-general/docs/auth/two-factor-PIN.md#pin-format-rules),
 enforced before any PIN is registered:
 
 - exactly 6 ASCII digits;
@@ -8,8 +8,8 @@ enforced before any PIN is registered:
 - not one repeated digit (`111111`).
 
 ```ts
-validatePin(pin)      // { valid: true } | { valid: false, reason }
-assertValidPin(pin)   // throws on the same rules
+validatePin(pin); // { valid: true } | { valid: false, reason }
+assertValidPin(pin); // throws on the same rules
 ```
 
 `lib/app/onboarding.ts` turns each `reason` into its sentence.

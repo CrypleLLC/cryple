@@ -1,7 +1,7 @@
 # `lib/chain` — the account event chain
 
 Builds and verifies the signed, hash-chained statements of
-[device-keys.md § The account event chain](../../../../api-general/.docs/crypto/device-keys.md#the-account-event-chain).
+[device-keys.md § The account event chain](../../../../api-general/docs/crypto/device-keys.md#the-account-event-chain).
 It is a port of `api-general/internal/domain/devices/chain`, rule for rule. **The client verifies
 everything the server returns**, its own chain and every contact's proof path: the server having
 checked first is no reason to skip it.

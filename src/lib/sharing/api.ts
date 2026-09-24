@@ -110,6 +110,56 @@ export async function createConnection(
   return withKeys(response.data);
 }
 
+export async function listConnectionShares(
+  context: AuthedContext,
+  id: string,
+): Promise<{ id: string; wrapped_dek: string }[]> {
+  const response = await request<{ id: string; wrapped_dek: string }[]>({
+    method: 'GET',
+    path: `/connections/${assertCanonicalUuid(id)}/shares`,
+    token: requireToken(context),
+    timeoutMs: context.timeoutMs,
+  });
+  return response.data ?? [];
+}
+
+export interface ReestablishRequest {
+  pqxdhBlob: string;
+  senderWrappedKey: string;
+  senderKeyGeneration: number;
+  recipientKeyGeneration: number;
+  keys: readonly ConnectionKeyRecord[];
+  shares: readonly { id: string; wrapped_dek: string }[];
+}
+
+export async function putConnectionExchange(
+  context: AuthedContext,
+  id: string,
+  input: ReestablishRequest,
+): Promise<{ shares: number }> {
+  const response = await request<{ shares: number }>({
+    method: 'PUT',
+    path: `/connections/${assertCanonicalUuid(id)}/exchange`,
+    token: requireToken(context),
+    timeoutMs: context.timeoutMs,
+    body: {
+      pqxdh_blob: input.pqxdhBlob,
+      sender_wrapped_key: input.senderWrappedKey,
+      sender_key_generation: input.senderKeyGeneration,
+      recipient_key_generation: input.recipientKeyGeneration,
+      keys: input.keys,
+      shares: input.shares,
+      ...(await sign(context, 'connection-reestablish', [
+        assertCanonicalUuid(id),
+        input.pqxdhBlob,
+        input.senderKeyGeneration,
+        input.recipientKeyGeneration,
+      ])),
+    },
+  });
+  return response.data;
+}
+
 function withKeys(connection: ConnectionRecord): ConnectionRecord {
   return { ...connection, keys: connection.keys ?? [] };
 }

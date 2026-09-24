@@ -146,6 +146,8 @@ function transportFor(server: FakeServer): DocumentTransport {
     listMeta: async () => [
       {
         id: 'doc',
+        wrapped_dek: 'd3JhcA==',
+        key_generation: 1,
         snapshot_seq: server.snapshotSeq,
         latest_seq: server.latestSeq(),
         revision: server.revision,

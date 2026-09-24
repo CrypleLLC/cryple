@@ -97,6 +97,8 @@ describe("the vault index", () => {
   function meta(overrides: Partial<SecretMetaRecord> = {}): SecretMetaRecord {
     return {
       id: "0c892e57-93cf-423a-a9e9-fee5a9f87681",
+      wrapped_dek: "d3JhcA==",
+      key_generation: 1,
       ciphertext_sha256: "aa".repeat(32),
       ciphertext_bytes: 2048,
       version: "v1",

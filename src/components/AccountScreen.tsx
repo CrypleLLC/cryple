@@ -11,7 +11,7 @@ import {
   mnemonicSentence,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
-import { Button, Card, Field, Notice, TextArea } from './ui';
+import { Button, Card, Notice, PinField, TextArea } from './ui';
 
 export default function AccountScreen() {
   const context = useAuthedContext();
@@ -74,11 +74,8 @@ export default function AccountScreen() {
           onChange={(event) => setMnemonic(event.target.value)}
         />
         {paranoid ? (
-          <Field
+          <PinField
             label="Account PIN"
-            type="password"
-            inputMode="numeric"
-            maxLength={6}
             value={pin}
             onChange={(event) => setPin(event.target.value)}
           />

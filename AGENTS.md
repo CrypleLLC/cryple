@@ -4,25 +4,25 @@ Next.js 15 (App Router) client for the Cryple API. TypeScript, React 19, Tailwin
 
 ## Read before writing code
 
-| File | What it is |
-| --- | --- |
-| [front-end-guide.md](./front-end-guide.md) | Base URL, auth model, who signs what, JWT, retry safety, client caveats. **§5 is mandatory.** |
+| File                                               | What it is                                                                                            |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| [front-end-guide.md](./front-end-guide.md)         | Base URL, auth model, who signs what, JWT, retry safety, client caveats. **§5 is mandatory.**         |
 | [front-end-endpoints.md](./front-end-endpoints.md) | Every route, payload, response and error code. A synced copy of the API's; only link prefixes differ. |
-| [tasks/tasks.md](./tasks/tasks.md) | The client task list. Work from it. |
+| [tasks/tasks.md](./tasks/tasks.md)                 | The client task list. Work from it.                                                                   |
 
 These describe the API **as implemented**, the wire contract, and win over the current source and
-over anything you remember. The derivations and byte layouts are in `../api-general/.docs/`:
+over anything you remember. The derivations and byte layouts are in `../api-general/docs/`:
 
-| File | What it settles |
-| --- | --- |
-| [crypto/ECDSA.md](../api-general/.docs/crypto/ECDSA.md) | **The frozen key tree**: seed → `user_address`, the root P-256 key, the root wrap key |
-| [crypto/device-keys.md](../api-general/.docs/crypto/device-keys.md) | **The model**: the seed as a cold root, devices, scopes, keyrings and generations, the event chain, batches, sharing sub-keys |
-| [auth/pin-oprf.md](../api-general/.docs/auth/pin-oprf.md) | Both PINs over an RFC 9497 OPRF: derivations, the device record, the proofs |
-| [auth/two-factor-PIN.md](../api-general/.docs/auth/two-factor-PIN.md) | The two modes, the one-way rule, the PIN format rules, "no reset, ever" |
-| [auth/signed-actions.md](../api-general/.docs/auth/signed-actions.md) | **The authoritative action table**: argument order, root or device signer, PIN proof |
-| [auth/challenge.md](../api-general/.docs/auth/challenge.md) | Challenge generation, timestamp binding, replay rules |
-| [crypto/pqxdh.md](../api-general/.docs/crypto/pqxdh.md) | Hybrid X25519 + ML-KEM wrapping, usages `item-share` and `device-keyring` |
-| [crypto/test-vectors.json](../api-general/.docs/crypto/test-vectors.json) | Machine-checkable vectors for all of the above |
+| File                                                                     | What it settles                                                                                                               |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| [crypto/ECDSA.md](../api-general/docs/crypto/ECDSA.md)                   | **The frozen key tree**: seed → `user_address`, the root P-256 key, the root wrap key                                         |
+| [crypto/device-keys.md](../api-general/docs/crypto/device-keys.md)       | **The model**: the seed as a cold root, devices, scopes, keyrings and generations, the event chain, batches, sharing sub-keys |
+| [auth/pin-oprf.md](../api-general/docs/auth/pin-oprf.md)                 | Both PINs over an RFC 9497 OPRF: derivations, the device record, the proofs                                                   |
+| [auth/two-factor-PIN.md](../api-general/docs/auth/two-factor-PIN.md)     | The two modes, the one-way rule, the PIN format rules, "no reset, ever"                                                       |
+| [auth/signed-actions.md](../api-general/docs/auth/signed-actions.md)     | **The authoritative action table**: argument order, root or device signer, PIN proof                                          |
+| [auth/challenge.md](../api-general/docs/auth/challenge.md)               | Challenge generation, timestamp binding, replay rules                                                                         |
+| [crypto/pqxdh.md](../api-general/docs/crypto/pqxdh.md)                   | Hybrid X25519 + ML-KEM wrapping, usages `item-share` and `device-keyring`                                                     |
+| [crypto/test-vectors.json](../api-general/docs/crypto/test-vectors.json) | Machine-checkable vectors for all of the above                                                                                |
 
 **Precedence**: for a byte layout or a KDF constant, the spec wins over the guide. For a status
 code, a field name or a retry rule, the guide wins.
@@ -57,13 +57,16 @@ Each keyring scope (passwords, secrets, notes, documents, files, sharing) has ge
   actions the root signs. The raw PIN never leaves the device.
 - **Every write carries `key_generation`**, the scope's current one. `409 STALE_KEY_GENERATION`
   means re-read the keyrings, re-wrap, retry once.
+- **After a rotation, re-wrap what it left behind** — `lib/rekey`, `PUT /<scope>/keys`, signed by a
+  full device like a delete. Items already stored keep the generation they were written with until
+  something does this.
 - **The client verifies what the server returns**: its own chain from the root key, and every
   contact's proof path from their pinned root key.
 - **Phase 1**: every browser is a full device with every scope. Build scope-aware UI anyway.
 
 The modules are `lib/keys`, `lib/scopes`, `lib/chain`, `lib/keyrings`, `lib/device`, `lib/oprf`,
-`lib/session`, `lib/signing`, `lib/auth`, `lib/account`, and the item and sharing domains. Each
-has a README.
+`lib/session`, `lib/signing`, `lib/auth`, `lib/account`, `lib/rekey`, and the item and sharing
+domains. Each has a README.
 
 **Reproduce `test-vectors.json` before this client touches real data.** The fixture copy is in
 `src/test/fixtures/`. No Go test consumes the file, so this client's tests are the cross-client
@@ -128,8 +131,10 @@ action  = <challenge> ":" <timestamp> ":" <action> [":" <arg> …]     SHA-256, 
 - Never log, persist unencrypted, or send: the phrase, the seed, private keys, KEKs, DEKs, the
   PIN. Zero secrets after use.
 - **The browser is a network client too.** Build text entry from `Field` / `TextArea`, or spread
-  `PRIVATE_TEXT_PROPS` (`PRIVATE_TEXT_ATTRIBUTES` for TipTap). Never put decrypted content in
-  `document.title`. Copy secrets only through `CopyButton`. See `src/lib/app/README.md`.
+  `PRIVATE_TEXT_PROPS` (`PRIVATE_TEXT_ATTRIBUTES` for TipTap). **A PIN is always a `PinField`**
+  and a secret value a `SecretField` — never a `Field` with `type="password"`, which is what makes
+  a browser offer to save it. Never put decrypted content in `document.title`. Copy secrets only
+  through `CopyButton`. See `src/lib/app/README.md`.
 - **Every response carries a Content Security Policy** from `src/lib/security-headers`. A new
   host goes into it deliberately, never as a wildcard.
 - Path alias `@/*` → `./src/*`. TypeScript `strict` is on.
@@ -157,7 +162,8 @@ CI runs typecheck, lint (`--max-warnings 0`) and tests.
   `window`, `globalThis` and `self`. The exemptions:
   - `src/lib/app/icon-size.ts` — one of four words naming how large a grid draws its icons;
   - `src/lib/device/store.ts` — the device record, in IndexedDB because only IndexedDB can store
-    a non-extractable `CryptoKey`;
+    a non-extractable `CryptoKey`; it also _removes_ two `localStorage` keys an earlier deployment
+    left behind, and never reads or writes them;
   - `src/lib/files/handles.ts` — one file handle per unfinished upload.
 
   A new exemption needs an argument in the module's README.

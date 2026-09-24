@@ -29,6 +29,32 @@ export const ACTIONS = {
     variadic: true,
   },
   'file-delete': { args: ['file_id'], signer: 'device', pinProof: false, variadic: true },
+  'secret-rekey': { args: ['secret_id'], signer: 'device', pinProof: false, variadic: true },
+  'note-rekey': { args: ['note_id'], signer: 'device', pinProof: false, variadic: true },
+  'document-rekey': {
+    args: ['document_id'],
+    signer: 'device',
+    pinProof: false,
+    variadic: true,
+  },
+  'file-rekey': { args: ['file_id'], signer: 'device', pinProof: false, variadic: true },
+  'credential-delete': {
+    args: ['credential_id'],
+    signer: 'device',
+    pinProof: false,
+    variadic: true,
+  },
+  'credential-prune': {
+    args: ['credential_id', 'keep_last'],
+    signer: 'device',
+    pinProof: false,
+  },
+  'credential-rekey': {
+    args: ['revision_id'],
+    signer: 'device',
+    pinProof: false,
+    variadic: true,
+  },
   'connection-invite': {
     args: ['recipient_username', 'pqxdh_blob', 'sender_key_generation', 'recipient_key_generation'],
     signer: 'device',
@@ -37,6 +63,11 @@ export const ACTIONS = {
   'connection-accept': { args: ['connection_id'], signer: 'device', pinProof: false },
   'connection-delete': { args: ['connection_id'], signer: 'device', pinProof: false },
   'connection-keys': { args: ['connection_id', 'keys_digest'], signer: 'device', pinProof: false },
+  'connection-reestablish': {
+    args: ['connection_id', 'pqxdh_blob', 'sender_key_generation', 'recipient_key_generation'],
+    signer: 'device',
+    pinProof: false,
+  },
   'share-create': {
     args: ['connection_id', 'item_type', 'item_id'],
     signer: 'device',

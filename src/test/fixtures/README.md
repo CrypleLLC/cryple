@@ -3,9 +3,9 @@
 ## `test-vectors.json`
 
 A **verbatim copy** of
-[`../api-general/.docs/crypto/test-vectors.json`](../../../../api-general/.docs/crypto/test-vectors.json).
+[`../api-general/docs/crypto/test-vectors.json`](../../../../api-general/docs/crypto/test-vectors.json).
 
-This client only ever *reads* this file. Regenerating it is a backend operation
+This client only ever _reads_ this file. Regenerating it is a backend operation
 (`go run ./tools/cryplevectors` in `../api-general`) and is idempotent — **if its output
 differs from the committed file, a protocol constant changed.** That is a breaking change to
 every user's keys, not a fix.
@@ -23,15 +23,15 @@ that exists anywhere**, which is why Task 3 gates every other milestone.
 
 For the well-known all-`abandon` BIP39 mnemonic (test values only — never a real account):
 
-| Section | Consumed by |
-| --- | --- |
-| `seed_and_user_address` | [`lib/keys`](../../lib/keys/README.md) |
-| `identity_key_p256` | [`lib/keys`](../../lib/keys/README.md), [`lib/encoding`](../../lib/encoding/README.md) |
-| `x25519_key`, `mlkem768_key` | [`lib/keys`](../../lib/keys/README.md) |
-| `vault_kek`, `sealed_blob` | [`lib/keys`](../../lib/keys/README.md), [`lib/secrets`](../../lib/secrets/README.md) |
-| `pqxdh` | [`lib/pqxdh`](../../lib/pqxdh/README.md) |
-| `pin_oprf` | [`lib/oprf`](../../lib/oprf/README.md) |
-| `device_keys` | [`lib/chain`](../../lib/chain/README.md), [`lib/keyrings`](../../lib/keyrings/README.md) |
+| Section                      | Consumed by                                                                              |
+| ---------------------------- | ---------------------------------------------------------------------------------------- |
+| `seed_and_user_address`      | [`lib/keys`](../../lib/keys/README.md)                                                   |
+| `identity_key_p256`          | [`lib/keys`](../../lib/keys/README.md), [`lib/encoding`](../../lib/encoding/README.md)   |
+| `x25519_key`, `mlkem768_key` | [`lib/keys`](../../lib/keys/README.md)                                                   |
+| `vault_kek`, `sealed_blob`   | [`lib/keys`](../../lib/keys/README.md), [`lib/secrets`](../../lib/secrets/README.md)     |
+| `pqxdh`                      | [`lib/pqxdh`](../../lib/pqxdh/README.md)                                                 |
+| `pin_oprf`                   | [`lib/oprf`](../../lib/oprf/README.md)                                                   |
+| `device_keys`                | [`lib/chain`](../../lib/chain/README.md), [`lib/keyrings`](../../lib/keyrings/README.md) |
 
 `rfc9497-ristretto255-sha512-oprf.json` beside it is RFC 9497's own base-mode vector set for
 `ristretto255-SHA512`, extracted from `cloudflare/circl`'s `oprf/testdata/rfc9497.json` (the
@@ -40,7 +40,7 @@ library the server uses). `lib/oprf` checks it before `pin_oprf`.
 ### Refreshing the copy
 
 ```bash
-cp ../api-general/.docs/crypto/test-vectors.json src/test/fixtures/test-vectors.json
+cp ../api-general/docs/crypto/test-vectors.json src/test/fixtures/test-vectors.json
 npm test
 ```
 
