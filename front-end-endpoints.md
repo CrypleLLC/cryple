@@ -48,6 +48,8 @@ STALE_KEY_GENERATION` when it is not the scope's current one.
 - [18. Sharing Endpoints](#18-sharing-endpoints)
 - [19. Devices and Keyrings Endpoints](#19-devices-and-keyrings-endpoints)
 - [20. PIN Endpoints (OPRF)](#20-pin-endpoints-oprf)
+- [21. Credentials Endpoints](#21-credentials-endpoints--the-password-store)
+- [22. Pairing Endpoints](#22-pairing-endpoints--linking-the-browser-extension)
 
 ---
 
@@ -1973,7 +1975,7 @@ routes: root, proof or state refused, uniformly) · `404 NOT_FOUND` (the device 
 
 ## 21. Credentials Endpoints — the password store
 
-> **Scope `passwords`.** Every route here needs a device holding `passwords` (`404` otherwise), and the three destructive ones need a **full** device and are signed by it. Every write carries the scope's current `key_generation` (`409 STALE_KEY_GENERATION` otherwise).
+> **Scope `passwords`.** Every route here needs a device holding `passwords` (`404` otherwise). A delete is signed by the calling device; pruning and re-wrapping need a **full** device. Every write carries the scope's current `key_generation` (`409 STALE_KEY_GENERATION` otherwise).
 
 🔒 All protected. Read [password-manager.md](../api-general/docs/password-manager.md) before implementing a client: this is the wire contract, that document is the reasoning.
 
@@ -2092,9 +2094,13 @@ Every revision above a cursor, in `seq` order, **tombstones included**. A client
 
 The current revision of one credential: its highest `seq` that is not a tombstone. A deleted credential answers `404`, exactly as an id belonging to another account does.
 
+### `GET /credentials/{id}/revisions` — history
+
+Every revision of one credential, **newest first, tombstones included**, each with its own `wrapped_dek` and `key_generation` (a tombstone's are empty). `404` when the caller has none. It serves *Previous passwords* and *Restore*.
+
 ### `DELETE /credentials/{id}` · `DELETE /credentials` — batch
 
-Writes a tombstone revision. **Requires a `credential-delete` signed action from a full device.** The batch takes `{ "ids": [...] }`; **sort the ids ascending and de-duplicate them before signing**.
+Writes a tombstone revision. **Requires a `credential-delete` signed action by the calling device**, which may be the browser extension — a tombstone destroys nothing, and the web app can restore it by writing its last live revision again. The batch takes `{ "ids": [...] }`; **sort the ids ascending and de-duplicate them before signing**.
 
 **`204 No Content`** for the single form. The batch answers **`200 OK`** with `{ "requested": 2, "tombstoned": 2 }`.
 
@@ -2115,3 +2121,48 @@ The same shape as the other stores' rekey routes, with one difference: it names 
 **Requires a `credential-rekey` signed action from a full device**, ids sorted ascending, a revision named twice refused. **Tombstones are skipped**: they seal nothing, and the schema refuses a key on one.
 
 **`200 OK`:** `{ "requested": 12, "rekeyed": 12 }`
+
+---
+
+## 22. Pairing Endpoints — linking the browser extension
+
+The Cryple password extension is linked to an account with a **temporary code**: the web app opens
+a pairing and shows the code, the user types it into the extension, both show a six-digit
+fingerprint, and the user confirms they match in the web app. Design:
+[software-design-document.md § 5](../password-manager/software-design-document.md#5-linking-the-extension-with-a-temporary-code).
+
+### `POST /devices/pairings` — open
+
+🔒 A **full** device holding `passwords`; rate limited per account. No body.
+
+**`201 Created`:** `{ "id": "uuid", "code": "K7QM-9XP2", "expires_at": "…" }` — single use, **5 minutes**, at most 3 live per account (`409 CONFLICT` beyond).
+
+### `GET /devices/pairings/{id}`
+
+🔒 Same account. `{ "id", "status", "expires_at", "device_id"?, "signing_public_key"?, "x25519_public_key"?, "mlkem_public_key"? }` — the keys appear once `status` is `claimed`. `status` is `open`, `claimed`, `linked`, `cancelled` or `expired`.
+
+Compute the fingerprint from **your own** `user_address` and root key and the keys here, show it, and link only when the user confirms it matches the extension's. The construction and its vector: [device-keys.md § Pairing a browser extension](../api-general/docs/crypto/device-keys.md#pairing-a-browser-extension).
+
+Linking is an ordinary `POST /devices/batch`: a `device-add` with scopes **`passwords`** exactly, and a wrap of **every** `passwords` generation to the device.
+
+### `POST /devices/pairings/{id}/complete`
+
+🔒 A **full** device. `{ "device_id" }` → **`204`**, once the chain holds that device, active, with exactly the claimed keys and the scope list `passwords`. Anything else is `409 CONFLICT`.
+
+### `DELETE /devices/pairings/{id}`
+
+🔒 Same account → **`204`**. Cancels an open or claimed pairing. Do this when the user says the numbers do not match.
+
+### `POST /pairings/claim` — public
+
+Rate limited per address (**fails closed**), behind the response floor.
+
+```json
+{ "code": "K7QM-9XP2", "device_id": "uuid", "signing_public_key": "SPKI base64", "x25519_public_key": "base64", "mlkem_public_key": "base64" }
+```
+
+**`200 OK`:** `{ "claim_id": "uuid", "user_address", "root_public_key", "username"?, "expires_at" }`. The code is read case-insensitively, dashes and spaces ignored, `I`/`L` as `1` and `O` as `0`. **Every failure is `404 NOT_FOUND`** — wrong, used, expired or cancelled code, or a malformed key.
+
+### `GET /pairings/{claim_id}` — public
+
+The `claim_id` is the bearer. **`200 OK`:** `{ "status" }`. When it is `linked`, the extension signs in with its own key (`POST /sign-in`), verifies the chain from the root key the fingerprint covered, and opens its keyring wraps.

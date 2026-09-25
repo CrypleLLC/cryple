@@ -90,3 +90,46 @@ describe('the site label', () => {
     expect(siteLabel('My bank')).toBe('My bank');
   });
 });
+
+describe('fields this app does not know', () => {
+  it('survive an edit made here', () => {
+    const written = JSON.stringify({
+      site: 'https://github.com',
+      username: 'pedro',
+      password: 'old',
+      totp_seed: 'JBSWY3DP',
+      urls: ['https://gist.github.com'],
+      match: 'host',
+    });
+    const decoded = decodeCredentialPayload(written);
+    expect(decoded.urls).toEqual(['https://gist.github.com']);
+    expect(decoded.match).toBe('host');
+    expect(decoded.extra).toEqual({ totp_seed: 'JBSWY3DP' });
+
+    const edited = JSON.parse(encodeCredentialPayload({ ...decoded, password: 'new' }));
+    expect(edited).toEqual({
+      totp_seed: 'JBSWY3DP',
+      site: 'https://github.com',
+      username: 'pedro',
+      password: 'new',
+      urls: ['https://gist.github.com'],
+      match: 'host',
+    });
+  });
+
+  it('drop an empty address and the default match', () => {
+    const encoded = JSON.parse(
+      encodeCredentialPayload({ site: 'a', username: 'b', password: 'c', urls: [' ', ''], match: 'domain' }),
+    );
+    expect(encoded).toEqual({ site: 'a', username: 'b', password: 'c' });
+  });
+
+  it('refuse a malformed urls or match', () => {
+    expect(() => decodeCredentialPayload('{"site":"a","username":"b","password":"c","urls":"x"}')).toThrow(
+      MalformedCredentialPayloadError,
+    );
+    expect(() => decodeCredentialPayload('{"site":"a","username":"b","password":"c","match":"x"}')).toThrow(
+      MalformedCredentialPayloadError,
+    );
+  });
+});
