@@ -3,17 +3,25 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   deleteCredential,
+  deletedCredentials,
   listCredentials,
+  listRevisions,
   openCredential,
+  restoreCredential,
+  syncAllRevisions,
   writeCredential,
+  type DeletedCredential,
 } from '@/lib/credentials';
 import {
   buildPasswordRows,
+  decodeCredentialPayload,
   encodeCredentialPayload,
   MASKED_PASSWORD,
   siteLabel,
+  type CredentialPayload,
   type OpenedCredential,
   type PasswordRow,
+  type SiteMatch,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
 import { useVaultReveal } from './VaultReveal';
@@ -28,6 +36,7 @@ import {
   Modal,
   Notice,
   SecretField,
+  Select,
   Spinner,
 } from './ui';
 
@@ -36,9 +45,24 @@ interface Draft {
   username: string;
   password: string;
   note: string;
+  urls: string;
+  match: SiteMatch;
+  base?: CredentialPayload;
 }
 
-const EMPTY_DRAFT: Draft = { site: '', username: '', password: '', note: '' };
+const EMPTY_DRAFT: Draft = { site: '', username: '', password: '', note: '', urls: '', match: 'domain' };
+
+interface PreviousPassword {
+  revisionId: string;
+  password: string;
+  changedAt: string;
+}
+
+interface DeletedRow {
+  deleted: DeletedCredential;
+  site: string;
+  username: string;
+}
 
 export default function PasswordsScreen() {
   const context = useAuthedContext();
@@ -53,6 +77,9 @@ export default function PasswordsScreen() {
 
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [passwordRevealed, setPasswordRevealed] = useState(false);
+  const [previous, setPrevious] = useState<PreviousPassword[]>();
+  const [confirmingDelete, setConfirmingDelete] = useState<PasswordRow>();
+  const [deletedRows, setDeletedRows] = useState<DeletedRow[]>();
 
   const load = useCallback(async () => {
     try {
@@ -79,11 +106,63 @@ export default function PasswordsScreen() {
     void load();
   }, [load]);
 
+  const loadDeleted = useCallback(async () => {
+    try {
+      const found = deletedCredentials(await syncAllRevisions(context));
+      const opened = await Promise.all(
+        found.map(async (deleted): Promise<DeletedRow> => {
+          try {
+            const payload = decodeCredentialPayload(await openCredential(context, deleted.lastLive));
+            return { deleted, site: payload.site, username: payload.username };
+          } catch {
+            return { deleted, site: 'Unreadable credential', username: '' };
+          }
+        }),
+      );
+      setDeletedRows(opened);
+    } catch (error) {
+      setMessage(reportError(error));
+    }
+  }, [context, reportError]);
+
   function closeForm() {
     setOpen(false);
     setDraft(EMPTY_DRAFT);
     setPasswordRevealed(false);
     setEditing(undefined);
+    setPrevious(undefined);
+  }
+
+  async function showPrevious(credentialId: string) {
+    try {
+      const revisions = await listRevisions(context, credentialId);
+      const older = revisions.filter((revision) => !revision.deleted).slice(1);
+      const opened = await Promise.all(
+        older.map(async (revision): Promise<PreviousPassword | undefined> => {
+          try {
+            const payload = decodeCredentialPayload(await openCredential(context, revision));
+            return { revisionId: revision.revision_id, password: payload.password, changedAt: revision.created_at };
+          } catch {
+            return undefined;
+          }
+        }),
+      );
+      setPrevious(opened.filter((entry): entry is PreviousPassword => entry !== undefined));
+    } catch (error) {
+      setMessage(reportError(error));
+    }
+  }
+
+  async function restore(row: DeletedRow) {
+    setBusy(true);
+    try {
+      await restoreCredential(context, row.deleted);
+      await Promise.all([load(), loadDeleted()]);
+    } catch (error) {
+      setMessage(reportError(error));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function saveCredential() {
@@ -92,10 +171,13 @@ export default function PasswordsScreen() {
       await writeCredential(
         context,
         encodeCredentialPayload({
+          ...(draft.base ?? {}),
           site: draft.site.trim(),
           username: draft.username.trim(),
           password: draft.password,
           note: draft.note.trim(),
+          urls: draft.urls.split(/[\n,]/),
+          match: draft.match,
         }),
         editing === undefined ? {} : { credentialId: editing },
       );
@@ -110,7 +192,15 @@ export default function PasswordsScreen() {
 
   function editRow(row: PasswordRow) {
     setEditing(row.id);
-    setDraft({ site: row.site, username: row.username, password: row.password, note: row.note });
+    setDraft({
+      site: row.site,
+      username: row.username,
+      password: row.password,
+      note: row.note,
+      urls: (row.payload?.urls ?? []).join('\n'),
+      match: row.payload?.match ?? 'domain',
+      base: row.payload,
+    });
     setPasswordRevealed(false);
     setOpen(true);
   }
@@ -119,10 +209,14 @@ export default function PasswordsScreen() {
     setBusy(true);
     try {
       await deleteCredential(context, id);
+      setConfirmingDelete(undefined);
       if (editing === id) {
         closeForm();
       }
       await load();
+      if (deletedRows !== undefined) {
+        await loadDeleted();
+      }
     } catch (error) {
       setMessage(reportError(error));
     } finally {
@@ -189,16 +283,14 @@ export default function PasswordsScreen() {
                             Edit
                           </Button>
                         ) : null}
-                        {fullDevice ? (
-                          <Button
-                            variant="danger"
-                            disabled={busy}
-                            onClick={() => void removeCredential(row.id)}
-                          >
-                            <TrashIcon />
-                            Delete
-                          </Button>
-                        ) : null}
+                        <Button
+                          variant="danger"
+                          disabled={busy}
+                          onClick={() => setConfirmingDelete(row)}
+                        >
+                          <TrashIcon />
+                          Delete
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -208,6 +300,67 @@ export default function PasswordsScreen() {
           </div>
         )}
       </Card>
+
+      <Card
+        title="Recently deleted"
+        subtitle="A deleted password keeps its history until it is pruned, so it can be brought back."
+        actions={
+          deletedRows === undefined ? (
+            <Button variant="secondary" onClick={() => void loadDeleted()}>
+              Show
+            </Button>
+          ) : null
+        }
+      >
+        {deletedRows === undefined ? null : deletedRows.length === 0 ? (
+          <p className="text-compact text-ink-muted">Nothing has been deleted.</p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {deletedRows.map((row) => (
+              <li key={row.deleted.credentialId} className="flex items-center justify-between gap-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-compact font-semibold text-ink">{siteLabel(row.site)}</p>
+                  <p className="truncate text-caption normal-case tracking-normal text-ink-muted">
+                    {row.username} · deleted {new Date(row.deleted.deletedAt).toLocaleString()}
+                  </p>
+                </div>
+                <Button variant="secondary" disabled={busy} onClick={() => void restore(row)}>
+                  Restore
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      {confirmingDelete !== undefined ? (
+        <Modal
+          title="Delete this password?"
+          subtitle={`${siteLabel(confirmingDelete.site)} · ${confirmingDelete.username}`}
+          onClose={() => setConfirmingDelete(undefined)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" disabled={busy} onClick={() => setConfirmingDelete(undefined)}>
+                Keep it
+              </Button>
+              <Button
+                variant="danger"
+                disabled={busy}
+                onClick={() => void removeCredential(confirmingDelete.id)}
+              >
+                <TrashIcon />
+                Delete
+              </Button>
+            </div>
+          }
+        >
+          <p className="text-compact text-ink-soft">
+            It disappears from every device, including your browser extensions. Its history is kept,
+            so it can be restored from <strong>Recently deleted</strong> until it is pruned
+            {fullDevice ? '' : ' from a full device'}.
+          </p>
+        </Modal>
+      ) : null}
 
       {open ? (
         <Modal
@@ -255,6 +408,50 @@ export default function PasswordsScreen() {
               autoComplete="off"
               onChange={(event) => setDraft({ ...draft, note: event.target.value })}
             />
+            <Field
+              label="Also used on"
+              hint="Other addresses this login works on, separated by commas."
+              value={draft.urls.replace(/\n/g, ', ')}
+              autoComplete="off"
+              onChange={(event) => setDraft({ ...draft, urls: event.target.value })}
+            />
+            <Select
+              label="Offer it on"
+              value={draft.match}
+              onChange={(event) => setDraft({ ...draft, match: event.target.value as SiteMatch })}
+              choices={[
+                { value: 'domain', label: 'Any address of the same site' },
+                { value: 'host', label: 'Only these exact addresses' },
+              ]}
+            />
+            {editing !== undefined ? (
+              previous === undefined ? (
+                <Button variant="ghost" onClick={() => void showPrevious(editing)}>
+                  Show previous passwords
+                </Button>
+              ) : previous.length === 0 ? (
+                <p className="text-compact text-ink-muted">No previous passwords.</p>
+              ) : (
+                <div>
+                  <p className="text-compact font-semibold text-ink-soft">Previous passwords</p>
+                  <ul className="mt-2 divide-y divide-line">
+                    {previous.map((entry) => (
+                      <li key={entry.revisionId} className="flex items-center justify-between gap-3 py-2">
+                        <span className="truncate font-mono text-compact text-ink-soft">
+                          {passwordRevealed ? entry.password : MASKED_PASSWORD}
+                        </span>
+                        <span className="flex shrink-0 items-center gap-2">
+                          <span className="text-caption normal-case tracking-normal text-ink-muted">
+                            {new Date(entry.changedAt).toLocaleDateString()}
+                          </span>
+                          <CopyButton value={entry.password} label="Copy" />
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            ) : null}
           </div>
         </Modal>
       ) : null}

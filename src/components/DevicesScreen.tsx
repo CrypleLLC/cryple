@@ -20,6 +20,7 @@ import {
   type DeviceRow,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from './CrypleProvider';
+import ConnectExtension from './ConnectExtension';
 import { Badge, Button, Card, Field, Notice, TextArea } from './ui';
 
 export default function DevicesScreen() {
@@ -91,6 +92,8 @@ export default function DevicesScreen() {
           </ul>
         </div>
       </Card>
+
+      {fullDevice && holds('passwords') ? <ConnectExtension onLinked={() => void refresh()} /> : null}
 
       {removing ? (
         <RemoveDevice

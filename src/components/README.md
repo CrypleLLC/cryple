@@ -13,7 +13,8 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 | `Unlock.tsx` | PIN unlock through the server's OPRF, with the attempts left, and *I forgot this browser's PIN* |
 | `AppShell.tsx` | Task 25 — the sidebar shell and navigation registry |
 | `VaultScreen.tsx` | Vault index, add/delete secrets (Task 34) |
-| `PasswordsScreen.tsx` | The Passwords tab: list, add, edit and delete credentials ([Task 134](../../../tasks.md#task-134)). An edit writes a new revision, so "Save" appends rather than replaces |
+| `PasswordsScreen.tsx` | The Passwords tab: list, add, edit and delete credentials ([Task 134](../../../tasks.md#task-134)). An edit writes a new revision, so "Save" appends rather than replaces. A delete is confirmed and restorable from *Recently deleted*; *Previous passwords* reads a credential's history; the edit form sets the other addresses a login works on and whether the extension may offer it on the whole site |
+| `ConnectExtension.tsx` | Settings → Devices: linking the browser extension — the code and its countdown, the fingerprint to compare, the device's name, and refusing on a mismatch ([`lib/pairing`](../lib/pairing/README.md)) |
 | `VaultReveal.tsx` | The vault's global show/hide-values state and its top-bar button |
 | `NotesScreen.tsx` | The notes file grid, selection and batch delete |
 | `NoteEditor.tsx` | One note open — autosave, delete, WYSIWYG formatting |

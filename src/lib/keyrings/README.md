@@ -31,6 +31,7 @@ and seals the sharing material. The server refuses a batch whose wraps are incom
 | `buildDeviceRemoval` | this device | Removing another device, with the rotation of every keyring it held and new sharing keys                       |
 | `buildRotation`      | this device | Rotating named scopes                                                                                          |
 | `buildSelfRemoval`   | this device | "Remove this browser": a self `device-remove`, which needs no rotation                                         |
+| `buildDeviceLink`    | this device | Linking another device, such as the browser extension: one `device-add` and a wrap of every generation of each scope it is granted, from the keys this session holds. No rotation, so no root |
 
 **Every rotation needs the root wrap key**, because each new generation is also wrapped to the
 root, so the seed alone can always reopen the keyring. A device does not hold that key, so

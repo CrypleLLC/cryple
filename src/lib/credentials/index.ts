@@ -150,6 +150,65 @@ export async function syncCredentials(
   return response.data;
 }
 
+export async function listRevisions(
+  context: CredentialsContext,
+  credentialId: string,
+): Promise<CredentialRevision[]> {
+  const response = await request<CredentialRevision[]>({
+    method: 'GET',
+    path: `/credentials/${assertCanonicalUuid(credentialId)}/revisions`,
+    token: requireToken(context),
+    timeoutMs: context.timeoutMs,
+  });
+  return response.data ?? [];
+}
+
+export async function syncAllRevisions(context: CredentialsContext): Promise<CredentialRevision[]> {
+  const revisions: CredentialRevision[] = [];
+  let cursor = 0;
+  for (;;) {
+    const page = await syncCredentials(context, cursor);
+    revisions.push(...page.revisions);
+    if (!page.has_more || page.cursor <= cursor) {
+      return revisions;
+    }
+    cursor = page.cursor;
+  }
+}
+
+export interface DeletedCredential {
+  credentialId: string;
+  deletedAt: string;
+  lastLive: CredentialRevision;
+}
+
+export function deletedCredentials(revisions: readonly CredentialRevision[]): DeletedCredential[] {
+  const byCredential = new Map<string, CredentialRevision[]>();
+  for (const revision of revisions) {
+    const list = byCredential.get(revision.credential_id) ?? [];
+    list.push(revision);
+    byCredential.set(revision.credential_id, list);
+  }
+  const deleted: DeletedCredential[] = [];
+  for (const [credentialId, list] of byCredential) {
+    const ordered = [...list].sort((a, b) => b.seq - a.seq);
+    const latest = ordered[0];
+    const lastLive = ordered.find((revision) => !revision.deleted);
+    if (latest.deleted && lastLive !== undefined) {
+      deleted.push({ credentialId, deletedAt: latest.created_at, lastLive });
+    }
+  }
+  return deleted.sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
+}
+
+export async function restoreCredential(
+  context: CredentialsContext,
+  deleted: DeletedCredential,
+): Promise<WriteCredentialResult> {
+  const plaintext = await openCredential(context, deleted.lastLive);
+  return writeCredential(context, plaintext, { credentialId: deleted.credentialId });
+}
+
 export async function openCredential(
   context: CredentialsContext,
   revision: CredentialSummary,

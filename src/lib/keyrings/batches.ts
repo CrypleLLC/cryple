@@ -293,6 +293,37 @@ export async function buildSelfRemoval(options: {
   return { events, wraps: [], materials: [] };
 }
 
+export async function buildDeviceLink(options: {
+  state: ChainState;
+  author: BatchAuthor;
+  device: DeviceKeysDeclaration;
+  keks: readonly { scope: KeyringScope; generation: number; kek: Uint8Array }[];
+}): Promise<DeviceBatch> {
+  const granted = new Set<string>(options.device.scopes);
+  const events = await signEvents(options.state, options.author, [
+    { type: 'device-add', fields: deviceAddFields(options.device) },
+  ]);
+  options.state.applyBatch(events);
+
+  const wraps: KeyringWrap[] = [];
+  for (const entry of options.keks) {
+    if (!granted.has(entry.scope)) {
+      throw new Error(`the linked device does not hold ${entry.scope}`);
+    }
+    wraps.push({
+      scope: entry.scope,
+      generation: entry.generation,
+      recipient: options.device.deviceId,
+      wrapped_key: await wrapKekForDevice(entry.kek, options.state.userAddress, {
+        deviceId: options.device.deviceId,
+        x25519PublicKey: options.device.x25519PublicKey,
+        mlkemPublicKey: options.device.mlkemPublicKey,
+      }),
+    });
+  }
+  return { events, wraps, materials: [] };
+}
+
 export function fullDeviceScopes(): string {
   return formatScopeList(['admin', ...KEYRING_SCOPES]);
 }

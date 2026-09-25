@@ -31,6 +31,8 @@ of any signature at all. Password history falls out of the same shape.
 | `listCredentials` | `GET /credentials` | The vault screen: one row per credential, at its current value |
 | `listCredentialsMeta` | `GET /credentials?fields=meta` | Finding what a rotation left behind, without ciphertext |
 | `syncCredentials` | `GET /credentials/sync?cursor=` | The extension's incremental feed, tombstones included |
+| `syncAllRevisions` | the same, to the end | Every revision, for *Recently deleted* |
+| `listRevisions` | `GET /credentials/{id}/revisions` | One credential's history, newest first — *Previous passwords* |
 
 `listCredentials` is the one the UI uses. The server folds the revision history to the current
 value in SQL, so this client never computes it — see the domain README's
@@ -38,6 +40,14 @@ value in SQL, so this client never computes it — see the domain README's
 
 `syncCredentials` exists here because the contract is the same for both clients and testing it once
 is cheaper than testing it twice. **Nothing in `web-app` calls it.**
+
+## Deleting, and bringing back
+
+`deleteCredential` writes a tombstone. Since [ADR 00015](../../../../api-general/docs/adr/00015_tombstones_are_not_destruction.md)
+any device holding `passwords` may sign it — the browser extension included — because every revision
+behind it stays. `deletedCredentials` finds, from the whole feed, each credential whose latest revision
+is a tombstone, with its last live revision; `restoreCredential` opens that revision and writes its
+plaintext again as a new revision of the same credential. Only `pruneCredential` destroys anything.
 
 ## The passwords KEK
 

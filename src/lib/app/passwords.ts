@@ -1,11 +1,18 @@
 import type { CredentialSummary } from '@/lib/credentials';
 
+export type SiteMatch = 'domain' | 'host';
+
 export interface CredentialPayload {
   site: string;
   username: string;
   password: string;
   note?: string;
+  urls?: string[];
+  match?: SiteMatch;
+  extra?: Record<string, unknown>;
 }
+
+const KNOWN_FIELDS = new Set(['site', 'username', 'password', 'note', 'urls', 'match']);
 
 export class MalformedCredentialPayloadError extends Error {
   constructor() {
@@ -15,10 +22,19 @@ export class MalformedCredentialPayloadError extends Error {
 }
 
 export function encodeCredentialPayload(payload: CredentialPayload): string {
-  const { site, username, password, note } = payload;
-  return JSON.stringify(note === undefined || note.length === 0
-    ? { site, username, password }
-    : { site, username, password, note });
+  const { site, username, password, note, urls, match, extra } = payload;
+  const encoded: Record<string, unknown> = { ...(extra ?? {}), site, username, password };
+  if (note !== undefined && note.length > 0) {
+    encoded.note = note;
+  }
+  const others = (urls ?? []).map((url) => url.trim()).filter((url) => url.length > 0);
+  if (others.length > 0) {
+    encoded.urls = others;
+  }
+  if (match === 'host') {
+    encoded.match = match;
+  }
+  return JSON.stringify(encoded);
 }
 
 export function decodeCredentialPayload(plaintext: string): CredentialPayload {
@@ -29,8 +45,11 @@ export function decodeCredentialPayload(plaintext: string): CredentialPayload {
     throw new MalformedCredentialPayloadError();
   }
 
-  const candidate = parsed as Partial<CredentialPayload> | null;
-  const { site, username, password, note } = candidate ?? {};
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new MalformedCredentialPayloadError();
+  }
+  const candidate = parsed as Record<string, unknown>;
+  const { site, username, password, note, urls, match } = candidate;
 
   if (typeof site !== 'string' || typeof username !== 'string' || typeof password !== 'string') {
     throw new MalformedCredentialPayloadError();
@@ -38,8 +57,28 @@ export function decodeCredentialPayload(plaintext: string): CredentialPayload {
   if (note !== undefined && typeof note !== 'string') {
     throw new MalformedCredentialPayloadError();
   }
+  if (urls !== undefined && (!Array.isArray(urls) || urls.some((url) => typeof url !== 'string'))) {
+    throw new MalformedCredentialPayloadError();
+  }
+  if (match !== undefined && match !== 'domain' && match !== 'host') {
+    throw new MalformedCredentialPayloadError();
+  }
 
-  return note === undefined ? { site, username, password } : { site, username, password, note };
+  const payload: CredentialPayload = { site, username, password };
+  if (note !== undefined) {
+    payload.note = note;
+  }
+  if (urls !== undefined && urls.length > 0) {
+    payload.urls = urls as string[];
+  }
+  if (match !== undefined) {
+    payload.match = match;
+  }
+  const extra = Object.fromEntries(Object.entries(candidate).filter(([key]) => !KNOWN_FIELDS.has(key)));
+  if (Object.keys(extra).length > 0) {
+    payload.extra = extra;
+  }
+  return payload;
 }
 
 export const UNREADABLE_CREDENTIAL_SITE = 'Unreadable credential';
@@ -56,6 +95,7 @@ export interface PasswordRow {
   note: string;
   changedAt: string;
   readable: boolean;
+  payload?: CredentialPayload;
 }
 
 export interface OpenedCredential {
@@ -93,6 +133,7 @@ function toPasswordRow({ record, plaintext }: OpenedCredential): PasswordRow {
       password: payload.password,
       note: payload.note ?? '',
       readable: true,
+      payload,
     };
   } catch {
     return { ...row, ...unreadable() };
