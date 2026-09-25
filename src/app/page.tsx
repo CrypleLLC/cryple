@@ -1,7 +1,7 @@
 'use client';
 
-import AppShell from '@/components/AppShell';
-import SessionGate from '@/components/SessionGate';
+import AppShell from '@/components/shell/AppShell';
+import SessionGate from '@/components/session/SessionGate';
 
 export default function Home() {
   return (
