@@ -23,7 +23,7 @@ Content Security Policy that decides which hosts the page may talk to.
 
 ## The staging banner
 
-`StagingBanner` (in [`src/components`](../components/README.md)) renders only when
+`StagingBanner` (in [`src/components/shell`](../components/shell/README.md)) renders only when
 `process.env.NEXT_PUBLIC_ENV === 'development'`
 
 ## Why the provider moved into the layout

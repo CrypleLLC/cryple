@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { DocumentSync, apiTransport, type SyncState } from '@/lib/documents';
-import { useAuthedContext, useCryple } from '@/components/CrypleProvider';
+import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
 
 export interface DocumentSyncHandle {
   sync?: DocumentSync;

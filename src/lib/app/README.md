@@ -486,7 +486,7 @@ so each screen starts at `defaultIconSize(grid)` and reads the stored value in a
 ## A modal, minus the DOM
 
 `modal.ts` holds the three decisions a dialog has to get right, so they are unit-tested rather
-than only reachable by rendering one. `Modal` in [`ui.tsx`](../../components/README.md) is the
+than only reachable by rendering one. `Modal` in [`components/modal`](../../components/modal/README.md) is the
 shell that wires them to real elements.
 
 **`trapAction` is the whole keyboard contract as a decision table.** Escape closes; Tab returns
