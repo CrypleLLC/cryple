@@ -9,7 +9,7 @@ that possible without inventing a new storage format.
 
 It is **presentation, not protocol**, and it is framework-free and DOM-free: pure functions over
 strings and plain objects, unit-tested in the repo's node environment. The DOM half lives in
-[`components/note-surface.ts`](../../components/README.md#the-editing-surface).
+[`components/notes/note-surface.ts`](../../components/notes/README.md#the-editing-surface).
 
 ## Storage stays a plain string
 

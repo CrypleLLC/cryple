@@ -205,6 +205,14 @@
       "notes": "bb883f4be4703d7339057a1ac63d8563c7647a2e9b55f4c88a58ae9e1bc243de",
       "secrets": "60eab57e0b1b363ea3880413b6b7c30ef37465b12996874fd370ca1e58edc6d0"
     },
+    "pairing_fingerprint": {
+      "code": "K7QM9XP2",
+      "construction": "SHA-256(label|code|user_address|root_public_key|device_id|signing_public_key|x25519_public_key|mlkem_public_key), keys as base64; first 4 bytes big-endian mod 1000000, 6 digits",
+      "device": "the genesis_device keys; the account and root key above",
+      "fingerprint": "877160",
+      "input_sha256": "b263ae68caa2d136a4b3707ae17bb109b5a2d0becf6b05805c8239d0d2c7b77e",
+      "label": "Cryple-Pairing-v1"
+    },
     "event_hash_construction": "hex(SHA-256(statement || \"|\" || signer || \"|\" || signature_base64))",
     "signature_scheme": "ECDSA P-256 over SHA-256(statement), IEEE P1363 (r||s, 64 bytes), base64. Randomised: verify, do not reproduce"
   }

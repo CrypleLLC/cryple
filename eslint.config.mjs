@@ -111,7 +111,7 @@ const config = [
   // is a blob: URL of bytes decrypted in this tab, which no server can fetch and
   // none may see, so <img> is the only option here rather than the lazy one.
   {
-    files: ['src/components/DriveScreen.tsx'],
+    files: ['src/components/drive/DriveScreen.tsx'],
     rules: {
       '@next/next/no-img-element': 'off',
     },

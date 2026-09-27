@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { PDFDocument } from 'pdf-lib';
+import { wordlists } from 'bip39';
+import { decodePDFRawStream, PDFArray, PDFDocument, PDFRawStream, type PDFObject } from 'pdf-lib';
 import vectors from '@/test/fixtures/test-vectors.json';
 import { generateMnemonic } from '@/lib/keys';
 import {
@@ -11,12 +12,30 @@ import {
   recoveryKitFileName,
   recoveryKitGridCell,
   recoveryKitPhrase,
+  RecoveryKitGlyphError,
   recoveryKitQrModules,
+  recoveryKitWordOutlines,
 } from './index';
+import { GLYPH_ADVANCE } from './glyphs';
 
 const mnemonic = vectors.seed_and_user_address.mnemonic;
 const username = '3f1c8a2b9d4e';
 const createdAt = new Date('2026-09-13T10:00:00Z');
+
+async function shownStrings(bytes: Uint8Array): Promise<string[]> {
+  const document = await PDFDocument.load(bytes);
+  const contents = document.getPage(0).node.Contents();
+  const streams: PDFObject[] = contents instanceof PDFArray ? contents.asArray() : [contents!];
+  const operators = streams
+    .map((reference) => document.context.lookup(reference))
+    .filter((stream): stream is PDFRawStream => stream instanceof PDFRawStream)
+    .map((stream) => new TextDecoder('latin1').decode(decodePDFRawStream(stream).decode()))
+    .join('\n');
+
+  return [...operators.matchAll(/<([0-9A-Fa-f]*)>\s*Tj/g)].map(([, hex]) =>
+    String.fromCharCode(...(hex.match(/../g) ?? []).map((pair) => parseInt(pair, 16))),
+  );
+}
 
 describe('what the recovery kit carries', () => {
   it('names the app, the account, the date and every word in order', () => {
@@ -40,9 +59,17 @@ describe('what the recovery kit carries', () => {
   it('has no field a PIN could be written into', () => {
     const content = recoveryKitContent({ username, mnemonic, createdAt });
 
-    expect(Object.keys(content).sort()).toEqual(
-      ['appName', 'created', 'heading', 'intro', 'qrCaption', 'qrPayload', 'username', 'warning', 'words'],
-    );
+    expect(Object.keys(content).sort()).toEqual([
+      'appName',
+      'created',
+      'heading',
+      'intro',
+      'qrCaption',
+      'qrPayload',
+      'username',
+      'warning',
+      'words',
+    ]);
     expect(JSON.stringify(content)).not.toContain(vectors.pin_oprf.pin);
     expect(JSON.stringify(RECOVERY_KIT_COPY)).not.toMatch(/\bPIN\b/i);
   });
@@ -88,6 +115,26 @@ describe('the phrase grid', () => {
   });
 });
 
+describe('the phrase outlines', () => {
+  it('has an outline for every letter of every BIP-39 English word', () => {
+    for (const word of wordlists.english!) {
+      expect(recoveryKitWordOutlines(word)).toHaveLength(word.length);
+    }
+  });
+
+  it('places each letter one monospaced advance after the last', () => {
+    expect(recoveryKitWordOutlines('abc').map(({ offset }) => offset)).toEqual([
+      0,
+      GLYPH_ADVANCE,
+      2 * GLYPH_ADVANCE,
+    ]);
+  });
+
+  it('refuses a character it has no outline for rather than dropping it', () => {
+    expect(() => recoveryKitWordOutlines('abç')).toThrow(RecoveryKitGlyphError);
+  });
+});
+
 describe('the PDF', () => {
   it('is one titled page', async () => {
     const bytes = await buildRecoveryKitPdf({ username, mnemonic, createdAt });
@@ -107,6 +154,25 @@ describe('the PDF', () => {
     });
 
     expect((await PDFDocument.load(bytes)).getPageCount()).toBe(1);
+  });
+
+  it('draws the phrase as outlines, so no word of it can be selected, searched or extracted', async () => {
+    const phrase = generateMnemonic(24);
+    const bytes = await buildRecoveryKitPdf({ username, mnemonic: phrase, createdAt });
+    const shown = await shownStrings(bytes);
+
+    expect(shown).toContain(RECOVERY_KIT_COPY.heading);
+    expect(shown.join(' ')).toContain('cannot be selected or copied, on purpose.');
+    for (const word of phrase.split(' ')) {
+      expect(shown).not.toContain(word);
+    }
+    expect(shown.join(' ')).not.toContain(phrase.split(' ').slice(0, 3).join(' '));
+  });
+
+  it('embeds no font for the phrase', async () => {
+    const bytes = await buildRecoveryKitPdf({ username, mnemonic, createdAt });
+
+    expect(new TextDecoder('latin1').decode(bytes)).not.toMatch(/Courier/);
   });
 
   it('is named after the account', () => {

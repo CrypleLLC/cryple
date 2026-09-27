@@ -119,7 +119,7 @@ The honest cost of last-writer-wins: **a simultaneous rename can lose one side's
 ## What is still open
 
 - **Deleting a tab** only drops the grouping in the manifest; the tab strip
-  ([`FolderTabs`](../../components/README.md#folders)) sends the items' signed batch delete first, then
+  ([`FolderTabs`](../../components/folders/README.md)) sends the items' signed batch delete first, then
   the manifest edit (D6).
 - **Tombstones are never pruned.** A scope holding tens of folders never notices; one that churns
   folders for years will carry them.

@@ -1,4 +1,5 @@
 import { formatBytes } from './vault';
+import { countOf, FILE_NOUNS, type FolderNouns } from './folders';
 import type { FileRecord, StorageUsage, UploadProgress } from '@/lib/files';
 
 export const UNREADABLE_FILE_NAME = 'Unreadable file';
@@ -16,6 +17,11 @@ export function fileName(name: string): string {
   return characters.length <= FILE_NAME_MAX_CHARACTERS
     ? trimmed
     : `${characters.slice(0, FILE_NAME_MAX_CHARACTERS).join('').trimEnd()}${ELLIPSIS}`;
+}
+
+export function fullFileName(name: string): string {
+  const trimmed = name.trim();
+  return trimmed.length === 0 ? UNREADABLE_FILE_NAME : trimmed;
 }
 
 export type FileKind =
@@ -230,4 +236,63 @@ export function uploadPercent(doneBytes: number, totalBytes: number): number {
     return 0;
   }
   return Math.min(100, Math.round((doneBytes / totalBytes) * 100));
+}
+
+const FILE_KIND_LABELS: Record<FileKind, string> = {
+  image: 'Image',
+  video: 'Video',
+  audio: 'Audio',
+  pdf: 'PDF document',
+  archive: 'Archive',
+  document: 'Document',
+  sheet: 'Spreadsheet',
+  slides: 'Presentation',
+  code: 'Code',
+  text: 'Text',
+  other: 'File',
+};
+
+export const UNKNOWN_FILE_TYPE = 'Unknown type';
+
+export function fileTypeLabel(kind: FileKind, name: string, readable: boolean): string {
+  if (!readable) {
+    return UNKNOWN_FILE_TYPE;
+  }
+  const extension = fileExtension(name);
+  const label = FILE_KIND_LABELS[kind];
+  return extension === '' || kind === 'pdf' ? label : `${label} · ${extension}`;
+}
+
+export function exactBytesLabel(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) {
+    return formatBytes(bytes);
+  }
+  const whole = Math.round(bytes);
+  const exact = `${whole.toLocaleString('en-US')} ${whole === 1 ? 'byte' : 'bytes'}`;
+  return whole < 1024 ? exact : `${formatBytes(whole)} (${exact})`;
+}
+
+export interface FolderContents {
+  items: number;
+  folders: number;
+  bytes: number;
+}
+
+export function folderContents(fileBytes: readonly number[], folders: number): FolderContents {
+  return {
+    items: fileBytes.length,
+    folders,
+    bytes: fileBytes.reduce((total, bytes) => total + Math.max(0, bytes), 0),
+  };
+}
+
+export function folderItemsLabel(
+  contents: Pick<FolderContents, 'items' | 'folders'>,
+  nouns: FolderNouns = FILE_NOUNS,
+): string {
+  const items = countOf(contents.items, nouns);
+  if (contents.folders === 0) {
+    return items;
+  }
+  return `${items}, ${contents.folders === 1 ? '1 folder' : `${contents.folders} folders`}`;
 }

@@ -17,6 +17,7 @@ import {
   MAX_PLAINTEXT_BYTES,
   type CredentialsContext,
   type DekWrapper,
+  deletedCredentials,
 } from './index';
 
 const ID_A = '0c892e57-93cf-423a-a9e9-fee5a9f87681';
@@ -240,5 +241,32 @@ describe('the destructive calls are signed, and bind what they destroy', () => {
     expect(body.keep_last).toBe(5);
     expect(await verify(context, body, 'credential-prune', [ID_A, '5'])).toBe(true);
     expect(await verify(context, body, 'credential-prune', [ID_A, '1'])).toBe(false);
+  });
+});
+
+describe('recently deleted', () => {
+  const revision = (credential: string, seq: number, deleted: boolean) => ({
+    credential_id: credential,
+    revision_id: `${credential}-${seq}`,
+    seq,
+    ciphertext: deleted ? '' : 'c',
+    wrapped_dek: deleted ? '' : 'w',
+    key_generation: 1,
+    version: 'v1',
+    created_at: `2026-09-24T10:00:${String(seq).padStart(2, '0')}Z`,
+    deleted,
+  });
+
+  it('lists a credential whose latest revision is a tombstone, with its last live revision', () => {
+    const found = deletedCredentials([
+      revision('a', 1, false),
+      revision('a', 2, false),
+      revision('b', 3, false),
+      revision('a', 4, true),
+      revision('c', 5, false),
+      revision('c', 6, true),
+      revision('c', 7, false),
+    ]);
+    expect(found.map((entry) => [entry.credentialId, entry.lastLive.seq])).toEqual([['a', 2]]);
   });
 });

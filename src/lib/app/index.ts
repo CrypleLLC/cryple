@@ -19,5 +19,7 @@ export * from './sharing';
 export * from './settings';
 export * from './private-text';
 export * from './clipboard';
+export * from './pin-entry';
 export * from './secret-field';
 export * from './folders';
+export * from './pairing';
