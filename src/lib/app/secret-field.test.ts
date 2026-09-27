@@ -3,7 +3,7 @@ import {
   PASSWORD_MANAGER_IGNORE,
   TEXT_SECURITY_CLASS,
   maskedInputClass,
-  pinInputAttributes,
+  pinDigitAttributes,
   secretInputAttributes,
   supportsTextSecurity,
 } from './secret-field';
@@ -69,28 +69,28 @@ describe('supportsTextSecurity', () => {
   });
 });
 
-describe('pinInputAttributes', () => {
+describe('pinDigitAttributes', () => {
   it('is a masked text input where the browser can mask one, so no manager offers to save the PIN', () => {
-    const attributes = pinInputAttributes(6, true);
+    const attributes = pinDigitAttributes(true);
     expect(attributes.type).toBe('text');
     expect(attributes.className).toBe(TEXT_SECURITY_CLASS);
   });
 
   it('falls back to a password input only where CSS masking is unavailable', () => {
-    expect(pinInputAttributes(6, false).type).toBe('password');
+    expect(pinDigitAttributes(false).type).toBe('password');
   });
 
   it('carries every password-manager opt-out in both states', () => {
-    for (const attributes of [pinInputAttributes(6, true), pinInputAttributes(6, false)]) {
+    for (const attributes of [pinDigitAttributes(true), pinDigitAttributes(false)]) {
       expect(attributes.autoComplete).toBe('off');
       expect(attributes).toMatchObject(PASSWORD_MANAGER_IGNORE);
     }
   });
 
-  it('asks for a numeric keypad and accepts exactly the PIN length', () => {
-    const attributes = pinInputAttributes(6, true);
+  it('asks for a numeric keypad and sets no maxLength, so a pasted PIN reaches every box', () => {
+    const attributes = pinDigitAttributes(true);
     expect(attributes.inputMode).toBe('numeric');
-    expect(attributes.maxLength).toBe(6);
+    expect(attributes).not.toHaveProperty('maxLength');
   });
 });
 
@@ -98,7 +98,7 @@ describe('maskedInputClass', () => {
   const base = 'border bg-surface text-ink';
 
   it('adds the masking class to the base rather than replacing it', () => {
-    const merged = maskedInputClass(base, pinInputAttributes(6, true).className);
+    const merged = maskedInputClass(base, pinDigitAttributes(true).className);
 
     expect(merged).toContain('text-ink');
     expect(merged).toContain('bg-surface');

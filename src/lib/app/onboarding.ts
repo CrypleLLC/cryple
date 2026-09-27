@@ -1,9 +1,15 @@
-import { countWords, isValidMnemonic, SUPPORTED_WORD_COUNTS, type MnemonicWordCount } from '@/lib/keys';
+import {
+  countWords,
+  isValidMnemonic,
+  SUPPORTED_WORD_COUNTS,
+  type MnemonicWordCount,
+} from '@/lib/keys';
 import { validatePin, type PinRejection } from '@/lib/pin';
 
 export type OnboardingOrigin = 'generate' | 'import';
 
-export type OnboardingStep = 'origin' | 'import' | 'pin' | 'enrolling' | 'recovery-kit' | 'done';
+export type OnboardingStep =
+  'origin' | 'import' | 'mode' | 'pin' | 'enrolling' | 'recovery-kit' | 'done';
 
 export interface OnboardingState {
   step: OnboardingStep;
@@ -21,7 +27,8 @@ export interface OnboardingState {
 export type OnboardingEvent =
   | { type: 'choose-origin'; origin: OnboardingOrigin; wordCount?: MnemonicWordCount }
   | { type: 'mnemonic-ready'; mnemonic: string; lostDevices?: boolean }
-  | { type: 'pin-chosen'; pin: string; paranoid: boolean }
+  | { type: 'mode-chosen'; paranoid: boolean }
+  | { type: 'pin-chosen'; pin: string }
   | { type: 'enrolled'; username: string }
   | { type: 'create-instead' }
   | { type: 'recovery-kit-saved' }
@@ -78,14 +85,12 @@ export const PIN_STEP_COPY = {
 
 export const ENROL_STEP_COPY = {
   title: 'Add this browser',
-  summary:
-    'Your recovery phrase adds this browser as one of your devices. ' + PHRASE_NOT_KEPT,
+  summary: 'Your recovery phrase adds this browser as one of your devices. ' + PHRASE_NOT_KEPT,
   lostDevices: 'I lost my other devices: remove them all',
   lostDevicesWarning:
     'Every other device is removed in the same step and every key they held changes, so they ' +
     'cannot read anything saved afterwards. They keep whatever they had already copied.',
-  noAccount:
-    'No account uses this recovery phrase yet. Check it, or create a new account with it.',
+  noAccount: 'No account uses this recovery phrase yet. Check it, or create a new account with it.',
   createInstead: 'Create an account with this phrase',
   exposure:
     'While you type your phrase, it is in this page’s memory. Type it only on a browser you ' +
@@ -105,6 +110,10 @@ export const RECOVERY_KIT_STEP_COPY = {
   downloadAgain: 'Download again',
   preparing: 'Preparing your kit…',
   reveal: 'Show my phrase',
+  notCopyable:
+    'Your phrase cannot be copied, on purpose. A clipboard is shared with other apps and is often ' +
+    'synced to your other devices, so your recovery phrase should never pass through one. Write it ' +
+    'down or keep the recovery kit instead.',
   failed: 'Your recovery kit could not be created. Try again.',
   continue: 'Continue to my vault',
 } as const;
@@ -162,8 +171,10 @@ export function previousStep(state: OnboardingState): OnboardingStep | undefined
   switch (state.step) {
     case 'import':
       return 'origin';
+    case 'mode':
+      return 'origin';
     case 'pin':
-      return state.origin === 'import' ? 'import' : 'origin';
+      return state.origin === 'import' ? 'import' : 'mode';
     default:
       return undefined;
   }
@@ -177,15 +188,12 @@ export function canEnterVault(state: OnboardingState): boolean {
   return state.step === 'recovery-kit' && state.recoveryKitSaved === true;
 }
 
-export function onboardingReducer(
-  state: OnboardingState,
-  event: OnboardingEvent,
-): OnboardingState {
+export function onboardingReducer(state: OnboardingState, event: OnboardingEvent): OnboardingState {
   switch (event.type) {
     case 'choose-origin':
       return {
         ...state,
-        step: event.origin === 'generate' ? 'pin' : 'import',
+        step: event.origin === 'generate' ? 'mode' : 'import',
         origin: event.origin,
         wordCount: event.wordCount ?? state.wordCount,
         error: undefined,
@@ -199,10 +207,15 @@ export function onboardingReducer(
         ...state,
         mnemonic: event.mnemonic,
         lostDevices: event.lostDevices ?? false,
-        step: 'pin',
+        step: state.origin === 'generate' ? 'mode' : 'pin',
         error: undefined,
       };
     }
+
+    case 'mode-chosen':
+      return state.step === 'mode'
+        ? { ...state, paranoid: event.paranoid, step: 'pin', error: undefined }
+        : state;
 
     case 'pin-chosen': {
       const feedback = checkPin(event.pin);
@@ -212,7 +225,7 @@ export function onboardingReducer(
       return {
         ...state,
         pin: event.pin,
-        paranoid: event.paranoid,
+        paranoid: state.origin === 'generate' ? (state.paranoid ?? false) : false,
         step: 'enrolling',
         error: undefined,
       };
@@ -231,7 +244,7 @@ export function onboardingReducer(
     case 'create-instead':
       return state.mnemonic === undefined
         ? state
-        : { ...state, origin: 'generate', step: 'pin', lostDevices: false, error: undefined };
+        : { ...state, origin: 'generate', step: 'mode', lostDevices: false, error: undefined };
 
     case 'recovery-kit-saved':
       return state.step === 'recovery-kit' ? { ...state, recoveryKitSaved: true } : state;
@@ -253,8 +266,8 @@ export function onboardingReducer(
         step: target,
         origin: target === 'origin' ? undefined : state.origin,
         mnemonic: target === 'origin' ? undefined : state.mnemonic,
-        paranoid: target === 'pin' ? undefined : state.paranoid,
-        pin: target === 'pin' ? undefined : state.pin,
+        paranoid: target === 'mode' ? state.paranoid : undefined,
+        pin: undefined,
         error: undefined,
       };
     }
@@ -264,8 +277,5 @@ export function onboardingReducer(
 export function isReadyToEnroll(
   state: OnboardingState,
 ): state is OnboardingState & { mnemonic: string; paranoid: boolean } {
-  if (state.mnemonic === undefined || state.paranoid === undefined) {
-    return false;
-  }
-  return state.paranoid ? state.pin !== undefined : true;
+  return state.mnemonic !== undefined && state.paranoid !== undefined && state.pin !== undefined;
 }

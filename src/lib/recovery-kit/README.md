@@ -12,9 +12,44 @@ it touches the network.
 | `recoveryKitQrModules(payload)` | The QR matrix, quiet zone included |
 | `qrModulePath(modules)` | The matrix as one SVG path, one rectangle per horizontal run |
 | `recoveryKitGridCell(index, count)` | Where a word sits in the phrase grid |
+| `recoveryKitWordOutlines(word)` | A word as one glyph outline per letter, each with its advance; throws `RecoveryKitGlyphError` on a letter it has no outline for |
 | `recoveryKitFileName(username)` | `cryple-recovery-kit-<username>.pdf` |
 | `buildRecoveryKitPdf(input)` | The PDF bytes |
 | `RECOVERY_KIT_COPY` | Every string on the page |
+
+## The phrase is drawn, not written
+
+The words are **vector outlines**, not text. A PDF viewer cannot select or copy them, and there is
+no text layer for the operating system's search index (Spotlight, Windows Search) to store or for
+a document scanner to read. That last one is the point: information stealers sweep downloads for
+runs of BIP-39 words, and a phrase written as text is exactly what they look for. Outlines raise the
+bar to OCR. Everything else on the page — the headings, the username, the numbers — is ordinary
+text, and a test asserts that the heading is extractable while no word of the phrase is.
+
+Under the grid, `RECOVERY_KIT_COPY.phraseNotCopyable` says so in 8pt: the words cannot be copied
+on purpose, because a clipboard is shared with other apps and often synced, so a reader who tries
+learns why rather than suspecting a broken file.
+
+The QR code still holds the phrase in the clear, because scanning it is how the mobile app signs
+in. It is not in a text layer, indexers do not decode it, and stealers rarely do.
+
+- **The outlines are data, generated once.** `glyphs.ts` holds `a`–`z` of JetBrains Mono Bold — the
+  app's own monospace face — as SVG paths in font units (1000 per em, baseline at 0, every letter
+  600 wide). The BIP-39 English list is `a`–`z` only, and a test checks every one of its 2048 words
+  has an outline for every letter. `drawOutlinedWord` draws each letter with `drawSvgPath`,
+  scaled to the word size.
+- **Nothing is parsed at run time.** No font file ships and no font library runs in the browser;
+  the page carries only the 26 paths (about 7 KB). `opentype.js` is a **dev dependency**, used by
+  the generator only.
+- **The licence travels with the outlines.** JetBrains Mono is under the SIL Open Font License 1.1;
+  its text is `glyphs-OFL.txt`, next to the data derived from it.
+- **Regenerating** (only to change the face):
+  `node tools/recovery-kit-glyphs.mjs <path to JetBrainsMono-Bold.ttf>`, with the font from the
+  [v2.304 release](https://github.com/JetBrains/JetBrainsMono/raw/v2.304/fonts/ttf/JetBrainsMono-Bold.ttf).
+  The script refuses any file whose SHA-256 is not the one it pins, refuses a face that is not
+  monospaced across `a`–`z`, and rewrites `glyphs.ts`. It passes `flipY: false` to
+  `toPathData`: `opentype.js` 2 otherwise flips each glyph inside its own bounding box, which
+  draws the letters upside down, or off the baseline if flipped back.
 
 ## The PIN is not in it, structurally
 
@@ -56,8 +91,8 @@ the first column for a 12-word phrase — which is how printed recovery sheets a
 back.
 
 Colours are the design-system tokens from `globals.css` as literal RGB, since a PDF cannot read CSS
-variables. Fonts are the PDF standard fonts (Helvetica, Courier Bold for the words), which need no
-embedding and no fetch. The username pattern and the BIP-39 English list are both ASCII, so the
+variables. Every other string is in the PDF standard fonts (Helvetica and Helvetica Bold), which
+need no embedding and no fetch. The username pattern and the BIP-39 English list are both ASCII, so the
 standard fonts' WinAnsi encoding covers every character the page can contain.
 
 The username is shrunk to fit its column rather than wrapped, down to 8pt, so a 64-character name
@@ -72,7 +107,7 @@ characters of `user_address`, but it grows by a character for every prefix alrea
 client cannot know it in advance. A kit printed before enrolment would either omit the username or
 guess it, and a wrong name on a document meant to be kept for years is worse than none.
 
-So the generate branch runs phrase → PIN → enrolment → kit, and the vault opens only after the kit
+So the generate branch runs phrase → mode → PIN → enrolment → kit, and the vault opens only after the kit
 has been downloaded at least once. The flow itself is in [`lib/app`](../app/README.md#onboarding).
 
 ## Dependencies
@@ -82,6 +117,17 @@ has been downloaded at least once. The flow itself is in [`lib/app`](../app/READ
   fetching anything.
 - **`uqr`** produces the QR matrix. It has no dependencies of its own and returns plain
   `boolean[][]`, which is all the PDF needs.
+- **`opentype.js`** (dev only) turns the font into `glyphs.ts`. See
+  [The phrase is drawn, not written](#the-phrase-is-drawn-not-written).
+
+**All three are pinned to an exact version** (`1.17.1`, `0.1.3`, `2.0.0`), not a range. They are
+the code that handles the phrase, so a new release reaches them only by someone changing the pin
+on purpose, and `npm ci` then checks every package against its hash in `package-lock.json`. None
+of them makes a network request, and the page's Content Security Policy
+([`lib/security-headers`](../security-headers/README.md)) allows connections to the API and the
+object store only, so a compromised release could not send the phrase anywhere from this page
+either. `pdf-lib` has had no release since 2021; that matters little here, because the kit only
+**writes** PDFs, and an unmaintained PDF library is dangerous when it **reads** untrusted ones.
 
 Both are large relative to how rarely they run, so `Onboarding.tsx` loads this module with a
 dynamic `import()` when the download button is pressed, keeping them out of every other page load.

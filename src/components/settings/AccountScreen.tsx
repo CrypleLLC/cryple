@@ -81,7 +81,7 @@ export default function AccountScreen() {
           <PinField
             label="Account PIN"
             value={pin}
-            onChange={(event) => setPin(event.target.value)}
+            onChange={setPin}
           />
         ) : null}
         <label className="flex cursor-pointer items-start gap-3">

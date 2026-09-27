@@ -18,13 +18,12 @@ export type SecretInputAttributes = typeof PASSWORD_MANAGER_IGNORE & {
   className?: string;
 };
 
-export type PinInputAttributes = SecretInputAttributes & {
+export type PinDigitAttributes = SecretInputAttributes & {
   inputMode: 'numeric';
-  maxLength: number;
 };
 
-export function pinInputAttributes(length: number, cssMasking: boolean): PinInputAttributes {
-  return { ...secretInputAttributes(true, cssMasking), inputMode: 'numeric', maxLength: length };
+export function pinDigitAttributes(cssMasking: boolean): PinDigitAttributes {
+  return { ...secretInputAttributes(true, cssMasking), inputMode: 'numeric' };
 }
 
 export function maskedInputClass(base: string, ...extra: (string | undefined)[]): string {

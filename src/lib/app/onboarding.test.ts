@@ -86,21 +86,47 @@ describe('mnemonic entry validates the checksum before any derivation', () => {
 });
 
 describe('the onboarding flow', () => {
-  it('sends a generated phrase straight to the PIN', () => {
-    const state = run([
+  it('sends a generated phrase to the mode choice, and the mode to the PIN', () => {
+    const atMode = run([
       { type: 'choose-origin', origin: 'generate' },
       { type: 'mnemonic-ready', mnemonic },
     ]);
 
-    expect(state.step).toBe('pin');
-    expect(state.mnemonic).toBe(mnemonic);
+    expect(atMode.step).toBe('mode');
+    expect(atMode.mnemonic).toBe(mnemonic);
+
+    const atPin = onboardingReducer(atMode, { type: 'mode-chosen', paranoid: true });
+    expect(atPin.step).toBe('pin');
+    expect(atPin.paranoid).toBe(true);
+  });
+
+  it('ignores a mode chosen anywhere but the mode step', () => {
+    const atImport = run([{ type: 'choose-origin', origin: 'import' }]);
+
+    expect(onboardingReducer(atImport, { type: 'mode-chosen', paranoid: true })).toEqual(atImport);
+  });
+
+  it('enrols with the mode chosen on the step before the PIN', () => {
+    for (const paranoid of [true, false]) {
+      const chosen = run([
+        { type: 'choose-origin', origin: 'generate' },
+        { type: 'mnemonic-ready', mnemonic },
+        { type: 'mode-chosen', paranoid },
+        { type: 'pin-chosen', pin },
+      ]);
+
+      expect(chosen.step).toBe('enrolling');
+      expect(chosen.paranoid).toBe(paranoid);
+      expect(isReadyToEnroll(chosen)).toBe(true);
+    }
   });
 
   it('hands a new account its recovery kit once the server has named it', () => {
     const enrolled = run([
       { type: 'choose-origin', origin: 'generate' },
       { type: 'mnemonic-ready', mnemonic },
-      { type: 'pin-chosen', pin, paranoid: true },
+      { type: 'mode-chosen', paranoid: true },
+      { type: 'pin-chosen', pin },
       { type: 'enrolled', username: '3f1c8a2b9d4e' },
     ]);
 
@@ -114,7 +140,8 @@ describe('the onboarding flow', () => {
     const atKit = run([
       { type: 'choose-origin', origin: 'generate' },
       { type: 'mnemonic-ready', mnemonic },
-      { type: 'pin-chosen', pin, paranoid: false },
+      { type: 'mode-chosen', paranoid: false },
+      { type: 'pin-chosen', pin },
       { type: 'enrolled', username: '3f1c8a2b9d4e' },
     ]);
     expect(canEnterVault(atKit)).toBe(false);
@@ -124,21 +151,21 @@ describe('the onboarding flow', () => {
   });
 
   it('ignores a kit reported saved before there is an account to name on it', () => {
-    const atPin = run([
+    const atMode = run([
       { type: 'choose-origin', origin: 'generate' },
       { type: 'mnemonic-ready', mnemonic },
       { type: 'recovery-kit-saved' },
     ]);
 
-    expect(atPin.recoveryKitSaved).toBeUndefined();
-    expect(canEnterVault(atPin)).toBe(false);
+    expect(atMode.recoveryKitSaved).toBeUndefined();
+    expect(canEnterVault(atMode)).toBe(false);
   });
 
   it('gives a signed-in account no kit step — the phrase came from the user', () => {
     const enrolled = run([
       { type: 'choose-origin', origin: 'import' },
       { type: 'mnemonic-ready', mnemonic },
-      { type: 'pin-chosen', pin, paranoid: false },
+      { type: 'pin-chosen', pin },
       { type: 'enrolled', username: '3f1c8a2b9d4e' },
     ]);
 
@@ -158,27 +185,26 @@ describe('the onboarding flow', () => {
     expect(state.step).toBe('pin');
   });
 
-  it('asks for a PIN in both modes, because it is what wraps the local phrase', () => {
-    for (const paranoid of [true, false]) {
-      const chosen = run([
-        { type: 'choose-origin', origin: 'import' },
-        { type: 'mnemonic-ready', mnemonic },
-        { type: 'pin-chosen', pin, paranoid },
-      ]);
+  it('asks a signed-in browser for its PIN and no mode — the account already has one', () => {
+    const chosen = run([
+      { type: 'choose-origin', origin: 'import' },
+      { type: 'mnemonic-ready', mnemonic },
+      { type: 'pin-chosen', pin },
+    ]);
 
-      expect(chosen.step).toBe('enrolling');
-      expect(chosen.pin).toBe(pin);
-      expect(chosen.paranoid).toBe(paranoid);
-      expect(isReadyToEnroll(chosen)).toBe(true);
-    }
+    expect(chosen.step).toBe('enrolling');
+    expect(chosen.pin).toBe(pin);
+    expect(chosen.paranoid).toBe(false);
+    expect(isReadyToEnroll(chosen)).toBe(true);
   });
 
-  it('rejects a weak PIN whichever mode was ticked', () => {
+  it('rejects a weak PIN whichever mode was chosen', () => {
     for (const paranoid of [true, false]) {
       const rejected = run([
-        { type: 'choose-origin', origin: 'import' },
+        { type: 'choose-origin', origin: 'generate' },
         { type: 'mnemonic-ready', mnemonic },
-        { type: 'pin-chosen', pin: '111111', paranoid },
+        { type: 'mode-chosen', paranoid },
+        { type: 'pin-chosen', pin: '111111' },
       ]);
 
       expect(rejected.step).toBe('pin');
@@ -201,14 +227,29 @@ describe('the onboarding flow', () => {
 });
 
 describe('going back a step', () => {
-  it('returns the generate branch to the start, discarding the unused phrase', () => {
+  it('returns the PIN step to the mode choice, keeping the mode so it shows as chosen', () => {
     const atPin = run([
       { type: 'choose-origin', origin: 'generate' },
       { type: 'mnemonic-ready', mnemonic },
+      { type: 'mode-chosen', paranoid: true },
     ]);
     expect(atPin.step).toBe('pin');
 
-    const atOrigin = onboardingReducer(atPin, { type: 'back' });
+    const atMode = onboardingReducer(atPin, { type: 'back' });
+    expect(atMode.step).toBe('mode');
+    expect(atMode.paranoid).toBe(true);
+    expect(atMode.mnemonic).toBe(mnemonic);
+  });
+
+  it('returns the generate branch to the start, discarding the unused phrase and the mode', () => {
+    const atMode = run([
+      { type: 'choose-origin', origin: 'generate' },
+      { type: 'mnemonic-ready', mnemonic },
+    ]);
+    expect(atMode.step).toBe('mode');
+
+    const atOrigin = onboardingReducer(atMode, { type: 'back' });
+    expect(atOrigin.paranoid).toBeUndefined();
     expect(atOrigin.step).toBe('origin');
     expect(atOrigin.mnemonic).toBeUndefined();
     expect(atOrigin.origin).toBeUndefined();
@@ -252,7 +293,7 @@ describe('going back a step', () => {
     const back = run([
       { type: 'choose-origin', origin: 'import' },
       { type: 'mnemonic-ready', mnemonic },
-      { type: 'pin-chosen', pin: '111111', paranoid: true },
+      { type: 'pin-chosen', pin: '111111' },
       { type: 'back' },
     ]);
 
@@ -265,7 +306,7 @@ describe('going back a step', () => {
     const failed = run([
       { type: 'choose-origin', origin: 'import' },
       { type: 'mnemonic-ready', mnemonic },
-      { type: 'pin-chosen', pin: '123456', paranoid: true },
+      { type: 'pin-chosen', pin: '123456' },
     ]);
     expect(failed.error).toBeDefined();
 
@@ -279,7 +320,7 @@ describe('going back a step', () => {
     const enrolling = run([
       { type: 'choose-origin', origin: 'import' },
       { type: 'mnemonic-ready', mnemonic },
-      { type: 'pin-chosen', pin, paranoid: false },
+      { type: 'pin-chosen', pin },
     ]);
     expect(enrolling.step).toBe('enrolling');
     expect(canGoBack(enrolling)).toBe(false);
@@ -292,7 +333,7 @@ describe('going back a step', () => {
       { type: 'mnemonic-ready', mnemonic },
     ]);
 
-    for (const step of ['import', 'pin'] as const) {
+    for (const step of ['import', 'mode', 'pin'] as const) {
       expect(canGoBack({ ...reachable, step })).toBe(true);
     }
     for (const step of ['origin', 'enrolling', 'recovery-kit', 'done'] as const) {
@@ -315,7 +356,7 @@ describe('going back a step', () => {
     const state = run([
       { type: 'choose-origin', origin: 'import' },
       { type: 'mnemonic-ready', mnemonic },
-      { type: 'pin-chosen', pin: '123456', paranoid: true },
+      { type: 'pin-chosen', pin: '123456' },
     ]);
 
     expect(state.step).toBe('pin');
@@ -326,21 +367,23 @@ describe('going back a step', () => {
   it('needs a PIN before enrolling, in either mode', () => {
     for (const paranoid of [true, false]) {
       const withoutPin = run([
-        { type: 'choose-origin', origin: 'import' },
+        { type: 'choose-origin', origin: 'generate' },
         { type: 'mnemonic-ready', mnemonic },
+        { type: 'mode-chosen', paranoid },
       ]);
       expect(isReadyToEnroll(withoutPin)).toBe(false);
 
-      const withPin = onboardingReducer(withoutPin, { type: 'pin-chosen', pin, paranoid });
+      const withPin = onboardingReducer(withoutPin, { type: 'pin-chosen', pin });
       expect(isReadyToEnroll(withPin)).toBe(true);
     }
   });
 
   it('returns to the PIN screen when enrolment fails, in either mode', () => {
     const paranoid = run([
-      { type: 'choose-origin', origin: 'import' },
+      { type: 'choose-origin', origin: 'generate' },
       { type: 'mnemonic-ready', mnemonic },
-      { type: 'pin-chosen', pin, paranoid: true },
+      { type: 'mode-chosen', paranoid: true },
+      { type: 'pin-chosen', pin },
     ]);
     expect(paranoid.step).toBe('enrolling');
 
@@ -355,7 +398,7 @@ describe('going back a step', () => {
     const standard = run([
       { type: 'choose-origin', origin: 'import' },
       { type: 'mnemonic-ready', mnemonic },
-      { type: 'pin-chosen', pin, paranoid: false },
+      { type: 'pin-chosen', pin },
     ]);
 
     const standardFailed = onboardingReducer(standard, {

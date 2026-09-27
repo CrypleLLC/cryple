@@ -1,6 +1,7 @@
 import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from 'pdf-lib';
 import { encode } from 'uqr';
 import { assertValidMnemonic } from '@/lib/keys';
+import { GLYPH_ADVANCE, GLYPH_PATHS, GLYPH_UNITS_PER_EM } from './glyphs';
 
 export const RECOVERY_KIT_COPY = {
   appName: 'Cryple',
@@ -13,6 +14,10 @@ export const RECOVERY_KIT_COPY = {
   createdLabel: 'Created',
   phraseLabel: 'Recovery phrase',
   qrCaption: 'Scan with the Cryple mobile app to sign in.',
+  phraseNotCopyable:
+    'These words cannot be selected or copied, on purpose. A clipboard is shared with other apps ' +
+    'and is often synced to your other devices, so your recovery phrase should never pass through ' +
+    'one. Type it in by hand when you need it.',
   warning:
     'Anyone who holds this document can open your vault. Cryple never sees this phrase and cannot ' +
     'reset or recover it: if you lose it, nobody can restore it for you.',
@@ -43,6 +48,13 @@ export interface RecoveryKitContent {
   qrPayload: string;
   qrCaption: string;
   warning: string;
+}
+
+export class RecoveryKitGlyphError extends Error {
+  constructor() {
+    super('the recovery phrase has a character the kit has no outline for');
+    this.name = 'RecoveryKitGlyphError';
+  }
 }
 
 export class RecoveryKitOverflowError extends Error {
@@ -112,6 +124,16 @@ export function recoveryKitGridCell(
   return { column: Math.floor(index / rows), row: index % rows };
 }
 
+export function recoveryKitWordOutlines(word: string): { path: string; offset: number }[] {
+  return [...word].map((letter, index) => {
+    const path = GLYPH_PATHS[letter];
+    if (path === undefined) {
+      throw new RecoveryKitGlyphError();
+    }
+    return { path, offset: index * GLYPH_ADVANCE };
+  });
+}
+
 export function recoveryKitFileName(username: string): string {
   return `cryple-recovery-kit-${username}.pdf`;
 }
@@ -125,6 +147,8 @@ const PHRASE_WORD_SIZE = 13;
 const BODY_SIZE = 10.5;
 const BODY_LINE_HEIGHT = 15;
 const LABEL_SIZE = 9;
+const NOTE_SIZE = 8;
+const NOTE_LINE_HEIGHT = 11;
 const SECTION_GAP = 28;
 
 const INK = rgb(0x1f / 255, 0x29 / 255, 0x37 / 255);
@@ -139,7 +163,22 @@ const WARNING_RULE = rgb(0xfd / 255, 0xe6 / 255, 0x8a / 255);
 interface KitFonts {
   regular: PDFFont;
   bold: PDFFont;
-  mono: PDFFont;
+}
+
+function drawOutlinedWord(
+  page: PDFPage,
+  word: string,
+  options: { x: number; baseline: number; size: number; color: typeof INK },
+): void {
+  const scale = options.size / GLYPH_UNITS_PER_EM;
+  for (const { path, offset } of recoveryKitWordOutlines(word)) {
+    page.drawSvgPath(path, {
+      x: options.x + offset * scale,
+      y: options.baseline,
+      scale,
+      color: options.color,
+    });
+  }
 }
 
 function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
@@ -219,7 +258,12 @@ function drawField(
   return valueBaseline - 4;
 }
 
-function drawHeader(page: PDFPage, fonts: KitFonts, content: RecoveryKitContent, top: number): number {
+function drawHeader(
+  page: PDFPage,
+  fonts: KitFonts,
+  content: RecoveryKitContent,
+  top: number,
+): number {
   const [width] = A4_PAGE;
 
   const titleBaseline = top - 28;
@@ -310,7 +354,12 @@ function drawIdentity(
   return Math.min(left, captionBaseline) - SECTION_GAP;
 }
 
-function drawPhrase(page: PDFPage, fonts: KitFonts, content: RecoveryKitContent, top: number): number {
+function drawPhrase(
+  page: PDFPage,
+  fonts: KitFonts,
+  content: RecoveryKitContent,
+  top: number,
+): number {
   const [width] = A4_PAGE;
   const boxWidth = width - 2 * PAGE_MARGIN;
 
@@ -351,19 +400,40 @@ function drawPhrase(page: PDFPage, fonts: KitFonts, content: RecoveryKitContent,
       font: fonts.regular,
       color: INK_MUTED,
     });
-    page.drawText(word, {
+    drawOutlinedWord(page, word, {
       x: cellLeft + numberWidth + 8,
-      y: baseline,
+      baseline,
       size: PHRASE_WORD_SIZE,
-      font: fonts.mono,
       color: INK,
     });
   });
 
-  return boxTop - boxHeight - SECTION_GAP;
+  let noteBaseline = boxTop - boxHeight - 8 - NOTE_SIZE;
+  for (const line of wrapText(
+    RECOVERY_KIT_COPY.phraseNotCopyable,
+    fonts.regular,
+    NOTE_SIZE,
+    boxWidth,
+  )) {
+    page.drawText(line, {
+      x: PAGE_MARGIN,
+      y: noteBaseline,
+      size: NOTE_SIZE,
+      font: fonts.regular,
+      color: INK_MUTED,
+    });
+    noteBaseline -= NOTE_LINE_HEIGHT;
+  }
+
+  return noteBaseline + NOTE_LINE_HEIGHT - SECTION_GAP;
 }
 
-function drawWarning(page: PDFPage, fonts: KitFonts, content: RecoveryKitContent, top: number): number {
+function drawWarning(
+  page: PDFPage,
+  fonts: KitFonts,
+  content: RecoveryKitContent,
+  top: number,
+): number {
   const [width] = A4_PAGE;
   const boxWidth = width - 2 * PAGE_MARGIN;
   const padding = 14;
@@ -403,7 +473,6 @@ export async function buildRecoveryKitPdf(input: RecoveryKitInput): Promise<Uint
   const fonts: KitFonts = {
     regular: await document.embedFont(StandardFonts.Helvetica),
     bold: await document.embedFont(StandardFonts.HelveticaBold),
-    mono: await document.embedFont(StandardFonts.CourierBold),
   };
 
   const page = document.addPage(A4_PAGE);
