@@ -15,6 +15,17 @@ html[data-staging] {
 }
 
 @theme {
+  --animate-slide-in-left: slide-in-left 180ms ease-out;
+
+  @keyframes slide-in-left {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+
   --color-brand-50: #eef2ff;
   --color-brand-100: #e0e7ff;
   --color-brand-200: #c7d2fe;

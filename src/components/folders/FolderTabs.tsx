@@ -35,6 +35,7 @@ import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider
 import { FolderIcon, FolderPlusIcon, PencilIcon, TrashIcon } from '@/components/ui/icons';
 import { Button, Notice } from '@/components/ui';
 import { ConfirmDeleteModal } from '@/components/modal';
+import { ScreenStrip } from '@/components/shell/ScreenStrip';
 
 export const DRAGGED_ITEMS_TYPE = 'application/x-cryple-items';
 
@@ -263,7 +264,11 @@ export default function FolderTabs({
   }
 
   if (tabs === undefined) {
-    return <div className="h-11 border-b border-line" aria-hidden="true" />;
+    return (
+      <ScreenStrip>
+        <div className="h-10 border-b border-line bg-surface/90 backdrop-blur" aria-hidden="true" />
+      </ScreenStrip>
+    );
   }
 
   const problem = naming === undefined ? undefined : tabNameProblem(naming.name, tabs, naming.id);
@@ -273,8 +278,7 @@ export default function FolderTabs({
     if (naming === undefined || problem !== undefined) {
       return;
     }
-    const done =
-      naming.id === undefined ? await state.create(naming.name) : await state.rename(naming.id, naming.name);
+    const done = naming.id === undefined ? await state.create(naming.name) : await state.rename(naming.id, naming.name);
     if (done) {
       setNaming(undefined);
     }
@@ -312,69 +316,77 @@ export default function FolderTabs({
     };
   }
 
+  const problemShown = naming !== undefined && problem !== undefined && naming.name.trim() !== '';
+
   return (
-    <div className="space-y-3">
-      <div className="relative">
-        <div className="absolute inset-x-0 bottom-0 h-px bg-line" aria-hidden="true" />
-        <div role="tablist" aria-label={label} className="relative flex items-end gap-1 overflow-x-auto px-1 pt-1">
-          {tabs.map((tab) =>
-            naming?.id === tab.id ? (
+    <>
+      <ScreenStrip>
+        <div className="relative bg-surface/90 backdrop-blur">
+          <div className="absolute inset-x-0 bottom-0 h-px bg-line" aria-hidden="true" />
+          <div role="tablist" aria-label={label} className="relative flex h-10 items-stretch overflow-x-auto">
+            {tabs.map((tab) =>
+              naming?.id === tab.id ? (
+                <TabNameInput
+                  key={tab.id}
+                  value={naming.name}
+                  label={`Rename ${tab.name}`}
+                  onChange={(name) => setNaming({ id: tab.id, name })}
+                  onKeyDown={onNameKey}
+                  onBlur={() => void commitName()}
+                />
+              ) : (
+                <FolderTabButton
+                  key={tab.id}
+                  tab={tab}
+                  nouns={nouns}
+                  selected={tab.id === active}
+                  dropping={dropTarget === tab.id}
+                  busy={busy}
+                  onSelect={() => state.select(tab.id)}
+                  onRename={() => setNaming({ id: tab.id, name: tab.name })}
+                  onDelete={tab.home ? undefined : () => setDeleting(tab)}
+                  {...dropProps(tab)}
+                />
+              ),
+            )}
+
+            {naming !== undefined && naming.id === undefined ? (
               <TabNameInput
-                key={tab.id}
                 value={naming.name}
-                label={`Rename ${tab.name}`}
-                onChange={(name) => setNaming({ id: tab.id, name })}
+                label="New tab name"
+                onChange={(name) => setNaming({ name })}
                 onKeyDown={onNameKey}
-                onBlur={() => void commitName()}
+                onBlur={() => (naming.name.trim() === '' ? setNaming(undefined) : void commitName())}
               />
             ) : (
-              <FolderTabButton
-                key={tab.id}
-                tab={tab}
-                nouns={nouns}
-                selected={tab.id === active}
-                dropping={dropTarget === tab.id}
-                busy={busy}
-                onSelect={() => state.select(tab.id)}
-                onRename={() => setNaming({ id: tab.id, name: tab.name })}
-                onDelete={tab.home ? undefined : () => setDeleting(tab)}
-                {...dropProps(tab)}
-              />
-            ),
-          )}
-
-          {naming !== undefined && naming.id === undefined ? (
-            <TabNameInput
-              value={naming.name}
-              label="New tab name"
-              onChange={(name) => setNaming({ name })}
-              onKeyDown={onNameKey}
-              onBlur={() => (naming.name.trim() === '' ? setNaming(undefined) : void commitName())}
-            />
-          ) : (
-            <button
-              type="button"
-              title="New tab"
-              aria-label="New tab"
-              disabled={busy}
-              onClick={() => setNaming({ name: '' })}
-              className="mb-1 ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-brand-50 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 disabled:opacity-50"
-            >
-              <FolderPlusIcon className="h-5 w-5 shrink-0" />
-            </button>
-          )}
+              <button
+                type="button"
+                title="New tab"
+                aria-label="New tab"
+                disabled={busy}
+                onClick={() => setNaming({ name: '' })}
+                className="flex w-10 shrink-0 items-center justify-center text-ink-muted transition-colors hover:bg-raised hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/50 disabled:opacity-50"
+              >
+                <FolderPlusIcon className="h-4.5 w-4.5 shrink-0" />
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      </ScreenStrip>
 
-      {naming !== undefined && problem !== undefined && naming.name.trim() !== '' ? (
-        <p className="text-compact text-danger" role="alert">
-          {problem}
-        </p>
-      ) : null}
-      {state.message ? (
-        <Notice tone="danger" onDismiss={state.dismissMessage}>
-          {state.message}
-        </Notice>
+      {problemShown || state.message ? (
+        <div className="space-y-3">
+          {problemShown ? (
+            <p className="text-compact text-danger" role="alert">
+              {problem}
+            </p>
+          ) : null}
+          {state.message ? (
+            <Notice tone="danger" onDismiss={state.dismissMessage}>
+              {state.message}
+            </Notice>
+          ) : null}
+        </div>
       ) : null}
 
       {deleting !== undefined ? (
@@ -400,7 +412,7 @@ export default function FolderTabs({
           {refusal ?? tabDeleteConfirmation(deleting, nouns)}
         </ConfirmDeleteModal>
       ) : null}
-    </div>
+    </>
   );
 }
 
@@ -428,13 +440,13 @@ function FolderTabButton({
   onDrop: (event: ReactDragEvent) => void;
 }) {
   const shape = selected
-    ? 'z-10 border-line bg-surface text-ink shadow-card after:absolute after:inset-x-0 after:-bottom-px after:h-px after:bg-surface'
-    : 'border-transparent bg-raised text-ink-muted hover:bg-brand-50/60 hover:text-ink';
+    ? 'bg-ground text-ink before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-brand-500'
+    : 'text-ink-muted hover:bg-raised hover:text-ink';
 
   return (
     <div
-      className={`group relative flex shrink-0 items-center rounded-t-xl border border-b-0 transition-colors ${shape} ${
-        dropping ? 'bg-brand-50 text-brand-700 ring-2 ring-brand-400' : ''
+      className={`group relative flex shrink-0 items-center border-r border-line transition-colors ${shape} ${
+        dropping ? 'bg-brand-50 text-brand-700 ring-2 ring-inset ring-brand-400' : ''
       }`}
       {...drop}
     >
@@ -445,7 +457,7 @@ function FolderTabButton({
         title={countOf(tab.count, nouns)}
         onClick={onSelect}
         onDoubleClick={onRename}
-        className="flex max-w-[14rem] items-center gap-2 rounded-t-xl py-2 pl-3.5 pr-2 text-compact font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/50"
+        className="flex h-full max-w-[14rem] items-center gap-2 pl-3.5 pr-2 text-compact font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/50"
       >
         <FolderIcon className={`h-4 w-4 shrink-0 ${selected ? 'text-brand-500' : 'text-ink-faint'}`} />
         <span className="truncate">{tab.name}</span>
@@ -505,7 +517,7 @@ function TabNameInput({
   }, []);
 
   return (
-    <div className="relative z-10 flex shrink-0 items-center gap-2 rounded-t-xl border border-b-0 border-brand-300 bg-surface py-1.5 pl-3.5 pr-2 shadow-card">
+    <div className="relative flex shrink-0 items-center gap-2 border-r border-line bg-ground pl-3.5 pr-2 ring-2 ring-inset ring-brand-300">
       <FolderIcon className="h-4 w-4 shrink-0 text-brand-500" />
       <input
         ref={input}

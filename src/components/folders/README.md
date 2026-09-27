@@ -6,15 +6,19 @@ system's.
 
 ### Tabs — Vault and Notes (`FolderTabs.tsx`)
 
-**The strip sits at the top of the screen, directly under the header**, and filters what the screen
-below it lists. `useFolderTabs(scope, itemIds)` owns the sealed manifest
+**The strip sits directly under the header, flush with it and with the sidebar**, like a browser's
+bookmarks bar, and filters what the screen below it lists. It is rendered through
+[`ScreenStrip`](../shell/README.md#the-screen-strip) into the shell's sticky top bar, so it spans the
+whole content column and stays in view while the list scrolls; the notices it raises stay in the
+screen. `useFolderTabs(scope, itemIds)` owns the sealed manifest
 ([`lib/folders`](../../lib/folders/README.md)); `buildFolderTabs` and `itemsInTab` in
 [`lib/app/folders.ts`](../../lib/app/README.md) decide what each tab shows.
 
 - **`home` is always first** and holds everything not filed elsewhere. It can be renamed, never
   deleted.
-- **Tabs are drawn as folder tabs**: a raised, open-bottomed tab joins the list under it; the others
-  sit back on the rule. Each carries its count.
+- **Tabs are flat, square segments** separated by a rule, the first touching the sidebar. The open
+  one takes the page's background and a brand line on top, so it reads as joined to the list under
+  it; the others sit on the bar. Each carries its count.
 - **New tab** is the folder-plus button at the end of the strip; typing happens in place, in a
   tab-shaped field. **Rename** is a double click or the pencil; **delete** is the trash, confirmed in a
   modal that says the items go with the tab. A non-empty tab can only be deleted from a full device,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ComponentType } from 'react';
+import { useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import type { Scope } from '@/lib/scopes';
@@ -25,6 +25,8 @@ import {
   DriveIcon,
   LockSessionIcon,
   LogOutIcon,
+  MenuIcon,
+  CloseIcon,
   NotesIcon,
   PasswordsIcon,
   VaultIcon,
@@ -32,6 +34,7 @@ import {
   SharingIcon,
 } from '@/components/ui/icons';
 import StorageMeter from './StorageMeter';
+import { ScreenStripSlotProvider } from './ScreenStrip';
 import { Button, Notice, Spinner } from '@/components/ui';
 
 const DocumentsScreen = dynamic(() => import('@/components/documents/DocumentsScreen'), {
@@ -126,6 +129,8 @@ export default function AppShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [exitError, setExitError] = useState<string>();
   const [chainProblemDismissed, setChainProblemDismissed] = useState(false);
+  const [stripSlot, setStripSlot] = useState<HTMLElement | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const exits = sessionExits();
   const lockable = lockExit(exits);
@@ -134,6 +139,11 @@ export default function AppShell() {
   const Screen = current.screen;
   const ScreenActions = current.actions;
   const measure = contentMeasure(current.miniatures === true);
+
+  function select(id: string) {
+    setTab(id as TabId);
+    setMenuOpen(false);
+  }
 
   function run(exit: SessionExit) {
     if (exit.confirm !== undefined && confirming?.id !== exit.id) {
@@ -152,66 +162,64 @@ export default function AppShell() {
     <VaultRevealProvider>
       <div className="flex min-h-screen bg-ground">
         <aside className="sticky top-[var(--staging-banner-h)] hidden h-[calc(100vh-var(--staging-banner-h))] w-64 shrink-0 flex-col border-r border-line bg-surface px-3 py-5 md:flex">
-          <BrandMark />
-          <nav className="mt-8 flex flex-1 flex-col gap-1">
-            {navItems.map((item) => (
-              <NavButton
-                key={item.id}
-                item={item}
-                active={tab === item.id}
-                onSelect={() => setTab(item.id as TabId)}
-              />
-            ))}
-          </nav>
-          {holds('files') ? <StorageMeter /> : null}
+          <SidebarContent navItems={navItems} active={tab} storage={holds('files')} onSelect={select} />
         </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-[var(--staging-banner-h)] z-10 border-b border-line bg-surface/90 backdrop-blur md:hidden">
-            <div className="flex items-center justify-between gap-2 px-4 py-3">
-              <BrandMark />
-              <div className="flex shrink-0 items-center gap-2">
-                {ScreenActions ? <ScreenActions /> : null}
-                {lockable ? <LockButton exit={lockable} onRun={run} /> : null}
-                <AccountMenu
-                  username={account?.username}
-                  logOut={leave}
-                  onSettings={() => setSettingsOpen(true)}
-                  onLogOut={run}
-                />
-              </div>
-            </div>
-            <nav className="flex gap-1 overflow-x-auto px-3 pb-3">
-              {navItems.map((item) => (
-                <NavButton
-                  key={item.id}
-                  item={item}
-                  active={tab === item.id}
-                  compact
-                  onSelect={() => setTab(item.id as TabId)}
-                />
-              ))}
-            </nav>
-          </header>
+        {menuOpen ? (
+          <MobileMenu onClose={() => setMenuOpen(false)}>
+            <SidebarContent navItems={navItems} active={tab} storage={holds('files')} onSelect={select} />
+          </MobileMenu>
+        ) : null}
 
-          <header className="sticky top-[var(--staging-banner-h)] z-10 hidden border-b border-line bg-surface/90 py-4 backdrop-blur md:block">
-            <div className={`mx-auto flex w-full ${measure} items-center justify-between gap-4 px-6`}>
-              <div className="min-w-0">
-                <h1 className="text-headline-lg text-ink">{current.label}</h1>
-                <p className="mt-0.5 truncate text-compact text-ink-muted">{current.description}</p>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="sticky top-[var(--staging-banner-h)] z-10">
+            <header className="border-b border-line bg-surface/90 backdrop-blur md:hidden">
+              <div className="flex items-center justify-between gap-2 py-2 pr-4 pl-2">
+                <div className="flex min-w-0 items-center gap-1">
+                  <button
+                    type="button"
+                    aria-label="Open menu"
+                    aria-expanded={menuOpen}
+                    onClick={() => setMenuOpen(true)}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-raised hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+                  >
+                    <MenuIcon className="h-6 w-6 shrink-0" />
+                  </button>
+                  <h1 className="truncate text-headline text-ink">{current.label}</h1>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {ScreenActions ? <ScreenActions /> : null}
+                  {lockable ? <LockButton exit={lockable} onRun={run} /> : null}
+                  <AccountMenu
+                    username={account?.username}
+                    logOut={leave}
+                    onSettings={() => setSettingsOpen(true)}
+                    onLogOut={run}
+                  />
+                </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {ScreenActions ? <ScreenActions /> : null}
-                {lockable ? <LockButton exit={lockable} onRun={run} /> : null}
-                <AccountMenu
-                  username={account?.username}
-                  logOut={leave}
-                  onSettings={() => setSettingsOpen(true)}
-                  onLogOut={run}
-                />
+            </header>
+
+            <header className="hidden border-b border-line bg-surface/90 py-4 backdrop-blur md:block">
+              <div className={`mx-auto flex w-full ${measure} items-center justify-between gap-4 px-6`}>
+                <div className="min-w-0">
+                  <h1 className="text-headline-lg text-ink">{current.label}</h1>
+                  <p className="mt-0.5 truncate text-compact text-ink-muted">{current.description}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {ScreenActions ? <ScreenActions /> : null}
+                  {lockable ? <LockButton exit={lockable} onRun={run} /> : null}
+                  <AccountMenu
+                    username={account?.username}
+                    logOut={leave}
+                    onSettings={() => setSettingsOpen(true)}
+                    onLogOut={run}
+                  />
+                </div>
               </div>
-            </div>
-          </header>
+            </header>
+            <div ref={setStripSlot} className="empty:hidden" />
+          </div>
 
           <main className={`mx-auto w-full ${measure} flex-1 space-y-8 p-4 md:p-6`}>
             {chainProblem && !chainProblemDismissed ? (
@@ -243,13 +251,88 @@ export default function AppShell() {
               </Notice>
             ) : null}
 
-            <Screen />
+            <ScreenStripSlotProvider value={stripSlot}>
+              <Screen />
+            </ScreenStripSlotProvider>
           </main>
 
           {settingsOpen ? <SettingsModal onClose={() => setSettingsOpen(false)} /> : null}
         </div>
       </div>
     </VaultRevealProvider>
+  );
+}
+
+function SidebarContent({
+  navItems,
+  active,
+  storage,
+  onSelect,
+}: {
+  navItems: readonly NavItem[];
+  active: string;
+  storage: boolean;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <>
+      <BrandMark />
+      <nav className="mt-8 flex flex-1 flex-col gap-1">
+        {navItems.map((item) => (
+          <NavButton key={item.id} item={item} active={active === item.id} onSelect={() => onSelect(item.id)} />
+        ))}
+      </nav>
+      {storage ? <StorageMeter /> : null}
+    </>
+  );
+}
+
+function MobileMenu({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  const closeButton = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    closeButton.current?.focus();
+    function onKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    }
+    document.addEventListener('keydown', onKey);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = overflow;
+    };
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-x-0 top-[var(--staging-banner-h)] bottom-0 z-40 md:hidden">
+      <button
+        type="button"
+        aria-label="Close menu"
+        tabIndex={-1}
+        onClick={onClose}
+        className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
+      />
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label="Menu"
+        className="relative motion-safe:animate-slide-in-left flex h-full w-72 max-w-[85vw] flex-col border-r border-line bg-surface px-3 py-5 shadow-card"
+      >
+        <button
+          ref={closeButton}
+          type="button"
+          aria-label="Close menu"
+          onClick={onClose}
+          className="absolute top-4 right-3 flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-raised hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+        >
+          <CloseIcon className="h-5 w-5 shrink-0" />
+        </button>
+        {children}
+      </aside>
+    </div>
   );
 }
 
@@ -265,30 +348,14 @@ function BrandMark() {
   );
 }
 
-function NavButton({
-  item,
-  active,
-  compact = false,
-  onSelect,
-}: {
-  item: NavItem;
-  active: boolean;
-  compact?: boolean;
-  onSelect: () => void;
-}) {
+function NavButton({ item, active, onSelect }: { item: NavItem; active: boolean; onSelect: () => void }) {
   const ItemIcon = item.icon;
 
   return (
     <button
       onClick={onSelect}
       aria-current={active ? 'page' : undefined}
-      className={`flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-compact font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 ${
-        compact ? 'shrink-0' : 'w-full'
-      } ${
-        active
-          ? 'bg-brand-50 text-brand-700'
-          : 'text-ink-soft hover:bg-raised hover:text-ink'
-      }`}
+      className={`flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-compact font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 w-full ${active ? 'bg-brand-50 text-brand-700' : 'text-ink-soft hover:bg-raised hover:text-ink'}`}
     >
       <ItemIcon className={`h-5 w-5 shrink-0 ${active ? 'text-brand-500' : 'text-ink-muted'}`} />
       <span>{item.label}</span>

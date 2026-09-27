@@ -6,6 +6,7 @@ The frame around every screen, and what sits in it.
 | --- | --- |
 | `AppShell.tsx` | Task 25 — the sidebar shell and the navigation registry, `NAV_ITEMS` |
 | `AccountMenu.tsx` | The avatar menu in the top bar: *Settings* and *Remove this browser* |
+| `ScreenStrip.tsx` | The full-width bar slot under the top bar, for a screen's own tabs |
 | `StorageMeter.tsx` | The account's storage bar, in the sidebar corner — stored bytes solid, reservations behind them |
 | `StagingBanner.tsx` | The walking red warning banner, dev-only — see [`app`](../../app/README.md#the-staging-banner) |
 
@@ -13,8 +14,13 @@ The frame around every screen, and what sits in it.
 
 The shell is a Drive-style dashboard: a fixed left sidebar with the logo, the navigation and the
 account summary, a sticky top bar carrying the current section's title and the session-exit
-buttons, and a full-width content column. Below the `md` breakpoint the sidebar folds into a
-sticky top header with a horizontally scrolling nav row.
+buttons, and a full-width content column. Below the `md` breakpoint the sidebar is hidden behind a
+menu button at the left of a compact top bar, which shows the current section's name and the same
+actions as the desktop one. The button opens `MobileMenu`, a drawer that slides in from the left
+over a dimmed page and holds exactly what the sidebar holds (`SidebarContent`: logo, navigation,
+storage meter). Choosing a section, the backdrop, the close button or Escape closes it, and the
+page behind does not scroll while it is open. A screen's own tabs — the Vault and Notes strip — stay
+on the page under the top bar, not in the drawer: they belong to the screen, not to navigation.
 
 Navigation is one registry, `NAV_ITEMS` in `AppShell.tsx`. Each entry is
 `{ id, label, description, icon, screen, actions? }`; adding a section means adding one entry and
@@ -25,6 +31,14 @@ top bar beside Lock and the account menu, for controls that belong to the whole 
 panel; the Vault's global reveal toggle is the first of them. State shared between such a control
 and its screen lives in a provider wrapping the shell, as `VaultReveal.tsx` does, since the header
 sits outside the screen's tree.
+
+## The screen strip
+
+Both headers and an empty slot under them share one sticky wrapper. A screen puts a full-width bar
+there — the Vault and Notes tabs — by wrapping it in `ScreenStrip` (`ScreenStrip.tsx`), which portals
+into the slot the shell provides through `ScreenStripSlotProvider`. The slot is `empty:hidden`, so a
+screen that puts nothing there leaves no gap, and the bar is not capped by the content measure: it
+starts at the sidebar's edge. Outside the shell, `ScreenStrip` renders its children in place.
 
 ## Reading widths are capped; miniature grids are not
 
