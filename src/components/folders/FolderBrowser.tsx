@@ -31,10 +31,11 @@ import {
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
 import { DRAGGED_ITEMS_TYPE } from './FolderTabs';
-import { FolderGlyph, FolderPlusIcon, PencilIcon, TrashIcon } from '@/components/ui/icons';
+import { FolderGlyph, FolderPlusIcon, InfoIcon, TrashIcon } from '@/components/ui/icons';
 import { Button, Field, Notice } from '@/components/ui';
 import { ConfirmDeleteModal, FormModal } from '@/components/modal';
 import { TileAction } from '@/components/tiles';
+import { SIDE_PANEL_TRIGGER } from '@/components/shell/SidePanel';
 
 export const DRAGGED_FOLDER_TYPE = 'application/x-cryple-folder';
 
@@ -216,13 +217,16 @@ export function FolderPath({
   rootLabel,
   rootIcon,
   itemIdsFor,
+  onDetails,
 }: {
   state: FolderTreeState;
   rootLabel: string;
   rootIcon: ReactNode;
   itemIdsFor: (ids: string[]) => string[];
+  onDetails?: (folderId: string) => void;
 }) {
   const [naming, setNaming] = useState(false);
+  const openFolder = state.path.at(-1);
 
   if (state.folders === undefined) {
     return <div className="h-11" aria-hidden="true" />;
@@ -251,6 +255,20 @@ export function FolderPath({
                 itemIdsFor={itemIdsFor}
               />
             ))}
+            {onDetails !== undefined && openFolder !== undefined ? (
+              <li className="flex items-center">
+                <button
+                  type="button"
+                  {...SIDE_PANEL_TRIGGER}
+                  aria-label={`Details of ${folderLabel(openFolder)}`}
+                  title={`Details of ${folderLabel(openFolder)}`}
+                  onClick={() => onDetails(openFolder.id)}
+                  className="ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-raised hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+                >
+                  <InfoIcon className="h-5 w-5 shrink-0" />
+                </button>
+              </li>
+            ) : null}
           </ol>
         </nav>
         {state.invalid ? null : (
@@ -341,28 +359,23 @@ export function FolderTile({
   folder,
   nouns,
   glyphPixels,
-  frameClass,
   itemIdsFor,
+  onDetails,
 }: {
   state: FolderTreeState;
   folder: TreeFolder;
   nouns: FolderNouns;
   glyphPixels?: number;
-  frameClass?: string;
   itemIdsFor: (ids: string[]) => string[];
+  onDetails?: () => void;
 }) {
   const { fullDevice } = useCryple();
   const drop = useDropTarget(state, folder.id, itemIdsFor);
-  const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const label = folderLabel(folder);
   const subfolders = useMemo(
     () => descendantsOf(state.folders ?? [], folder.id).size - 1,
     [state.folders, folder.id],
-  );
-  const siblings = useMemo(
-    () => childrenOf(state.folders ?? [], folder.parentId),
-    [state.folders, folder.parentId],
   );
 
   return (
@@ -383,11 +396,11 @@ export function FolderTile({
       >
         <span
           className={`flex items-end justify-center drop-shadow-sm transition-transform duration-150 group-hover:-translate-y-0.5 ${
-            frameClass ?? ''
+            glyphPixels === undefined ? 'aspect-square w-full' : ''
           }`}
           style={glyphPixels === undefined ? undefined : { height: glyphPixels, width: glyphPixels }}
         >
-          <span className={glyphPixels === undefined ? 'block w-[78%]' : 'block h-full w-full'}>
+          <span className="block h-full w-full">
             <FolderGlyph open={drop.over} />
           </span>
         </span>
@@ -399,39 +412,21 @@ export function FolderTile({
           >
             {label}
           </span>
-          <span className="mt-0.5 block truncate text-caption normal-case tracking-normal text-ink-muted">
-            {subfolders === 0 ? 'Folder' : `${subfolders} ${subfolders === 1 ? 'folder' : 'folders'} inside`}
-          </span>
         </span>
       </button>
 
       <div className="absolute right-1 top-1 z-10 flex gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
-        <TileAction label={`Rename ${label}`} disabled={state.busy} onClick={() => setRenaming(true)}>
-          <PencilIcon className="h-3 w-3 shrink-0" />
-        </TileAction>
+        {onDetails ? (
+          <TileAction label={`Details of ${label}`} tone="neutral" triggersSidePanel onClick={onDetails}>
+            <InfoIcon className="h-3 w-3 shrink-0" />
+          </TileAction>
+        ) : null}
         {fullDevice ? (
           <TileAction label={`Delete ${label}`} tone="danger" disabled={state.busy} onClick={() => setDeleting(true)}>
             <TrashIcon className="h-3 w-3 shrink-0" />
           </TileAction>
         ) : null}
       </div>
-
-      {renaming ? (
-        <FolderNameDialog
-          title={`Rename “${label}”`}
-          action="Rename"
-          initial={folder.name ?? ''}
-          renaming={folder.id}
-          siblings={siblings}
-          busy={state.busy}
-          onClose={() => setRenaming(false)}
-          onSubmit={async (name) => {
-            if (await state.rename(folder.id, name)) {
-              setRenaming(false);
-            }
-          }}
-        />
-      ) : null}
 
       {deleting ? (
         <ConfirmDeleteModal

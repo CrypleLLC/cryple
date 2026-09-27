@@ -482,17 +482,24 @@ how far over the limit a paste landed instead of just refusing.
 
 ## How large the three grids draw themselves
 
-`icon-size.ts` is the whole zoom control as data. One vocabulary of four steps — `small`, `medium`,
-`large`, `huge` — serves the drive, notes and documents, because they are three views of the same
+`icon-size.ts` is the whole zoom control as data. One vocabulary of five steps — `tiny`, `small`,
+`medium`, `large`, `huge`, shown as *Extra small* to *Extra large* — serves the drive, notes and documents, because they are three views of the same
 idea and a user who has learned the control on one should not meet a different one on the next.
 
 The steps carry **two geometries**, because the screens are not drawing the same kind of thing:
 
-| | Drive | Notes and documents |
-| --- | --- | --- |
-| What is drawn | a square icon, `glyphPixels` | a page miniature filling the column |
-| What the step sets | `tilePixels`, the column the icon sits in | `pagePixels`, the column, which *is* the page width |
-| Sizes | 48 / 64 / 96 / 128 glyphs | 136 / 160 / 200 / 264 columns |
+| | Drive | Documents | Notes |
+| --- | --- | --- | --- |
+| What is drawn | a square icon, `glyphPixels` | an A4 miniature `glyphPixels` wide | a page miniature filling the column |
+| What the step sets | `tilePixels`, the column the icon sits in | the drive's `tilePixels` column | `pagePixels('notes', size)`, the column, which *is* the page width |
+| Sizes | 32 / 48 / 64 / 96 / 128 glyphs | 32 / 48 / 64 / 96 / 128 pages | 104 / 136 / 160 / 200 / 264 columns |
+
+**Documents is laid out exactly like the drive.** Both screens hold folders, and a folder should
+be the same size on either at the same step, so the documents grid takes the drive's columns, its
+folders take the drive's `glyphPixels`, and its pages are as wide as those folders
+(`pagePixels('documents', size)`), centred with the name under them, as a file is on the drive.
+`PageTile` draws that shape when it is given a `pageWidth`; without one, as on Notes, the page
+fills the column. A test pins that the two grids and the two widths are the same at every step.
 
 **A drive file has no page to draw, and a note is nothing but one.** That is the whole reason for
 the split. The drive's glyph sizes are the ones a desktop file manager uses, and for its reason:
@@ -507,8 +514,20 @@ where a title is still readable and the body is at least a texture.
 - **Every grid is `auto-fill`, not a column count.** Choosing a size chooses how big a thing is, and
   the row fits however many of them fit — a fixed `grid-cols-5` would make the small step draw five
   enormous gaps instead of twenty small tiles, which is the opposite of what was asked for.
-- **`labelsTheGlyph` is false only at `small`.** The drive's extension badge is drawn inside a
-  48-unit viewBox, so at 48px it renders around 6px tall — present, unreadable, and noise. The
+- **A note page is exactly its step's width, never stretched.** Notes columns are
+  `repeat(auto-fill, <pagePixels>px)`, not `minmax(<pagePixels>px, 1fr)`. With `1fr`, a column grew
+  to fill the row, so on a phone Small (136px) and Medium (160px) both fitted two columns and both
+  stretched to the same ~160px page — only the preview text, sized from the step, changed. The cost
+  is some space left at the end of a row, as in any file manager; the drive and documents grids
+  keep `1fr` because their icon is a fixed size inside the column, so stretching the column never
+  changed what they drew.
+- **`tiny` is for scanning a lot at once.** A 32px glyph, an 80px drive tile (still wider than
+  the glyph, so a name has room), and a 104px note page. At that size a note's or a document's
+  preview is a texture rather than something to read — the text sits at
+  `MINIATURE_TEXT_FLOOR_PIXELS` — which is what the step is for: the shape of many items, not
+  their words.
+- **`labelsTheGlyph` is false at `tiny` and `small`.** The drive's extension badge is drawn inside a
+  48-unit viewBox, so at 48px it renders around 6px tall, and smaller still at 32px — present, unreadable, and noise. The
   coloured band it sits on stays: the colour is the type signal at that size, exactly as it is on a
   desktop.
 - **Stepping holds at the ends rather than wrapping**, because a `+` that jumps from the largest
@@ -523,12 +542,13 @@ is right on a 200px page and absurd on a 264px one.
 
 `miniatureTextPixels(size, share)` closes it. The shares are constants beside it —
 `NOTE_MINIATURE_TEXT_SHARE`, `DOCUMENT_MINIATURE_TEXT_SHARE`, `DOCUMENT_MINIATURE_TITLE_SHARE` —
-chosen so the `large` step reproduces exactly what shipped before the control existed: 9px note
-body, 8px document body, 10px document title. Everything else follows from the ratio.
+chosen so the notes' `large` step reproduces exactly what shipped before the control existed: a
+9px note body. Everything else follows from the ratio, on each grid's own page width.
 
-`MINIATURE_TEXT_FLOOR_PIXELS` stops the small step rounding text away to nothing. A test pins that
-the document title stays larger than its body at **every** step, including the one where the floor
-bites — that is the assertion that caught the small page being 120px, where both landed on 6.
+`MINIATURE_TEXT_FLOOR_PIXELS` stops the small step rounding text away to nothing. On the documents
+ladder the floor bites at every step for the body, so `documentMiniatureTitlePixels` keeps the
+title at least a pixel above it; a test pins that the title stays larger than its body at **every**
+step — the assertion that once caught a 120px page where both landed on 6.
 
 ### Remembered per screen, not once
 

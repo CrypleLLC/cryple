@@ -16,6 +16,16 @@ html[data-staging] {
 
 @theme {
   --animate-slide-in-left: slide-in-left 180ms ease-out;
+  --animate-slide-in-right: slide-in-right 180ms ease-out;
+
+  @keyframes slide-in-right {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
 
   @keyframes slide-in-left {
     from {

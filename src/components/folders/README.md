@@ -40,9 +40,25 @@ holds the tree and the open folder; the screen lists only the open folder's item
 - **Folders look like an operating system's**: `FolderGlyph` in `icons.tsx` is a two-tone folder in
   the brand indigo (`folder-back`, `folder-front`, `folder-shine` tokens in `globals.css`) whose front
   flap opens while something is dragged over it. Folders come first in the grid, in the same cells as
-  the items — the icon size on the Drive, the page frame on Documents.
-- **A click opens a folder**; the path bar goes back up. Rename and delete are on the tile's hover
-  controls; delete is full-device only and its confirmation says the subfolders and items go with it.
+  the items, and **at the same scale as the items beside them**. On the Drive a file is a glyph of
+  `iconScale(size).glyphPixels`, so the folder gets `glyphPixels` too. Documents is laid out like the
+  Drive, with pages as wide as the drive's glyphs, so its folders take the same `glyphPixels` and a
+  folder is the same size on both screens at every step. Without `glyphPixels` a folder fills its
+  cell's width as a square.
+- **A click opens a folder**; the path bar goes back up. The tile's hover controls are *Details*
+  (when the screen passes `onDetails`; the Drive and Documents both do) and delete, which is
+  full-device only and whose confirmation says the subfolders and items go with it.
+- **The open folder's details are one tap away on any screen size.** A tile's *Details* control
+  only appears on hover, which a phone does not have, so `FolderPath` takes `onDetails` too and,
+  inside a folder, ends the path with an ⓘ button that opens the panel on the folder being shown.
+  It is a side-panel trigger like the tile's, so pressing it again closes the panel.
+- **Rename lives in the details panel, not on the tile.** `FolderDetailsPanel.tsx` is the
+  [side panel](../shell/README.md#the-side-panel) for one folder: its name with a *Rename* button
+  that turns it into a field in place — Enter or *Save* renames, Escape or *Cancel* goes back, the
+  same `folderNameProblem` rule as creating one — and below that whatever the screen passes as
+  children. The Drive adds the item count and total size; Documents adds the item count, read from
+  one unfiltered metadata listing, so nothing is decrypted. The field is in the panel rather than in
+  a modal because a press outside the panel closes it, and a modal is outside it.
 - **Everything is a drop target**: a folder tile and every path segment accept dragged items and
   dragged folders. A folder is never offered a move into itself or past 8 levels (`canMoveFolder`);
   the server refuses both anyway and the screen says why.

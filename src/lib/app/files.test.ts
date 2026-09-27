@@ -8,6 +8,13 @@ import {
   REPLICATION_PENDING,
   UNREADABLE_FILE_NAME,
   UPLOAD_UNFINISHED,
+  UNKNOWN_FILE_TYPE,
+  exactBytesLabel,
+  fileTypeLabel,
+  fullFileName,
+  folderContents,
+  folderItemsLabel,
+  DOCUMENT_NOUNS,
   fileBatchDeleteConfirmation,
   fileBatchDeleteSummary,
   fileCountLabel,
@@ -373,5 +380,51 @@ describe('discarding an unfinished upload', () => {
   it('does not borrow the permanence warning a real delete carries', () => {
     expect(discardConfirmation('a.pdf')).not.toContain('permanent');
     expect(discardConfirmation('a.pdf')).not.toContain(DELETED_SPACE_RETURNS);
+  });
+});
+
+describe('file details', () => {
+  it('keeps the whole name, which the tile shortens', () => {
+    const long = `${'a'.repeat(120)}.pdf`;
+    expect(fullFileName(`  ${long} `)).toBe(long);
+    expect(fileName(long).length).toBeLessThan(long.length);
+    expect(fullFileName('   ')).toBe(UNREADABLE_FILE_NAME);
+  });
+
+  it('names the kind and the extension', () => {
+    expect(fileTypeLabel('image', 'holiday.png', true)).toBe('Image · PNG');
+    expect(fileTypeLabel('pdf', 'contract.pdf', true)).toBe('PDF document');
+    expect(fileTypeLabel('other', 'README', true)).toBe('File');
+  });
+
+  it('never guesses the type of a file it could not decrypt', () => {
+    expect(fileTypeLabel('other', 'whatever.txt', false)).toBe(UNKNOWN_FILE_TYPE);
+  });
+
+  it('gives the exact byte count beside the rounded size', () => {
+    expect(exactBytesLabel(1)).toBe('1 byte');
+    expect(exactBytesLabel(512)).toBe('512 bytes');
+    expect(exactBytesLabel(1536)).toBe(`${formatBytes(1536)} (1,536 bytes)`);
+  });
+});
+
+describe('folder details', () => {
+  it('counts the files and adds up their sizes', () => {
+    expect(folderContents([100, 250, 0], 2)).toEqual({ items: 3, folders: 2, bytes: 350 });
+  });
+
+  it('is empty for an empty folder', () => {
+    expect(folderContents([], 0)).toEqual({ items: 0, folders: 0, bytes: 0 });
+    expect(folderItemsLabel({ items: 0, folders: 0 })).toBe('0 files');
+  });
+
+  it('names subfolders only when there are some', () => {
+    expect(folderItemsLabel({ items: 1, folders: 0 })).toBe('1 file');
+    expect(folderItemsLabel({ items: 3, folders: 1 })).toBe('3 files, 1 folder');
+    expect(folderItemsLabel({ items: 3, folders: 4 })).toBe('3 files, 4 folders');
+  });
+
+  it('names documents when counting a documents folder', () => {
+    expect(folderItemsLabel({ items: 1, folders: 2 }, DOCUMENT_NOUNS)).toBe('1 document, 2 folders');
   });
 });

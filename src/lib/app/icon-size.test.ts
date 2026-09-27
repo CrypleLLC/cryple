@@ -2,17 +2,18 @@ import { describe, expect, it } from 'vitest';
 import type { PreferenceStorage as VaultStorage } from './icon-size';
 import {
   DOCUMENT_MINIATURE_TEXT_SHARE,
-  DOCUMENT_MINIATURE_TITLE_SHARE,
   ICON_SIZES,
   MINIATURE_TEXT_FLOOR_PIXELS,
   NOTE_MINIATURE_TEXT_SHARE,
   defaultIconSize,
+  documentMiniatureTitlePixels,
   gridTemplate,
   iconScale,
   isLargestIconSize,
   isSmallestIconSize,
   largerIconSize,
   miniatureTextPixels,
+  pagePixels,
   readIconSize,
   smallerIconSize,
   writeIconSize,
@@ -53,6 +54,7 @@ describe('the icon scale', () => {
   });
 
   it('stops labelling the glyph where the label would be too small to read', () => {
+    expect(iconScale('tiny').labelsTheGlyph).toBe(false);
     expect(iconScale('small').labelsTheGlyph).toBe(false);
     expect(iconScale('medium').labelsTheGlyph).toBe(true);
   });
@@ -60,18 +62,21 @@ describe('the icon scale', () => {
 
 describe('stepping through the sizes', () => {
   it('walks up and back down the whole scale', () => {
+    expect(largerIconSize('tiny')).toBe('small');
     expect(largerIconSize('small')).toBe('medium');
     expect(largerIconSize('medium')).toBe('large');
     expect(largerIconSize('large')).toBe('huge');
     expect(smallerIconSize('huge')).toBe('large');
     expect(smallerIconSize('medium')).toBe('small');
+    expect(smallerIconSize('small')).toBe('tiny');
   });
 
   it('holds at the ends rather than wrapping around', () => {
     expect(largerIconSize('huge')).toBe('huge');
-    expect(smallerIconSize('small')).toBe('small');
+    expect(smallerIconSize('tiny')).toBe('tiny');
     expect(isLargestIconSize('huge')).toBe(true);
-    expect(isSmallestIconSize('small')).toBe(true);
+    expect(isSmallestIconSize('tiny')).toBe(true);
+    expect(isSmallestIconSize('small')).toBe(false);
     expect(isLargestIconSize('large')).toBe(false);
     expect(isSmallestIconSize('medium')).toBe(false);
   });
@@ -85,33 +90,44 @@ describe('the grid each screen draws', () => {
   });
 
   it('sizes a page grid by the page, not by the drive tile', () => {
-    expect(gridTemplate('notes', 'large')).toBe(
-      `repeat(auto-fill, minmax(${iconScale('large').pagePixels}px, 1fr))`,
-    );
-    expect(gridTemplate('documents', 'small')).toBe(gridTemplate('notes', 'small'));
+    expect(gridTemplate('notes', 'large')).toBe(`repeat(auto-fill, ${iconScale('large').pagePixels}px)`);
     expect(gridTemplate('drive', 'small')).not.toBe(gridTemplate('notes', 'small'));
+  });
+
+  it('never stretches a note page past its step, so two steps cannot draw the same page', () => {
+    for (const size of ICON_SIZES) {
+      expect(gridTemplate('notes', size)).not.toContain('1fr');
+    }
+  });
+
+  it('lays documents out exactly like the drive: its columns, and pages as wide as its glyphs', () => {
+    for (const size of ICON_SIZES) {
+      expect(gridTemplate('documents', size)).toBe(gridTemplate('drive', size));
+      expect(pagePixels('documents', size)).toBe(iconScale(size).glyphPixels);
+    }
   });
 });
 
 describe('text inside a page miniature', () => {
   it('is a share of the page, so the miniature stays a scale drawing at every step', () => {
-    expect(miniatureTextPixels('large', NOTE_MINIATURE_TEXT_SHARE)).toBe(9);
-    expect(miniatureTextPixels('large', DOCUMENT_MINIATURE_TEXT_SHARE)).toBe(8);
-    expect(miniatureTextPixels('large', DOCUMENT_MINIATURE_TITLE_SHARE)).toBe(10);
+    expect(miniatureTextPixels('notes', 'large', NOTE_MINIATURE_TEXT_SHARE)).toBe(9);
+    expect(miniatureTextPixels('documents', 'huge', DOCUMENT_MINIATURE_TEXT_SHARE)).toBe(6);
+    expect(documentMiniatureTitlePixels('huge')).toBe(7);
 
-    expect(miniatureTextPixels('huge', NOTE_MINIATURE_TEXT_SHARE)).toBeGreaterThan(
-      miniatureTextPixels('medium', NOTE_MINIATURE_TEXT_SHARE),
+    expect(miniatureTextPixels('notes', 'huge', NOTE_MINIATURE_TEXT_SHARE)).toBeGreaterThan(
+      miniatureTextPixels('notes', 'medium', NOTE_MINIATURE_TEXT_SHARE),
     );
   });
 
   it('never rounds away to nothing at the smallest step', () => {
-    expect(miniatureTextPixels('small', 0.001)).toBe(MINIATURE_TEXT_FLOOR_PIXELS);
+    expect(miniatureTextPixels('notes', 'small', 0.001)).toBe(MINIATURE_TEXT_FLOOR_PIXELS);
+    expect(miniatureTextPixels('documents', 'small', 0.001)).toBe(MINIATURE_TEXT_FLOOR_PIXELS);
   });
 
   it('keeps a document title larger than its body even where the floor bites', () => {
     for (const size of ICON_SIZES) {
-      expect(miniatureTextPixels(size, DOCUMENT_MINIATURE_TITLE_SHARE)).toBeGreaterThan(
-        miniatureTextPixels(size, DOCUMENT_MINIATURE_TEXT_SHARE),
+      expect(documentMiniatureTitlePixels(size)).toBeGreaterThan(
+        miniatureTextPixels('documents', size, DOCUMENT_MINIATURE_TEXT_SHARE),
       );
     }
   });

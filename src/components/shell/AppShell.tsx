@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/icons';
 import StorageMeter from './StorageMeter';
 import { ScreenStripSlotProvider } from './ScreenStrip';
+import { SidePanelSlotProvider } from './SidePanel';
 import { Button, Notice, Spinner } from '@/components/ui';
 
 const DocumentsScreen = dynamic(() => import('@/components/documents/DocumentsScreen'), {
@@ -131,6 +132,7 @@ export default function AppShell() {
   const [chainProblemDismissed, setChainProblemDismissed] = useState(false);
   const [stripSlot, setStripSlot] = useState<HTMLElement | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [panelSlot, setPanelSlot] = useState<HTMLElement | null>(null);
 
   const exits = sessionExits();
   const lockable = lockExit(exits);
@@ -173,7 +175,7 @@ export default function AppShell() {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="sticky top-[var(--staging-banner-h)] z-10">
-            <header className="border-b border-line bg-surface/90 backdrop-blur md:hidden">
+            <header className="relative z-10 border-b border-line bg-surface/90 backdrop-blur md:hidden">
               <div className="flex items-center justify-between gap-2 py-2 pr-4 pl-2">
                 <div className="flex min-w-0 items-center gap-1">
                   <button
@@ -200,7 +202,7 @@ export default function AppShell() {
               </div>
             </header>
 
-            <header className="hidden border-b border-line bg-surface/90 py-4 backdrop-blur md:block">
+            <header className="relative z-10 hidden border-b border-line bg-surface/90 py-4 backdrop-blur md:block">
               <div className={`mx-auto flex w-full ${measure} items-center justify-between gap-4 px-6`}>
                 <div className="min-w-0">
                   <h1 className="text-headline-lg text-ink">{current.label}</h1>
@@ -252,12 +254,16 @@ export default function AppShell() {
             ) : null}
 
             <ScreenStripSlotProvider value={stripSlot}>
-              <Screen />
+              <SidePanelSlotProvider value={panelSlot}>
+                <Screen />
+              </SidePanelSlotProvider>
             </ScreenStripSlotProvider>
           </main>
 
           {settingsOpen ? <SettingsModal onClose={() => setSettingsOpen(false)} /> : null}
         </div>
+
+        <div ref={setPanelSlot} className="contents" />
       </div>
     </VaultRevealProvider>
   );

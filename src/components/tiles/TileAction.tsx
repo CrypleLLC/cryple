@@ -13,6 +13,7 @@ export function TileAction({
   disabled = false,
   onClick,
   className = '',
+  triggersSidePanel = false,
   children,
 }: {
   label: string;
@@ -21,6 +22,7 @@ export function TileAction({
   disabled?: boolean;
   onClick: () => void;
   className?: string;
+  triggersSidePanel?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -28,6 +30,7 @@ export function TileAction({
       type="button"
       aria-label={label}
       title={title}
+      data-side-panel-trigger={triggersSidePanel ? '' : undefined}
       disabled={disabled}
       onClick={onClick}
       className={`flex h-5 w-5 items-center justify-center rounded-md border border-line-strong bg-surface/90 text-ink-soft shadow-card transition focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 ${HOVER_TONES[tone]} ${className}`}

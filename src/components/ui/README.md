@@ -80,8 +80,8 @@ use it**: the drive, notes and documents. Everything it decides is data in
 it back.
 
 Its labels are props rather than fixed strings, because *"Smaller icons"* is wrong on a screen full
-of note previews — notes say *"Smaller notes"*, documents *"Smaller documents"*. The four step names
-underneath are shared, since they are the same four steps.
+of note previews — notes say *"Smaller notes"*, documents *"Smaller documents"*. The five step names
+underneath are shared, since they are the same five steps.
 
 The control is hidden when the grid is empty — there is nothing to resize, and the empty state is
 already carrying the instructions.
