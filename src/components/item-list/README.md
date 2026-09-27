@@ -2,8 +2,10 @@
 
 The table the Vault and the Passwords tab list their items in. Import from `@/components/item-list`.
 
-`ItemList` is the whole panel: a `Card` with a title and subtitle, the screen's error `Notice`, a
-`Spinner` while `rows` is `undefined`, an `Empty` state when there are none, and otherwise the table.
+`ItemList` is the whole panel: a `Card`, the screen's error `Notice`, a `Spinner` while `rows` is
+`undefined`, an `Empty` state when there are none, and otherwise the table. **It has no heading of
+its own**: the shell's top bar already names the section and says what it holds, and a second title
+and description over the table only repeated it.
 `ItemTable` is the table on its own, for a screen that wants to lay the rest out itself.
 
 A screen describes its columns and nothing else:

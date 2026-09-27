@@ -12,7 +12,7 @@ const STORAGE_KEYS: Record<IconGrid, string> = {
   documents: 'cryple_documents_icon_size',
 };
 
-export const ICON_SIZES = ['small', 'medium', 'large', 'huge'] as const;
+export const ICON_SIZES = ['tiny', 'small', 'medium', 'large', 'huge'] as const;
 
 export type IconSize = (typeof ICON_SIZES)[number];
 
@@ -32,6 +32,14 @@ export interface IconScale {
 }
 
 const SCALES: Record<IconSize, IconScale> = {
+  tiny: {
+    name: 'tiny',
+    label: 'Extra small',
+    glyphPixels: 32,
+    tilePixels: 80,
+    pagePixels: 104,
+    labelsTheGlyph: false,
+  },
   small: {
     name: 'small',
     label: 'Small',
@@ -92,9 +100,17 @@ export function isSmallestIconSize(size: IconSize): boolean {
   return size === ICON_SIZES[0];
 }
 
+export type PageGrid = Exclude<IconGrid, 'drive'>;
+
+export function pagePixels(grid: PageGrid, size: IconSize): number {
+  return grid === 'documents' ? iconScale(size).glyphPixels : iconScale(size).pagePixels;
+}
+
 export function gridTemplate(grid: IconGrid, size: IconSize): string {
-  const scale = iconScale(size);
-  const column = grid === 'drive' ? scale.tilePixels : scale.pagePixels;
+  if (grid === 'notes') {
+    return `repeat(auto-fill, ${pagePixels(grid, size)}px)`;
+  }
+  const column = iconScale(size).tilePixels;
 
   return `repeat(auto-fill, minmax(${column}px, 1fr))`;
 }
@@ -105,10 +121,14 @@ export const DOCUMENT_MINIATURE_TITLE_SHARE = 0.05;
 
 export const MINIATURE_TEXT_FLOOR_PIXELS = 6;
 
-export function miniatureTextPixels(size: IconSize, share: number): number {
+export function miniatureTextPixels(grid: PageGrid, size: IconSize, share: number): number {
+  return Math.max(MINIATURE_TEXT_FLOOR_PIXELS, Math.round(pagePixels(grid, size) * share));
+}
+
+export function documentMiniatureTitlePixels(size: IconSize): number {
   return Math.max(
-    MINIATURE_TEXT_FLOOR_PIXELS,
-    Math.round(iconScale(size).pagePixels * share),
+    miniatureTextPixels('documents', size, DOCUMENT_MINIATURE_TITLE_SHARE),
+    miniatureTextPixels('documents', size, DOCUMENT_MINIATURE_TEXT_SHARE) + 1,
   );
 }
 

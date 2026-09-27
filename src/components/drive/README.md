@@ -3,6 +3,7 @@
 | File | Role |
 | --- | --- |
 | `DriveScreen.tsx` | The drive: file grid, drag-and-drop upload, progress, download, selection and delete |
+| `DriveDetails.tsx` | A file's or a folder's details, in the [side panel](../shell/README.md#the-side-panel) |
 
 Its corner controls are [`TileAction`](../tiles/README.md) and [`TileCheckbox`](../tiles/README.md),
 the folders are [`FolderBrowser`](../folders/README.md), and the size control is `SizeStepper` from
@@ -50,7 +51,8 @@ drive's own:
   the control is never a surprise. Picking or reopening the wrong file is refused by `lib/files`,
   not by the component, and the refusal lands in the transfer list like any other failed upload.
 - **A transfer is reported on a tile and nowhere else.** A progress line runs along the bottom of
-  the miniature and the status line under the name counts up in place of whatever it said before.
+  the miniature and a status line appears under the name while it runs — the only time a file
+  tile has a line under its name.
   There is no separate list above the grid — one upload was otherwise reported in two places, and
   the tile is the place the user is already looking.
 - **An upload gets a tile before the server has a row.** `send` mints the id up front, so a
@@ -110,7 +112,9 @@ of paper with a small glyph floating in the middle of it. A `.zip` is not a docu
 like one wastes most of the screen on empty paper.
 
 So the drive alone uses the **desktop file-manager shape**: a square icon, the name centred under
-it over up to two lines, one line of caption under that.
+it over up to two lines, and nothing under that. **A grid of files and folders shows icons and
+names only**, on every screen that draws one; a line of type, size or date under every name made
+the grid read as a table.
 
 - **A file with a thumbnail shows it at its own aspect ratio.** The image is `object-contain` inside
   a square of the glyph size, so a portrait photo stays portrait and a landscape one stays
@@ -127,10 +131,10 @@ it over up to two lines, one line of caption under that.
   file manager shows, and it stays empty rather than guessing when the suffix is missing, long, or
   not plain alphanumeric.
 - **A glyph the browser could not decrypt is the generic sheet** — grey band, no mark — which is
-  precisely what an OS shows for a type it does not know. The caption already says the file is
+  precisely what an OS shows for a type it does not know. The name already says the file is
   unreadable; the icon does not need to say it twice.
 - **The icons on the miniature are the ones that had to shrink.** The checkbox and the hover actions
-  moved to the tile's corners at `h-5 w-5`, because at the smallest step the whole tile is 96px and
+  moved to the tile's corners at `h-5 w-5`, because at the smallest step the whole tile is 80px and
   the old 24px controls at `inset-3` did not fit inside it.
 - **Icons bottom-align within their box.** A landscape thumbnail is shorter than a portrait one, and
   aligning them on their tops would leave a ragged row of names.
@@ -138,12 +142,11 @@ it over up to two lines, one line of caption under that.
 ### What moved off the miniature
 
 The size used to be a pill floating over the bottom of the A4 sheet. At 48px it would cover the
-thumbnail it sits on, so it moved to the caption line, and `fileCaption` decides what that line
-says: the size, **unless the status still has a durability claim to make**. `REPLICATION_DONE` is
-the one state with nothing left to say — the file is stored, twice, and a grid of forty tiles each
-repeating *"Saved, with a second copy"* is noise. Every other state keeps the line: pending
-replication, a failed replica, a file being repaired, an unfinished upload. The full status stays
-in the tile's `title` in all cases, so nothing is lost, only unsaid. A test pins both halves.
+thumbnail it sits on. It then lived on a caption line under the name, and that line has gone too:
+the tile is the icon and the name. The size and the status are in the tile's tooltip, where
+`fileCaption` decides what it says — the size, **unless the status still has a durability claim to
+make** (pending replication, a failed replica, a file being repaired, an unfinished upload) — and
+all of it is in [Details](#details). A test pins both halves of `fileCaption`.
 
 **The bar is not part of this screen.** It lives in the sidebar's bottom corner, drawn by
 `StorageMeter` from a shared `lib/app/usage` store: it is an account-level fact, not a drive-screen
@@ -155,3 +158,21 @@ out, where the rest of the identity chrome already is.
 `FILES_ENABLE` is off by default, so `/files` answers `404` on a deployment without R2. That is not
 an error worth showing a user: `ApiError.isDriveDisabled` turns it into "the drive is not switched
 on for this deployment".
+
+## Details
+
+Every file and folder tile carries an *i* control among its corner actions, which opens the
+[side panel](../shell/README.md#the-side-panel) on it.
+
+- **A file** shows its **whole name** — the tile clamps it, and `fileName` cuts it at 80
+  characters, so the tile keeps `fullFileName` beside it — its type (`fileTypeLabel`: the kind and
+  the extension, and *Unknown type* for a file that could not be decrypted rather than a guess), its
+  size as the rounded figure and the exact byte count (`exactBytesLabel`), when it last changed, and
+  its replication status.
+- **A folder** is [`FolderDetailsPanel`](../folders/README.md) — its name, and the only place to
+  rename it — with how many files and subfolders it holds, and the total size of those
+  files. **The counts include every subfolder**, because a folder's size is what deleting it would
+  free. Only the open folder is ever listed, so the panel reads one unfiltered listing when it
+  opens, keeps the rows whose `folder_id` is the folder or one of its descendants, and decrypts
+  their manifests for the true sizes. A thumbnail is a file row of its own, so it is left out of
+  the count and the total exactly as the grid leaves it out (`thumbnailIdsOf`).

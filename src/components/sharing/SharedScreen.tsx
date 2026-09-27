@@ -236,7 +236,9 @@ function SharedTile({
         disabled={busy || !item.readable}
         title={
           item.problem === undefined
-            ? `${ITEM_LABELS[item.itemType]} from ${item.from}`
+            ? `${ITEM_LABELS[item.itemType]}${
+                item.sizeBytes === undefined ? '' : ` · ${formatBytes(item.sizeBytes)}`
+              } from ${item.from}`
             : `Cannot be opened: ${item.problem}`
         }
         aria-label={`Open ${item.name}, ${ITEM_LABELS[item.itemType]} from ${item.from}`}
@@ -250,14 +252,6 @@ function SharedTile({
         </span>
 
         <span className="w-full truncate text-compact font-semibold text-ink">{item.name}</span>
-        <span className="w-full truncate text-caption normal-case tracking-normal text-ink-muted">
-          {item.sizeBytes === undefined
-            ? ITEM_LABELS[item.itemType]
-            : `${ITEM_LABELS[item.itemType]} · ${formatBytes(item.sizeBytes)}`}
-        </span>
-        <span className="w-full truncate text-caption normal-case tracking-normal text-ink-faint">
-          from <span className="font-mono">{item.from}</span>
-        </span>
         {item.problem !== undefined ? (
           <span className="w-full text-caption normal-case tracking-normal text-danger">
             {item.problem}

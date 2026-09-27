@@ -6,7 +6,7 @@ The parts every file grid shares — Notes, Documents and the Drive. Import from
 | --- | --- | --- |
 | `TileCheckbox.tsx` | The selection checkbox in a tile's corner, invisible until hover or selection mode | `PageTile`, the drive tile |
 | `TileAction.tsx` | The small square control in a tile's corner — share, download, rename, delete, dismiss | `PageTile`, the drive tile, folder tiles |
-| `PageTile.tsx` | A page miniature: paper frame, content or an unreadable glyph, bottom fade, title and caption | Notes, Documents |
+| `PageTile.tsx` | A page miniature: paper frame, content or an unreadable glyph, bottom fade, title, and an optional caption | Notes, Documents |
 
 `TileCheckbox` takes its position as a class (`left-3 top-3` on a page, `left-1 top-1` on a drive
 icon) because the drive's smallest tile is 96px and has no room for the page inset.
@@ -16,10 +16,20 @@ dismissing something that is already over. Its `title` defaults to its label, so
 has a tooltip; pass `title` when the tooltip has more to say than the label, as the drive's resume and
 discard controls do.
 
-`PageTile` owns the frame and the caption, and the screen passes the page's contents as children:
+`PageTile` owns the frame and the title, and the screen passes the page's contents as children:
 the note's first lines, or the document's title over its body. **Anything that differs between a
 note and a document stays in the screen**; anything that is the same shape moves here, so the two
 grids cannot drift apart.
+
+**The caption is optional.** Notes passes the date under the title; Documents passes none, because a
+grid of files and folders shows icons and names only, and gives the edit date or the reason a page
+could not be read as `hint`, the tooltip.
+
+**`pageWidth` switches the tile to the drive's shape.** Without it the page fills the column and the
+title sits left-aligned under it, as on Notes. With it — Documents passes the drive's glyph size —
+the page is exactly that wide, centred, with the name centred under it over up to two lines, the
+tile highlights on hover, and the corner controls sit in the tile's corners, exactly like a drive
+file beside a drive folder.
 
 ## Selecting files
 

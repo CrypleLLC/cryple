@@ -203,6 +203,36 @@ export function CloseIcon(props: IconProps) {
   );
 }
 
+export function MenuIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 6h16" />
+      <path d="M4 12h16" />
+      <path d="M4 18h16" />
+    </Icon>
+  );
+}
+
+export function InfoIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5" />
+      <path d="M12 8h.01" />
+    </Icon>
+  );
+}
+
+export function HistoryIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" />
+      <path d="M3.5 4v4h4" />
+      <path d="M12 8v4l3 2" />
+    </Icon>
+  );
+}
+
 export function ArrowLeftIcon(props: IconProps) {
   return (
     <Icon strokeWidth={1.7} className="h-5 w-5 shrink-0" {...props}>

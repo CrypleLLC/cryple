@@ -20,8 +20,6 @@ export interface ItemColumn<Row> {
 }
 
 export function ItemList<Row>({
-  title,
-  subtitle,
   message,
   onDismissMessage,
   rows,
@@ -32,8 +30,6 @@ export function ItemList<Row>({
   emptyText,
   onRowDragStart,
 }: {
-  title: string;
-  subtitle?: string;
   message?: string;
   onDismissMessage?: () => void;
   rows: readonly Row[] | undefined;
@@ -45,7 +41,7 @@ export function ItemList<Row>({
   onRowDragStart?: (event: DragEvent, row: Row) => void;
 }) {
   return (
-    <Card title={title} subtitle={subtitle}>
+    <Card>
       {message ? (
         <div className="px-5 pt-4">
           <Notice tone="danger" onDismiss={onDismissMessage}>

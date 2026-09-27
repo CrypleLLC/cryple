@@ -118,8 +118,6 @@ export default function VaultScreen() {
       <FolderTabs state={folders} nouns={SECRET_NOUNS} label="Vault tabs" deleteItems={deleteTabItems} />
 
       <ItemList
-        title="Stored items"
-        subtitle="Names and values are encrypted on this device before they are stored."
         message={message}
         onDismissMessage={() => setMessage(undefined)}
         rows={visible}

@@ -9,17 +9,19 @@ import {
   loadDocumentSummaries,
   type DocumentSummary,
 } from '@/lib/documents';
-import { moveItemsToFolder } from '@/lib/folders';
+import { descendantsOf, moveItemsToFolder } from '@/lib/folders';
 import {
   DOCUMENT_MINIATURE_TEXT_SHARE,
-  DOCUMENT_MINIATURE_TITLE_SHARE,
   buildDocumentTiles,
   defaultIconSize,
   documentCountLabel,
   DOCUMENT_NOUNS,
   documentDeleteConfirmation,
   documentHref,
+  documentMiniatureTitlePixels,
+  folderItemsLabel,
   gridTemplate,
+  pagePixels,
   miniatureTextPixels,
   readIconSize,
   retainSelectable,
@@ -37,6 +39,8 @@ import { PageTile } from '@/components/tiles';
 import ShareItemDialog from '@/components/sharing/ShareItemDialog';
 import { startItemDrag } from '@/components/folders/FolderTabs';
 import { FolderPath, FolderTile, MoveToFolder, useFolderTree } from '@/components/folders/FolderBrowser';
+import { FolderDetailsPanel } from '@/components/folders/FolderDetailsPanel';
+import { PanelFacts } from '@/components/shell/SidePanel';
 
 export default function DocumentsScreen() {
   const context = useAuthedContext();
@@ -50,6 +54,9 @@ export default function DocumentsScreen() {
   const [sharing, setSharing] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [pageSize, setPageSize] = useState<IconSize>(defaultIconSize('documents'));
+  const [detailedFolder, setDetailedFolder] = useState<string>();
+  const [folderCount, setFolderCount] = useState<{ id: string; items: number } | { id: string; error: string }>();
+  const closeDetails = useCallback(() => setDetailedFolder(undefined), []);
 
   useEffect(() => setPageSize(readIconSize('documents')), []);
 
@@ -63,6 +70,32 @@ export default function DocumentsScreen() {
   const tree = useFolderTree('documents', itemsChanged);
   const listing = tree.listing;
   const openFolder = tree.current;
+  const treeFolders = tree.folders;
+
+  useEffect(() => {
+    if (detailedFolder === undefined || treeFolders === undefined) {
+      return;
+    }
+    let live = true;
+    setFolderCount(undefined);
+    void (async () => {
+      try {
+        const inside = descendantsOf(treeFolders, detailedFolder);
+        const metas = await listDocumentsMeta(context);
+        const items = metas.filter((meta) => meta.folder_id !== undefined && inside.has(meta.folder_id)).length;
+        if (live) {
+          setFolderCount({ id: detailedFolder, items });
+        }
+      } catch (error) {
+        if (live) {
+          setFolderCount({ id: detailedFolder, error: reportError(error) });
+        }
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [context, reportError, detailedFolder, treeFolders]);
 
   const load = useCallback(async () => {
     if (listing === undefined) {
@@ -155,6 +188,7 @@ export default function DocumentsScreen() {
       rootLabel="Documents"
       rootIcon={<DocumentsIcon className="h-4 w-4 shrink-0" />}
       itemIdsFor={sameIds}
+      onDetails={(id) => setDetailedFolder((current) => (current === id ? undefined : id))}
     />
   );
 
@@ -168,6 +202,11 @@ export default function DocumentsScreen() {
   }
 
   const folderTiles = tree.invalid ? [] : tree.children;
+  const detailedFolderRecord =
+    detailedFolder === undefined ? undefined : treeFolders?.find((folder) => folder.id === detailedFolder);
+  const countShown = folderCount?.id === detailedFolder ? folderCount : undefined;
+  const subfolderCount =
+    detailedFolderRecord === undefined ? 0 : descendantsOf(treeFolders ?? [], detailedFolderRecord.id).size - 1;
 
   return (
     <div className="space-y-5">
@@ -255,7 +294,7 @@ export default function DocumentsScreen() {
         </Card>
       ) : (
         <ul
-          className="grid gap-x-4 gap-y-6"
+          className="grid gap-1"
           style={{ gridTemplateColumns: gridTemplate('documents', pageSize) }}
         >
           {folderTiles.map((folder) => (
@@ -264,16 +303,18 @@ export default function DocumentsScreen() {
               state={tree}
               folder={folder}
               nouns={DOCUMENT_NOUNS}
-              frameClass="aspect-[210/297] w-full"
+              glyphPixels={pagePixels('documents', pageSize)}
               itemIdsFor={sameIds}
+              onDetails={() => setDetailedFolder((current) => (current === folder.id ? undefined : folder.id))}
             />
           ))}
           {tiles.map((tile) => (
             <DocumentFile
               key={tile.id}
               tile={tile}
-              textPixels={miniatureTextPixels(pageSize, DOCUMENT_MINIATURE_TEXT_SHARE)}
-              titlePixels={miniatureTextPixels(pageSize, DOCUMENT_MINIATURE_TITLE_SHARE)}
+              textPixels={miniatureTextPixels('documents', pageSize, DOCUMENT_MINIATURE_TEXT_SHARE)}
+              titlePixels={documentMiniatureTitlePixels(pageSize)}
+              pageWidth={pagePixels('documents', pageSize)}
               selecting={selecting}
               selected={selected.includes(tile.id)}
               busy={busy}
@@ -290,6 +331,25 @@ export default function DocumentsScreen() {
           ))}
         </ul>
       )}
+
+      {detailedFolderRecord !== undefined ? (
+        <FolderDetailsPanel state={tree} folder={detailedFolderRecord} onClose={closeDetails}>
+          {countShown === undefined ? (
+            <Spinner />
+          ) : 'error' in countShown ? (
+            <Notice tone="danger">{countShown.error}</Notice>
+          ) : (
+            <PanelFacts
+              facts={[
+                {
+                  label: 'Items',
+                  value: folderItemsLabel({ items: countShown.items, folders: subfolderCount }, DOCUMENT_NOUNS),
+                },
+              ]}
+            />
+          )}
+        </FolderDetailsPanel>
+      ) : null}
 
       {selecting ? null : (
         <FloatingAddButton
@@ -314,10 +374,12 @@ function DocumentFile({
   onShare,
   onToggle,
   onDragStart,
+  pageWidth,
 }: {
   tile: DocumentTile;
   textPixels: number;
   titlePixels: number;
+  pageWidth: number;
   selecting: boolean;
   selected: boolean;
   busy: boolean;
@@ -329,7 +391,7 @@ function DocumentFile({
   return (
     <PageTile
       title={tile.title}
-      caption={tile.readable ? tile.edited : (tile.failure ?? 'Could not be decrypted here')}
+      hint={tile.readable ? tile.edited : (tile.failure ?? 'Could not be decrypted here')}
       aspectClass="aspect-[210/297]"
       readable={tile.readable}
       unreadableIcon={DocumentsIcon}
@@ -340,6 +402,7 @@ function DocumentFile({
       onShare={onShare}
       onToggle={onToggle}
       onDragStart={onDragStart}
+      pageWidth={pageWidth}
     >
       <span className="block px-[12%] py-[8.5%]">
         {tile.title !== UNTITLED_DOCUMENT && (

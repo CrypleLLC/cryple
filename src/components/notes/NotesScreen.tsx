@@ -264,7 +264,7 @@ export default function NotesScreen() {
             <NoteFile
               key={tile.id}
               tile={tile}
-              textPixels={miniatureTextPixels(pageSize, NOTE_MINIATURE_TEXT_SHARE)}
+              textPixels={miniatureTextPixels('notes', pageSize, NOTE_MINIATURE_TEXT_SHARE)}
               selecting={selecting}
               selected={selected.includes(tile.id)}
               busy={deleting}

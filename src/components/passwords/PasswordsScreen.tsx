@@ -20,10 +20,11 @@ import {
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
 import { useVaultReveal } from '@/components/vault/VaultReveal';
-import { PasswordsIcon, TrashIcon } from '@/components/ui/icons';
+import { HistoryIcon, PasswordsIcon, TrashIcon } from '@/components/ui/icons';
 import { Button, CopyButton, FloatingAddButton } from '@/components/ui';
 import { ConfirmDeleteModal } from '@/components/modal';
 import { ItemList } from '@/components/item-list';
+import { SIDE_PANEL_TRIGGER } from '@/components/shell/SidePanel';
 import DeletedPasswords, { type DeletedPasswordRow } from './DeletedPasswords';
 import PasswordFormModal from './PasswordFormModal';
 
@@ -42,6 +43,8 @@ export default function PasswordsScreen() {
   const [form, setForm] = useState<OpenForm>();
   const [confirmingDelete, setConfirmingDelete] = useState<PasswordRow>();
   const [deletedRows, setDeletedRows] = useState<DeletedPasswordRow[]>();
+  const [deletedError, setDeletedError] = useState<string>();
+  const [showingDeleted, setShowingDeleted] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -82,10 +85,24 @@ export default function PasswordsScreen() {
         }),
       );
       setDeletedRows(opened);
+      setDeletedError(undefined);
     } catch (error) {
-      setMessage(reportError(error));
+      setDeletedError(reportError(error));
     }
   }, [context, reportError]);
+
+  function toggleDeleted() {
+    if (showingDeleted) {
+      setShowingDeleted(false);
+      return;
+    }
+    setShowingDeleted(true);
+    setDeletedRows(undefined);
+    setDeletedError(undefined);
+    void loadDeleted();
+  }
+
+  const hideDeleted = useCallback(() => setShowingDeleted(false), []);
 
   async function restore(row: DeletedPasswordRow) {
     setBusy(true);
@@ -122,7 +139,7 @@ export default function PasswordsScreen() {
         setForm(undefined);
       }
       await load();
-      if (deletedRows !== undefined) {
+      if (showingDeleted) {
         await loadDeleted();
       }
     } catch (error) {
@@ -133,10 +150,15 @@ export default function PasswordsScreen() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button {...SIDE_PANEL_TRIGGER} variant="secondary" aria-expanded={showingDeleted} onClick={toggleDeleted}>
+          <HistoryIcon className="h-4 w-4 shrink-0" />
+          Recently deleted
+        </Button>
+      </div>
+
       <ItemList
-        title="Saved passwords"
-        subtitle="Site, username and password are encrypted on this device before they are stored."
         message={message}
         onDismissMessage={() => setMessage(undefined)}
         rows={rows}
@@ -175,12 +197,15 @@ export default function PasswordsScreen() {
         )}
       />
 
-      <DeletedPasswords
-        rows={deletedRows}
-        busy={busy}
-        onShow={() => void loadDeleted()}
-        onRestore={(row) => void restore(row)}
-      />
+      {showingDeleted ? (
+        <DeletedPasswords
+          rows={deletedRows}
+          error={deletedError}
+          busy={busy}
+          onRestore={(row) => void restore(row)}
+          onClose={hideDeleted}
+        />
+      ) : null}
 
       {confirmingDelete !== undefined ? (
         <ConfirmDeleteModal

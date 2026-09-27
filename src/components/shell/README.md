@@ -6,6 +6,8 @@ The frame around every screen, and what sits in it.
 | --- | --- |
 | `AppShell.tsx` | Task 25 — the sidebar shell and the navigation registry, `NAV_ITEMS` |
 | `AccountMenu.tsx` | The avatar menu in the top bar: *Settings* and *Remove this browser* |
+| `ScreenStrip.tsx` | The full-width bar slot under the top bar, for a screen's own tabs |
+| `SidePanel.tsx` | The right-hand panel a screen opens for its own context — `SidePanel` and `PanelFacts` |
 | `StorageMeter.tsx` | The account's storage bar, in the sidebar corner — stored bytes solid, reservations behind them |
 | `StagingBanner.tsx` | The walking red warning banner, dev-only — see [`app`](../../app/README.md#the-staging-banner) |
 
@@ -13,8 +15,13 @@ The frame around every screen, and what sits in it.
 
 The shell is a Drive-style dashboard: a fixed left sidebar with the logo, the navigation and the
 account summary, a sticky top bar carrying the current section's title and the session-exit
-buttons, and a full-width content column. Below the `md` breakpoint the sidebar folds into a
-sticky top header with a horizontally scrolling nav row.
+buttons, and a full-width content column. Below the `md` breakpoint the sidebar is hidden behind a
+menu button at the left of a compact top bar, which shows the current section's name and the same
+actions as the desktop one. The button opens `MobileMenu`, a drawer that slides in from the left
+over a dimmed page and holds exactly what the sidebar holds (`SidebarContent`: logo, navigation,
+storage meter). Choosing a section, the backdrop, the close button or Escape closes it, and the
+page behind does not scroll while it is open. A screen's own tabs — the Vault and Notes strip — stay
+on the page under the top bar, not in the drawer: they belong to the screen, not to navigation.
 
 Navigation is one registry, `NAV_ITEMS` in `AppShell.tsx`. Each entry is
 `{ id, label, description, icon, screen, actions? }`; adding a section means adding one entry and
@@ -25,6 +32,43 @@ top bar beside Lock and the account menu, for controls that belong to the whole 
 panel; the Vault's global reveal toggle is the first of them. State shared between such a control
 and its screen lives in a provider wrapping the shell, as `VaultReveal.tsx` does, since the header
 sits outside the screen's tree.
+
+## The screen strip
+
+Both headers and an empty slot under them share one sticky wrapper. A screen puts a full-width bar
+there — the Vault and Notes tabs — by wrapping it in `ScreenStrip` (`ScreenStrip.tsx`), which portals
+into the slot the shell provides through `ScreenStripSlotProvider`. The slot is `empty:hidden`, so a
+screen that puts nothing there leaves no gap, and the bar is not capped by the content measure: it
+starts at the sidebar's edge. Outside the shell, `ScreenStrip` renders its children in place.
+
+**Both headers are `relative z-10`** above the slot. Their `backdrop-blur` makes each its own
+stacking context, so the account menu's `z-20` only counts inside its header; without the header
+itself sitting above the strip, the strip — later in the DOM, and blurred too — would paint over the
+open menu.
+
+## The side panel
+
+The right-hand counterpart of the sidebar, and one component for every screen: `SidePanel` takes a
+`title`, an optional `subtitle`, `onClose`, and whatever the screen wants to show. What it shows
+depends on where it was opened — *Recently deleted* on Passwords, a file's or a folder's details on
+the Drive. A screen opens it by rendering it and closes it by not rendering it, so it never outlives
+the screen: switching section closes it.
+
+It portals into a slot the shell keeps at the right end of its flex row (`SidePanelSlotProvider`,
+the same pattern as the screen strip). **From `md` up it is a column**, 320px, full height and
+sticky like the sidebar, and the content column narrows to make room. **Below `md` it is a drawer**
+that slides in from the right over a dimmed page, takes the focus, and stops the page behind it
+from scrolling. On both, the close button, Escape, and **a press anywhere outside the panel**
+close it.
+
+The control that opens a panel is the exception to that last rule, or pressing it again would
+close the panel on the press and reopen it on the click. It carries `data-side-panel-trigger` —
+spread `SIDE_PANEL_TRIGGER` on a `Button`, or pass `triggersSidePanel` to a `TileAction` — and the
+screen makes it a toggle instead: *Recently deleted* opens and closes its panel, and a tile's
+*Details* closes the panel when it is already showing that tile, or switches to it when it is
+showing another.
+
+`PanelFacts` is the label-over-value list the details use, so every panel's facts look the same.
 
 ## Reading widths are capped; miniature grids are not
 
