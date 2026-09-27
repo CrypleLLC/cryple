@@ -6,7 +6,7 @@ no item type. Import them from the barrel, `@/components/ui`; the icons are a se
 
 | File | What it holds |
 | --- | --- |
-| `Card.tsx` | `Card` — a heading, an optional subtitle, an `actions` slot and the content — and `PanelGrid` |
+| `Card.tsx` | `Card` — a heading, an optional subtitle, an `actions` slot and the content — `PanelGrid`, and `Panel` |
 | `Button.tsx` | `Button` and its variants, `IconButton`, and `FloatingAddButton` ([Adding an item](#adding-an-item)) |
 | `CopyButton.tsx` | The only way a secret reaches the clipboard: it clears the clipboard after 30 s ([`lib/app`](../../lib/app/README.md#plaintext-the-browser-would-otherwise-send-away)) |
 | `fields.tsx` | `Field`, `PinField`, `TextArea`, `SecretField`, `Select` — they share one input and label style |
@@ -16,8 +16,9 @@ no item type. Import them from the barrel, `@/components/ui`; the icons are a se
 
 **Text entry goes through these fields, never a bare `<input>`.** `Field` and `TextArea` turn
 spellcheck, grammar extensions and translation off by default. **Every PIN entry is a `PinField`**,
-never a `Field` with `type="password"`: it carries `pinInputAttributes` so the browser's password
-manager neither saves nor autofills the PIN
+never a `Field` with `type="password"`: one box per digit
+([`lib/app`](../../lib/app/README.md#one-box-per-digit--pin-entryts)), each carrying
+`pinDigitAttributes` so the browser's password manager neither saves nor autofills the PIN
 ([`lib/app`](../../lib/app/README.md#a-pin-is-not-a-password-the-browser-may-keep)). `SecretField`
 masks what is typed without making it a password field
 ([`lib/app`](../../lib/app/README.md#a-secret-is-masked-while-it-is-typed)).
@@ -57,6 +58,12 @@ because their rows carry their own horizontal padding.
 Cards that do not need the full width sit inside a `PanelGrid` — a two-column grid from `md` up, a
 single stacked column on mobile, `gap-8` because whitespace is what separates blocks. Wide tables
 stay outside a grid.
+
+`Panel` is the one bordered surface, for a form standing alone on the welcome screens (sign up,
+sign in, unlock) where there is no sidebar or toolbar to anchor it and the brand gradient behind it
+would otherwise swallow its edges. It is a rounded, bordered, raised surface with `p-6`;
+`padded={false}` drops the padding for content that runs edge to edge, like the sign up / sign in
+tab bar. Inside the app, cards stay panel-less.
 
 An empty list renders `Empty`: an icon chip and one sentence.
 

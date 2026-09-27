@@ -8,7 +8,7 @@ the sidebar; they open from the account menu ([`components/shell`](../shell/READ
 | `SettingsModal.tsx` | The modal, its vertical tab menu, and which tabs this device sees |
 | `UsernameScreen.tsx` | The **Username** tab — one panel, `UsernameCard` |
 | `UsernameCard.tsx` | The rename panel: the current name, the claim, and what a rename does |
-| `PinScreen.tsx` | The **PIN** tab — this browser's PIN, turning Paranoid on, changing the account PIN |
+| `PinScreen.tsx` | The **PIN** tab — this browser's PIN, turning Paranoid on, changing the account PIN. Each PIN hands focus to the next, and the last one submits, except when turning Paranoid on ([`lib/app`](../../lib/app/README.md#one-box-per-digit--pin-entryts)) |
 | `DevicesScreen.tsx` | The **Devices** tab — the account's devices, names, chain verification, removing another device with the phrase |
 | `ConnectExtension.tsx` | Inside the Devices tab: linking the browser extension — the code and its countdown, the fingerprint to compare, the device's name, and refusing on a mismatch ([`lib/pairing`](../../lib/pairing/README.md)) |
 | `AccountScreen.tsx` | The **Account** tab — deleting the account with the phrase (and the account PIN on Paranoid) |

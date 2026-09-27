@@ -1,14 +1,22 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useId, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import type { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
 import {
+  backspaceInPin,
   maskedInputClass,
-  pinInputAttributes,
+  pinBoxLabel,
+  pinCompleted,
+  pinDigitAttributes,
+  pinDigits,
+  type PinEntry,
   PRIVATE_TEXT_PROPS,
+  reachablePinBox,
   secretInputAttributes,
   SECRET_FIELD_COPY,
+  stepPinFocus,
   supportsTextSecurity,
+  typeIntoPin,
 } from '@/lib/app';
 import { PIN_LENGTH } from '@/lib/pin';
 import { IconButton } from './Button';
@@ -16,6 +24,9 @@ import { EyeIcon, EyeOffIcon } from './icons';
 
 const INPUT_CLASS =
   'mt-1.5 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none transition-all placeholder:text-ink-faint focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:bg-raised disabled:text-ink-muted';
+
+const PIN_BOX_CLASS =
+  'h-12 w-11 min-w-0 shrink rounded-lg border border-line bg-surface text-center text-lg font-semibold text-ink outline-none transition-all focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:bg-raised disabled:text-ink-muted';
 
 const LABEL_CLASS = 'text-compact font-semibold text-ink-soft';
 
@@ -40,18 +51,112 @@ export function Field({
   );
 }
 
+export interface PinFieldHandle {
+  focus(): void;
+}
+
 export function PinField({
+  ref,
   label,
-  ...props
-}: Omit<
-  InputHTMLAttributes<HTMLInputElement>,
-  'type' | 'inputMode' | 'maxLength' | 'autoComplete' | 'className'
-> & {
+  value,
+  onChange,
+  onComplete,
+  autoFocus = false,
+  disabled = false,
+}: {
+  ref?: Ref<PinFieldHandle>;
   label: string;
+  value: string;
+  onChange: (value: string) => void;
+  onComplete?: (value: string) => void;
+  autoFocus?: boolean;
+  disabled?: boolean;
 }) {
   const [cssMasking] = useState(() => supportsTextSecurity());
+  const labelId = useId();
+  const boxes = useRef<(HTMLInputElement | null)[]>([]);
+  const latest = useRef(value);
+  latest.current = value;
+  const attributes = pinDigitAttributes(cssMasking);
 
-  return <Field label={label} {...pinInputAttributes(PIN_LENGTH, cssMasking)} {...props} />;
+  function focusBox(index: number) {
+    const box = boxes.current[index];
+    box?.focus();
+    box?.select();
+  }
+
+  useImperativeHandle(ref, () => ({
+    focus: () => focusBox(reachablePinBox(latest.current, PIN_LENGTH, PIN_LENGTH)),
+  }));
+
+  function enter(entry: PinEntry, from: number) {
+    const previous = latest.current;
+    latest.current = entry.value;
+    onChange(entry.value);
+    if (entry.focus !== from) {
+      focusBox(entry.focus);
+    }
+    if (pinCompleted(previous, entry.value, PIN_LENGTH)) {
+      onComplete?.(entry.value);
+    }
+  }
+
+  return (
+    <div>
+      <span id={labelId} className={`block text-center ${LABEL_CLASS}`}>
+        {label}
+      </span>
+      <div role="group" aria-labelledby={labelId} className="mt-1.5 flex justify-center gap-2">
+        {pinDigits(value, PIN_LENGTH).map((digit, index) => (
+          <input
+            key={index}
+            ref={(element) => {
+              boxes.current[index] = element;
+            }}
+            {...PRIVATE_TEXT_PROPS}
+            {...attributes}
+            aria-label={pinBoxLabel(label, index, PIN_LENGTH)}
+            autoFocus={autoFocus && index === 0}
+            disabled={disabled}
+            value={digit}
+            className={maskedInputClass(PIN_BOX_CLASS, attributes.className)}
+            onFocus={(event) => {
+              const reachable = reachablePinBox(latest.current, index, PIN_LENGTH);
+              if (reachable !== index) {
+                focusBox(reachable);
+                return;
+              }
+              event.target.select();
+            }}
+            onChange={(event) =>
+              enter(typeIntoPin(latest.current, index, event.target.value, PIN_LENGTH), index)
+            }
+            onKeyDown={(event) => {
+              if (event.key === 'Backspace') {
+                const entry = backspaceInPin(latest.current, index, PIN_LENGTH);
+                if (entry !== undefined) {
+                  event.preventDefault();
+                  enter(entry, index);
+                }
+                return;
+              }
+              if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                event.preventDefault();
+                focusBox(
+                  stepPinFocus(
+                    latest.current,
+                    index,
+                    event.key === 'ArrowLeft' ? -1 : 1,
+                    PIN_LENGTH,
+                  ),
+                );
+              }
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function TextArea({
@@ -115,7 +220,11 @@ export function SecretField({
           onClick={() => onRevealedChange(!revealed)}
           className="absolute right-0.5 top-[calc(50%+0.1875rem)] -translate-y-1/2"
         >
-          {revealed ? <EyeOffIcon className="h-4 w-4 shrink-0" /> : <EyeIcon className="h-4 w-4 shrink-0" />}
+          {revealed ? (
+            <EyeOffIcon className="h-4 w-4 shrink-0" />
+          ) : (
+            <EyeIcon className="h-4 w-4 shrink-0" />
+          )}
         </IconButton>
       </div>
     </div>

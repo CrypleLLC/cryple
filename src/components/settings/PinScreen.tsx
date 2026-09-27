@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState, type Ref } from 'react';
 import { ApiError } from '@/lib/api';
 import { changeDevicePin } from '@/lib/account';
 import { deriveRootKeysFromMnemonic, zeroRootKeys } from '@/lib/keys';
 import { enableParanoid, rotateAccountPin } from '@/lib/oprf';
 import { rawKeySigner } from '@/lib/signing';
+import { PIN_LENGTH } from '@/lib/pin';
 import { getMe } from '@/lib/users';
 import {
   accountPinRefusal,
@@ -16,28 +17,45 @@ import {
   SECOND_FACTOR_COPY,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
-import { Button, Card, Notice, PinField, TextArea } from '@/components/ui';
+import { Button, Card, Notice, PinField, TextArea, type PinFieldHandle } from '@/components/ui';
 
 function PinFields({
+  ref,
   label,
   pin,
   confirmation,
   onPin,
   onConfirmation,
+  onConfirmed,
+  autoFocus = false,
 }: {
+  ref?: Ref<PinFieldHandle>;
   label: string;
   pin: string;
   confirmation: string;
   onPin: (value: string) => void;
   onConfirmation: (value: string) => void;
+  onConfirmed?: (confirmation: string) => void;
+  autoFocus?: boolean;
 }) {
+  const confirmationField = useRef<PinFieldHandle>(null);
+
   return (
     <>
-      <PinField label={label} value={pin} onChange={(event) => onPin(event.target.value)} />
       <PinField
+        ref={ref}
+        label={label}
+        autoFocus={autoFocus}
+        value={pin}
+        onChange={onPin}
+        onComplete={() => confirmationField.current?.focus()}
+      />
+      <PinField
+        ref={confirmationField}
         label={`Confirm ${label.toLowerCase()}`}
         value={confirmation}
-        onChange={(event) => onConfirmation(event.target.value)}
+        onChange={onConfirmation}
+        onComplete={onConfirmed}
       />
     </>
   );
@@ -50,8 +68,8 @@ function DevicePinCard() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: 'danger' | 'success'; text: string }>();
 
-  async function change() {
-    const checked = checkPin(pin, confirmation);
+  async function change(confirmed: string) {
+    const checked = checkPin(pin, confirmed);
     if (!checked.ok) {
       setMessage({ tone: 'danger', text: checked.message });
       return;
@@ -82,12 +100,18 @@ function DevicePinCard() {
         ) : null}
         <PinFields
           label="New PIN"
+          autoFocus
           pin={pin}
           confirmation={confirmation}
           onPin={setPin}
           onConfirmation={setConfirmation}
+          onConfirmed={(confirmed) => {
+            if (!busy) {
+              void change(confirmed);
+            }
+          }}
         />
-        <Button disabled={busy} onClick={() => void change()}>
+        <Button disabled={busy} onClick={() => void change(confirmation)}>
           {busy ? 'Changing it…' : 'Change this browser’s PIN'}
         </Button>
       </div>
@@ -198,18 +222,29 @@ function RotateAccountPinCard() {
   const [failures, setFailures] = useState(0);
   const [message, setMessage] = useState<{ tone: 'danger' | 'success'; text: string }>();
 
-  async function rotate() {
+  const newPinField = useRef<PinFieldHandle>(null);
+
+  async function rotate(confirmed: string) {
     const phrase = checkMnemonic(mnemonic);
-    const next = checkPin(pin, confirmation);
+    const next = checkPin(pin, confirmed);
     if (!phrase.ok || !next.ok) {
-      setMessage({ tone: 'danger', text: !phrase.ok ? phrase.message : (next as { message: string }).message });
+      setMessage({
+        tone: 'danger',
+        text: !phrase.ok ? phrase.message : (next as { message: string }).message,
+      });
       return;
     }
     setBusy(true);
     setMessage(undefined);
     try {
       const outcome = await withRoot(mnemonic, context.session.userAddress, (root) =>
-        rotateAccountPin(context, rawKeySigner(root.signing.privateKey), root.userAddress, current, pin),
+        rotateAccountPin(
+          context,
+          rawKeySigner(root.signing.privateKey),
+          root.userAddress,
+          current,
+          pin,
+        ),
       );
       if (outcome === 'mismatch') {
         setMessage({ tone: 'danger', text: SECOND_FACTOR_COPY.phraseMismatch });
@@ -252,16 +287,23 @@ function RotateAccountPinCard() {
         <PinField
           label="Current account PIN"
           value={current}
-          onChange={(event) => setCurrent(event.target.value)}
+          onChange={setCurrent}
+          onComplete={() => newPinField.current?.focus()}
         />
         <PinFields
+          ref={newPinField}
           label="New account PIN"
           pin={pin}
           confirmation={confirmation}
           onPin={setPin}
           onConfirmation={setConfirmation}
+          onConfirmed={(confirmed) => {
+            if (!busy && checkMnemonic(mnemonic).ok && current.length === PIN_LENGTH) {
+              void rotate(confirmed);
+            }
+          }}
         />
-        <Button disabled={busy} onClick={() => void rotate()}>
+        <Button disabled={busy} onClick={() => void rotate(confirmation)}>
           {busy ? SECOND_FACTOR_COPY.rotate.submitting : SECOND_FACTOR_COPY.rotate.submit}
         </Button>
       </div>
@@ -277,7 +319,10 @@ export default function PinScreen() {
       <DevicePinCard />
       {paranoid ? (
         <>
-          <Card title={SECOND_FACTOR_COPY.enabled.title} subtitle={SECOND_FACTOR_COPY.enabled.summary}>
+          <Card
+            title={SECOND_FACTOR_COPY.enabled.title}
+            subtitle={SECOND_FACTOR_COPY.enabled.summary}
+          >
             <Notice tone="info">{SECOND_FACTOR_COPY.enabled.oneWayDoor}</Notice>
           </Card>
           {fullDevice ? <RotateAccountPinCard /> : null}

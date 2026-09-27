@@ -23,6 +23,7 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | `username.ts` | The rename screen's validation and the copy that has to be on it |
 | `private-text.ts` | The attributes that stop the browser shipping typed text to a spelling, grammar or translation service |
 | `clipboard.ts` | Copying a secret, and clearing it off the clipboard afterwards |
+| `pin-entry.ts` | The six-box PIN entry: typing, pasting, backspace and arrows over one contiguous value ([One box per digit](#one-box-per-digit--pin-entryts)) |
 | `secret-field.ts` | Masking a secret or a PIN while it is typed, without turning it into a password field |
 
 ## Plaintext the browser would otherwise send away
@@ -68,8 +69,12 @@ whole tab and says so in its confirmation label.
   30 seconds. That is accepted: leaving a secret on a synced clipboard is the worse failure.
 - **A second copy restarts the window** and cancels any clear still waiting for focus, so an older
   deadline never empties the newer value.
-- **The recovery phrase has no copy button.** The kit step shows it and downloads the PDF; the
-  phrase is the whole account, and the one place it should not pass through is a clipboard.
+- **The recovery phrase has no copy button, and cannot be copied by hand either.** The kit step
+  shows it and downloads the PDF; the phrase is the whole account, and the one place it should not
+  pass through is a clipboard. The revealed phrase is `select-none`, and its `copy`, `cut` and
+  `dragstart` events are cancelled, and `RECOVERY_KIT_STEP_COPY.notCopyable` under it says why. That stops the reflex, not a determined user — the developer
+  tools and a screenshot still work — and the PDF draws the words as outlines for the same reason
+  ([`lib/recovery-kit`](../recovery-kit/README.md#the-phrase-is-drawn-not-written)).
 
 ## A secret is masked while it is typed
 
@@ -107,9 +112,9 @@ encryption and into someone else's, which is the class of leak this client exist
 
 ## A PIN is not a password the browser may keep
 
-`pinInputAttributes(length, cssMasking)` is the section above applied to every PIN entry — sign-up,
-enrolment, unlock, enabling and rotating the account PIN — plus `inputMode="numeric"` and
-`maxLength`. The component is `PinField`; **a PIN must never be typed into a plain `Field` with
+`pinDigitAttributes(cssMasking)` is the section above applied to every box of every PIN entry —
+sign-up, enrolment, unlock, enabling and rotating the account PIN — plus `inputMode="numeric"`. The
+component is `PinField`; **a PIN must never be typed into a plain `Field` with
 `type="password"`**.
 
 The reason is sharper here than it is for a vault value. A `type="password"` input is what makes
@@ -124,15 +129,58 @@ mechanism and the attributes are only the belt. What a saved PIN costs:
   `OPRF_DEVICE_MAX_ATTEMPTS` evaluations and is then deleted, so a manager filling a stale value on
   each visit can walk an account off its own browser, and the fix is to type the recovery phrase.
 
+## One box per digit — `pin-entry.ts`
+
+`PinField` draws `PIN_LENGTH` boxes, one digit each, and holds the PIN as **one contiguous string**
+the caller owns: the boxes are a view of it, never six separate states. Every keystroke goes
+through a pure function that returns the new value and the box to focus next, so the behaviour is
+tested without rendering.
+
+- **Typing** writes the digit and moves to the next box, selecting it so the next digit replaces
+  whatever it holds. A box is selected only when focus moves **to** it: the sixth digit stays
+  where it is, unselected. `typeIntoPin` writes into the box that
+  was typed in, or the first empty box if that one is further on (`reachablePinBox`), so the value
+  never has a hole.
+- **Retyping a filled box replaces its digit.** The box selects its content on focus, so the new
+  digit replaces it; where a browser appends instead, the two-character value is resolved to the
+  new digit.
+- **Pasting** fills the boxes from the one pasted into and drops what does not fit. That is why the
+  boxes set **no `maxLength`**: a one-character cap would cut a pasted PIN to its first digit
+  before any handler saw it.
+- **Anything that is not a digit is ignored.**
+- **Backspace** in a filled box clears it; in an empty box, `backspaceInPin` removes the previous
+  digit and moves back to it. Left and right arrows move between filled boxes (`stepPinFocus`).
+- **Each box is labelled by its position** (`pinBoxLabel`: *PIN, digit 3 of 6*), and the row is a
+  `role="group"` named by the field's label.
+- **The boxes and their label are centred** in whatever holds the field.
+- **Only the first box takes `autoFocus`.** Enter still submits the surrounding form.
+- **The sixth digit is the click.** `PinField` calls `onComplete` whenever a change leaves a full
+  PIN that differs from the one before (`pinCompleted`) — the sixth digit, a paste, or a
+  corrected digit, but never an arrow key. A field followed by its confirmation hands focus on
+  (`PinFieldHandle.focus`, through `ref`); the last field of a form runs the form's action.
+  Where it applies:
+
+  | Where | Focus on arrival | Sixth digit |
+  | --- | --- | --- |
+  | Unlock | the PIN | unlocks |
+  | Sign-up and adding a browser | the PIN | PIN → confirmation → submits |
+  | Settings, this browser's PIN | the new PIN | new → confirmation → changes it |
+  | Settings, changing the account PIN | — (the phrase comes first) | current → new → confirmation → changes it, once the phrase is valid |
+  | Settings, turning Paranoid on | — (the phrase comes first) | new → confirmation, **then waits for the button** |
+  | Settings, deleting the account | — (the phrase comes first) | **waits for the button** |
+
+  The last two never fire on their own because they cannot be undone: Paranoid has no way back,
+  and a deleted account is gone. Those are clicks worth making on purpose.
+
 ## Onboarding
 
 The flow is a reducer, not scattered `useState` — every guard that matters is testable without
 rendering. Two branches, chosen by a tab rather than by two buttons:
 
 ```
-origin ─┬─ Sign up ─┐
-        └─ Sign in ─┴→ pin → enrolling ─┬─ Sign up → recovery-kit → done
-                                        └─ Sign in ─────────────────→ done
+origin ─┬─ Sign up → mode ─┐
+        └─ Sign in ────────┴→ pin → enrolling ─┬─ Sign up → recovery-kit → done
+                                               └─ Sign in ─────────────────→ done
 ```
 
 The sign-in tab takes the phrase **on the tab itself**, so `origin` and `import` are one screen: a
@@ -140,11 +188,28 @@ tab that offers only a Continue button is a step that asks nothing.
 
 ### The mode is chosen before the PIN, not after
 
-On the sign-up PIN step the Standard/Paranoid fieldset renders **above** the two PIN fields, and
-`MODE_COPY.oneWayDoor` appears the moment Paranoid is selected. The order is the point
+Sign-up asks for the mode on **its own step**, `mode`, before the `pin` step. It is a
+Standard/Paranoid toggle defaulting to Standard, with the selected mode's `summary` and `tradeoff`
+under it, and `MODE_COPY.oneWayDoor` appears the moment Paranoid is selected. `mode-chosen` records
+the choice and moves on; the PIN step shows `oneWayDoor` again above the fields when Paranoid was
+chosen. The order is the point
 ([Task 105](../../../../tasks-closed.md#task-105)): a PIN typed before reading what it commits you to was
 not a choice. Paranoid has no way back and no reset, so the sentence that says a forgotten account
 PIN ends the account for ever has to be on screen before the field is filled, not under it.
+
+- **Back from the PIN keeps the mode**, so the toggle shows what was chosen; back from the mode
+  step to the start drops it with the phrase.
+- **Signing in has no mode step.** The account already has its mode; `pin-chosen` on the import
+  branch always enrols with `paranoid: false`, and a Paranoid account's PIN is checked by the
+  server during enrolment.
+- **The PIN step needs no click.** The first box has focus when the step opens, the sixth PIN
+  digit moves to the confirmation, and the sixth confirmation digit runs the same `checkPin` the
+  button runs: a match submits, a mismatch or a weak PIN is reported at once. This holds when
+  adding a browser too, where a Paranoid account types its account PIN: a wrong one spends a
+  server attempt the moment its sixth digit lands, with no chance to correct it first. That was a
+  deliberate trade for not having to click. See [One box per digit](#one-box-per-digit--pin-entryts).
+- **`isReadyToEnroll` needs the phrase, the mode and the PIN**, in both modes: every browser has a
+  PIN.
 
 Both modes carry a `summary` and a `tradeoff`, because a choice presented with only the safe option
 explained is not one either. `MODE_COPY` is asserted never to contain the words *disable*, *remove
@@ -177,14 +242,16 @@ locks as it would anywhere else, and the kit can no longer be offered.
 
 The PIN step always sets **this browser's PIN**: it unlocks the device record
 ([`lib/device`](../device/README.md)) through the server's OPRF, which rations every guess. The
-same step presents **Standard and Paranoid as a real choice**. Paranoid turns the same six digits
+step before it presents **Standard and Paranoid as a real choice**. Paranoid turns the same six digits
 into the **account PIN** too, which the phrase then needs for every root action. The one-way,
 no-reset warning (`MODE_COPY.oneWayDoor`) is shown **before** the account is created, and
 Standard is described as a deliberate choice, not a lesser one.
 
 Signing in on a new browser is adding it with the phrase (`ENROL_STEP_COPY`): the copy says the
 browser does not keep the phrase (`PHRASE_NOT_KEPT`), that the phrase is in the page's memory
-while typed, and offers *I lost my other devices* with what it does and does not do.
+while typed, and offers *I lost my other devices*. What that does and does not do
+(`lostDevicesWarning`) appears under it once the box is ticked, so it is read at the moment it
+applies rather than skimmed by everyone signing in.
 
 ## Unlocking — `unlock.ts`
 

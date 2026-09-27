@@ -7,7 +7,7 @@ Who is signed in on this browser, and the screens before the app opens.
 | `CrypleProvider.tsx` | Session custody, phase machine, error translation, cross-tab handoff |
 | `AppProviders.tsx` | Mounts `CrypleProvider` in the root layout so every route shares one session |
 | `SessionGate.tsx` | The loading / onboarding / locked / ready switch, wrapped around each route |
-| `Onboarding.tsx` | Sign up (phrase, PIN, Standard or Paranoid, recovery kit) and adding this browser with a phrase, including *I lost my devices* and the too-many-devices picker |
+| `Onboarding.tsx` | Sign up (phrase, Standard or Paranoid, PIN, recovery kit) and adding this browser with a phrase, including *I lost my devices* and the too-many-devices picker |
 | `Unlock.tsx` | PIN unlock through the server's OPRF, with the attempts left, and *I forgot this browser's PIN* |
 
 Every screen reads the session through `useCryple()` and `useAuthedContext()` from
@@ -63,8 +63,17 @@ browser, and after the recovery kit has been downloaded for a sign-up
 The PDF is built by [`lib/recovery-kit`](../../lib/recovery-kit/README.md), loaded with a dynamic
 `import()` on the first click so `pdf-lib` and the QR encoder stay out of every other page load.
 The download uses the same object-URL-and-anchor approach as the drive, and the URL is revoked
-straight after the click. The phrase can be revealed on the step but has no copy button.
+straight after the click. The phrase can be revealed on the step but not copied: no copy button, no selection, and copy, cut
+and drag are cancelled.
 
-The PIN step presents Standard and Paranoid as a real choice, and shows the one-way,
-no-reset warning as soon as Paranoid is picked, before the account is created. There is no
+Sign-up is four screens: the phrase (word count), the mode, the PIN, the recovery kit. The mode
+step presents Standard and Paranoid as a real choice: a two-option toggle (`role="radiogroup"`),
+Standard by default, with only the selected mode's explanation shown under it, and the one-way,
+no-reset warning as soon as Paranoid is picked. The PIN step repeats that warning for a Paranoid
+account, above the fields, before the account is created. The PIN step opens with the first box focused, moves to the
+confirmation after the sixth digit, and submits itself when the confirmation matches — on sign-up
+and when adding a browser alike. Unlock submits on the sixth digit
+([`lib/app`](../../lib/app/README.md#one-box-per-digit--pin-entryts)). The first and PIN steps' buttons are as wide
+as the control they follow: the word-count pair, the six PIN boxes. The mode step's Continue sits
+under the box as Back's twin, the same size, on its right. There is no
 "disable Paranoid" control and there never will be.

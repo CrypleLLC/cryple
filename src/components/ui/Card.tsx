@@ -4,6 +4,16 @@ export function PanelGrid({ children }: { children: ReactNode }) {
   return <div className="grid gap-8 md:grid-cols-2">{children}</div>;
 }
 
+export function Panel({ padded = true, children }: { padded?: boolean; children: ReactNode }) {
+  return (
+    <div
+      className={`overflow-hidden rounded-2xl border border-line bg-surface shadow-raised ${padded ? 'p-6' : ''}`}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function Card({
   title,
   subtitle,
