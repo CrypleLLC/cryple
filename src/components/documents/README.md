@@ -15,6 +15,14 @@
 A document's tile is a [`PageTile`](../tiles/README.md); why it looks the way it does is under
 [Document and note tiles](../tiles/README.md#document-and-note-tiles).
 
+## The list layout
+
+The documents screen can also be shown as a list, shared with the drive and described in
+[Grid or list](../tiles/README.md#grid-or-list). A document's size there is the byte length of
+its encoded Yjs state (`DocumentSummary.bytes`), measured after it is opened for the summary: the
+server stores a snapshot and a log of updates and reports no size of its own, and this is the
+closest honest figure to what the document holds.
+
 ## The document editor
 
 The `/docs/[id]` surface is TipTap bound straight to the document's `Y.Doc`, so the editor holds no

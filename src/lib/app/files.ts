@@ -148,6 +148,14 @@ export function storageBar(usage: StorageUsage): StorageBar {
   };
 }
 
+export function freeBytes(usage: StorageUsage): number {
+  return Math.max(0, usage.quota_bytes - usage.used_bytes);
+}
+
+export function usedShareLabel(usage: StorageUsage): string {
+  return `${storageBar(usage).percent}% of ${formatBytes(usage.quota_bytes)}`;
+}
+
 export const DELETED_SPACE_RETURNS =
   'Space from a deleted file returns within a minute, once both copies are removed.';
 

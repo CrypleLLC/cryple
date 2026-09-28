@@ -44,6 +44,9 @@ import {
   fileBatchDeleteSummary,
   fileCaption,
   fileCountLabel,
+  fileStatusShortLabel,
+  fileTypeLabel,
+  formatBytes,
   fileExtension,
   fileDeleteConfirmation,
   FILE_NOUNS,
@@ -56,9 +59,12 @@ import {
   hasPreview,
   iconScale,
   isOpenable,
+  listingDateLabel,
+  newestCreatedFirst,
   isResumable,
   previewUrls,
   readIconSize,
+  readItemLayout,
   replicationLabel,
   resumeHint,
   retainSelectable,
@@ -74,10 +80,12 @@ import {
   transfersInFlight,
   uploadPercent,
   writeIconSize,
+  writeItemLayout,
   type FileKind,
   type FolderContents,
   type IconScale,
   type IconSize,
+  type ItemLayout,
   type Transfer,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
@@ -91,12 +99,22 @@ import {
   TrashIcon,
   UploadIcon,
 } from '@/components/ui/icons';
-import { Button, Card, Empty, FloatingAddButton, Notice, SizeStepper, Spinner } from '@/components/ui';
-import { TileAction, TileCheckbox } from '@/components/tiles';
+import {
+  Button,
+  Card,
+  Empty,
+  FloatingAddButton,
+  LayoutToggle,
+  Notice,
+  SizeStepper,
+  Spinner,
+} from '@/components/ui';
+import { Listing, ListingRow, TileAction, TileCheckbox } from '@/components/tiles';
 import ShareItemDialog from '@/components/sharing/ShareItemDialog';
 import { startItemDrag } from '@/components/folders/FolderTabs';
 import {
   FolderPath,
+  FolderRow,
   FolderTile,
   isFileDrop,
   MoveToFolder,
@@ -113,8 +131,10 @@ interface DriveTile {
   storedBytes: number;
   trueBytes: number;
   status: string;
+  statusShort: string;
   openable: boolean;
   readable: boolean;
+  createdAt: string;
   updatedAt: string;
   resume?: ResumableFile;
   remembered: boolean;
@@ -137,6 +157,7 @@ export default function DriveScreen() {
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [iconSize, setIconSize] = useState<IconSize>(defaultIconSize('drive'));
+  const [layout, setLayout] = useState<ItemLayout>('grid');
   const [details, setDetails] = useState<DriveDetailsTarget>();
   const [folderContentsFound, setFolderContentsFound] = useState<{ id: string; contents: FolderContents }>();
   const [folderContentsError, setFolderContentsError] = useState<{ id: string; text: string }>();
@@ -149,11 +170,19 @@ export default function DriveScreen() {
     [],
   );
 
-  useEffect(() => setIconSize(readIconSize('drive')), []);
+  useEffect(() => {
+    setIconSize(readIconSize('drive'));
+    setLayout(readItemLayout('drive'));
+  }, []);
 
   const resize = useCallback((next: IconSize) => {
     setIconSize(next);
     writeIconSize('drive', next);
+  }, []);
+
+  const relayout = useCallback((next: ItemLayout) => {
+    setLayout(next);
+    writeItemLayout('drive', next);
   }, []);
 
   const transfers = useSyncExternalStore(
@@ -550,6 +579,29 @@ export default function DriveScreen() {
     return [...waiting, ...rows];
   }, [tiles, transfers]);
 
+  function fileActions(tile: DriveTile, transfer: Transfer | undefined): DriveFileHandlers {
+    return {
+      onOpen: () => {
+        if (selecting) {
+          setSelected((current) => toggleFileSelection(current, tile.id));
+          return;
+        }
+        void save(tile);
+      },
+      onToggle: () => {
+        setSelecting(true);
+        setSelected((current) => toggleFileSelection(current, tile.id));
+      },
+      onDelete: fullDevice || tile.resume !== undefined ? () => setConfirming(tile) : undefined,
+      onShare: () => setSharing(tile.id),
+      onDetails: () => toggleDetails({ kind: 'file', id: tile.id }),
+      onDragStart: (event) =>
+        startItemDrag(event, withTheirThumbnails(selected.includes(tile.id) ? selected : [tile.id])),
+      onResume: () => void resume(tile),
+      onDismiss: transfer === undefined ? undefined : () => dropTransfer(transfer.key),
+    };
+  }
+
   if (tiles === undefined) {
     return <Spinner />;
   }
@@ -645,7 +697,7 @@ export default function DriveScreen() {
               }
             }}
           />
-          {grid.length + folderTiles.length > 0 && (
+          {layout === 'grid' && grid.length + folderTiles.length > 0 && (
             <SizeStepper
               size={iconSize}
               onChange={resize}
@@ -654,6 +706,7 @@ export default function DriveScreen() {
               largerLabel="Larger icons"
             />
           )}
+          {grid.length + folderTiles.length > 0 && <LayoutToggle layout={layout} onChange={relayout} />}
           {selecting ? (
             <>
               <MoveToFolder
@@ -736,6 +789,36 @@ export default function DriveScreen() {
                 : 'This folder is empty. Drop files here to upload them into it, or drag files onto it from elsewhere.'}
           </Empty>
         </Card>
+      ) : layout === 'list' ? (
+        <Listing>
+          {newestCreatedFirst(folderTiles).map((folder) => (
+            <FolderRow
+              key={folder.id}
+              state={tree}
+              folder={folder}
+              nouns={FILE_NOUNS}
+              itemIdsFor={withTheirThumbnails}
+              onDetails={() => toggleDetails({ kind: 'folder', id: folder.id })}
+            />
+          ))}
+          {newestCreatedFirst(grid).map((tile) => {
+            const transfer = byFile.get(tile.id);
+            const actions = fileActions(tile, transfer);
+
+            return (
+              <DriveFileRow
+                key={tile.id}
+                tile={tile}
+                busy={busy}
+                transfer={transfer}
+                preview={tile.thumbnailId === undefined ? undefined : previews.get(tile.thumbnailId)}
+                selecting={selecting}
+                selected={selected.includes(tile.id)}
+                {...actions}
+              />
+            );
+          })}
+        </Listing>
       ) : (
         <ul
           className="grid gap-1"
@@ -765,30 +848,7 @@ export default function DriveScreen() {
                 preview={tile.thumbnailId === undefined ? undefined : previews.get(tile.thumbnailId)}
                 selecting={selecting}
                 selected={selected.includes(tile.id)}
-                onOpen={() => {
-                  if (selecting) {
-                    setSelected((current) => toggleFileSelection(current, tile.id));
-                    return;
-                  }
-                  void save(tile);
-                }}
-                onToggle={() => {
-                  setSelecting(true);
-                  setSelected((current) => toggleFileSelection(current, tile.id));
-                }}
-                onDelete={
-                  fullDevice || tile.resume !== undefined ? () => setConfirming(tile) : undefined
-                }
-                onShare={() => setSharing(tile.id)}
-                onDetails={() => toggleDetails({ kind: 'file', id: tile.id })}
-                onDragStart={(event) =>
-                  startItemDrag(
-                    event,
-                    withTheirThumbnails(selected.includes(tile.id) ? selected : [tile.id]),
-                  )
-                }
-                onResume={() => void resume(tile)}
-                onDismiss={transfer === undefined ? undefined : () => dropTransfer(transfer.key)}
+                {...fileActions(tile, transfer)}
               />
             );
           })}
@@ -822,6 +882,26 @@ export default function DriveScreen() {
   );
 }
 
+interface DriveFileHandlers {
+  onOpen: () => void;
+  onToggle: () => void;
+  onDelete?: () => void;
+  onShare: () => void;
+  onDetails: () => void;
+  onDragStart: (event: DragEvent) => void;
+  onResume: () => void;
+  onDismiss?: () => void;
+}
+
+interface DriveFileProps extends DriveFileHandlers {
+  tile: DriveTile;
+  busy: boolean;
+  transfer?: Transfer;
+  preview?: string;
+  selecting: boolean;
+  selected: boolean;
+}
+
 function DriveFile({
   tile,
   scale,
@@ -832,33 +912,12 @@ function DriveFile({
   selected,
   onOpen,
   onToggle,
-  onDelete,
-  onShare,
-  onDetails,
   onDragStart,
-  onResume,
-  onDismiss,
-}: {
-  tile: DriveTile;
-  scale: IconScale;
-  busy: boolean;
-  transfer?: Transfer;
-  preview?: string;
-  selecting: boolean;
-  selected: boolean;
-  onOpen: () => void;
-  onToggle: () => void;
-  onDelete?: () => void;
-  onShare: () => void;
-  onDetails: () => void;
-  onDragStart: (event: DragEvent) => void;
-  onResume: () => void;
-  onDismiss?: () => void;
-}) {
+  ...handlers
+}: DriveFileProps & { scale: IconScale }) {
   const failed = transfer?.phase === 'failed';
   const running = transfer !== undefined && !failed;
   const inert = running || tile.placeholder === true;
-  const showing = preview !== undefined && preview !== '';
 
   return (
     <li className="group relative" draggable={!busy && !inert} onDragStart={onDragStart}>
@@ -882,20 +941,7 @@ function DriveFile({
             className="flex items-end justify-center"
             style={{ height: scale.glyphPixels, width: scale.glyphPixels }}
           >
-            {showing ? (
-              <img
-                src={preview}
-                alt=""
-                loading="lazy"
-                className="max-h-full max-w-full rounded-sm bg-surface object-contain shadow-card ring-1 ring-line"
-              />
-            ) : (
-              <FileTypeIcon
-                kind={tile.kind}
-                extension={tile.readable ? fileExtension(tile.name) : ''}
-                labelled={scale.labelsTheGlyph}
-              />
-            )}
+            {fileThumbnail(tile, preview)}
           </span>
           {running && (
             <span
@@ -950,53 +996,158 @@ function DriveFile({
           failed ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
         }`}
       >
-        {tile.placeholder !== true && (
-          <TileAction label={`Details of ${tile.name}`} tone="neutral" triggersSidePanel onClick={onDetails}>
-            <InfoIcon className="h-3 w-3 shrink-0" />
-          </TileAction>
-        )}
-        {tile.openable && (
-          <TileAction label={`Download ${tile.name}`} disabled={busy} onClick={onOpen}>
-            <DownloadIcon className="h-3 w-3 shrink-0" />
-          </TileAction>
-        )}
-        {tile.openable && (
-          <TileAction label={`Share ${tile.name}`} disabled={busy} onClick={onShare}>
-            <SharingIcon className="h-3 w-3 shrink-0" />
-          </TileAction>
-        )}
-        {tile.resume !== undefined && (
-          <TileAction
-            label={`Finish uploading ${tile.name}`}
-            title={resumeHint(tile.name, tile.remembered)}
-            disabled={busy}
-            onClick={onResume}
-          >
-            <UploadIcon className="h-3 w-3 shrink-0" />
-          </TileAction>
-        )}
-        {tile.placeholder !== true && onDelete !== undefined && (
-          <TileAction
-            label={tile.resume === undefined ? `Delete ${tile.name}` : `Discard ${tile.name}`}
-            title={
-              tile.resume === undefined
-                ? undefined
-                : 'Discard this unfinished upload and free the space it is holding'
-            }
-            tone="danger"
-            disabled={busy}
-            onClick={onDelete}
-          >
-            <TrashIcon className="h-3 w-3 shrink-0" />
-          </TileAction>
-        )}
-        {failed && onDismiss !== undefined && (
-          <TileAction label={`Dismiss ${tile.name}`} tone="neutral" onClick={onDismiss}>
-            <CloseIcon className="h-3 w-3 shrink-0" />
-          </TileAction>
-        )}
+        <DriveFileActions tile={tile} busy={busy} failed={failed} onOpen={onOpen} {...handlers} />
       </div>
     </li>
+  );
+}
+
+function DriveFileActions({
+  tile,
+  busy,
+  failed,
+  onOpen,
+  onDelete,
+  onShare,
+  onDetails,
+  onResume,
+  onDismiss,
+}: Omit<DriveFileHandlers, 'onToggle' | 'onDragStart'> & { tile: DriveTile; busy: boolean; failed: boolean }) {
+  return (
+    <>
+      {tile.placeholder !== true && (
+        <TileAction label={`Details of ${tile.name}`} tone="neutral" triggersSidePanel onClick={onDetails}>
+          <InfoIcon className="h-3 w-3 shrink-0" />
+        </TileAction>
+      )}
+      {tile.openable && (
+        <TileAction label={`Download ${tile.name}`} disabled={busy} onClick={onOpen}>
+          <DownloadIcon className="h-3 w-3 shrink-0" />
+        </TileAction>
+      )}
+      {tile.openable && (
+        <TileAction label={`Share ${tile.name}`} disabled={busy} onClick={onShare}>
+          <SharingIcon className="h-3 w-3 shrink-0" />
+        </TileAction>
+      )}
+      {tile.resume !== undefined && (
+        <TileAction
+          label={`Finish uploading ${tile.name}`}
+          title={resumeHint(tile.name, tile.remembered)}
+          disabled={busy}
+          onClick={onResume}
+        >
+          <UploadIcon className="h-3 w-3 shrink-0" />
+        </TileAction>
+      )}
+      {tile.placeholder !== true && onDelete !== undefined && (
+        <TileAction
+          label={tile.resume === undefined ? `Delete ${tile.name}` : `Discard ${tile.name}`}
+          title={
+            tile.resume === undefined
+              ? undefined
+              : 'Discard this unfinished upload and free the space it is holding'
+          }
+          tone="danger"
+          disabled={busy}
+          onClick={onDelete}
+        >
+          <TrashIcon className="h-3 w-3 shrink-0" />
+        </TileAction>
+      )}
+      {failed && onDismiss !== undefined && (
+        <TileAction label={`Dismiss ${tile.name}`} tone="neutral" onClick={onDismiss}>
+          <CloseIcon className="h-3 w-3 shrink-0" />
+        </TileAction>
+      )}
+    </>
+  );
+}
+
+function fileThumbnail(tile: DriveTile, preview: string | undefined) {
+  return preview !== undefined && preview !== '' ? (
+    <img
+      src={preview}
+      alt=""
+      loading="lazy"
+      className="max-h-full max-w-full rounded-sm bg-surface object-contain shadow-card ring-1 ring-line"
+    />
+  ) : (
+    <FileTypeIcon kind={tile.kind} extension={tile.readable ? fileExtension(tile.name) : ''} />
+  );
+}
+
+function DriveFileRow({
+  tile,
+  busy,
+  transfer,
+  preview,
+  selecting,
+  selected,
+  onOpen,
+  onToggle,
+  onDragStart,
+  ...handlers
+}: DriveFileProps) {
+  const failed = transfer?.phase === 'failed';
+  const running = transfer !== undefined && !failed;
+  const inert = running || tile.placeholder === true;
+
+  return (
+    <ListingRow
+      icon={fileThumbnail(tile, preview)}
+      name={tile.name}
+      below={
+        running ? (
+          <span
+            role="progressbar"
+            aria-label={`Uploading ${tile.name}`}
+            aria-valuenow={transfer.percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            className="mt-1 block h-1 w-full max-w-[12rem] overflow-hidden rounded-full bg-line"
+          >
+            <span
+              style={{ width: `${transfer.percent}%` }}
+              className="block h-full bg-brand-500 transition-all duration-200"
+            />
+          </span>
+        ) : failed ? (
+          <span className="mt-0.5 block truncate text-caption normal-case tracking-normal text-danger">
+            {transfer.error}
+          </span>
+        ) : null
+      }
+      type={fileTypeLabel(tile.kind, tile.fullName, tile.readable)}
+      size={formatBytes(tile.trueBytes)}
+      modified={listingDateLabel(tile.updatedAt)}
+      status={
+        transfer === undefined
+          ? tile.statusShort
+          : transfer.phase === 'failed'
+            ? 'Upload failed'
+            : transfer.phase === 'paused'
+              ? 'Paused'
+              : transferLabel(transfer.phase, transfer.percent)
+      }
+      statusClassName={failed ? 'text-danger' : running ? 'text-brand-700' : 'text-ink-muted'}
+      title={failed ? transfer.error : tile.status === '' ? undefined : tile.status}
+      openLabel={selecting ? `${selected ? 'Deselect' : 'Select'} ${tile.name}` : `Download ${tile.name}`}
+      disabled={busy || inert || (!selecting && !tile.openable)}
+      onOpen={onOpen}
+      selection={
+        inert ? undefined : { selecting, selected, disabled: busy, onToggle }
+      }
+      highlighted={selected}
+      draggable={!busy && !inert}
+      onDragStart={onDragStart}
+      actions={
+        selecting || running ? undefined : (
+          <DriveFileActions tile={tile} busy={busy} failed={failed} onOpen={onOpen} {...handlers} />
+        )
+      }
+      actionsAlwaysVisible={failed}
+    />
   );
 }
 
@@ -1022,8 +1173,10 @@ function placeholderTile(transfer: Transfer): DriveTile {
     storedBytes: transfer.bytes,
     trueBytes: transfer.bytes,
     status: '',
+    statusShort: '',
     openable: false,
     readable: true,
+    createdAt: '',
     updatedAt: '',
     remembered: false,
     placeholder: true,
@@ -1039,7 +1192,9 @@ async function toTile(
     id: record.id,
     storedBytes: record.size_bytes,
     status: replicationLabel(record),
+    statusShort: fileStatusShortLabel(record),
     openable: isOpenable(record),
+    createdAt: record.created_at,
     updatedAt: record.updated_at,
     remembered: remembered && isResumable(record),
     resume: isResumable(record)

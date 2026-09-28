@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createSecret, deleteSecret, deleteSecrets, listSecrets, openSecret } from '@/lib/secrets';
 import { HOME_FOLDER_ID } from '@/lib/folders';
 import {
+  actionsHeader,
   buildVaultRows,
   encodeSecretPayload,
-  formatBytes,
   MASKED_VALUE,
   SECRET_NOUNS,
   type OpenedSecret,
@@ -16,9 +16,9 @@ import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider
 import { useVaultReveal } from './VaultReveal';
 import FolderTabs, { MoveToTab, startItemDrag, useFolderTabs } from '@/components/folders/FolderTabs';
 import { SharingIcon, TrashIcon, VaultIcon } from '@/components/ui/icons';
-import { Button, CopyButton, Field, FloatingAddButton, SecretField } from '@/components/ui';
+import { CopyButton, Field, FloatingAddButton, HintedIconButton, SecretField } from '@/components/ui';
 import { FormModal } from '@/components/modal';
-import { ItemList } from '@/components/item-list';
+import { DateTimeCell, ItemList } from '@/components/item-list';
 import ShareItemDialog from '@/components/sharing/ShareItemDialog';
 
 export default function VaultScreen() {
@@ -123,6 +123,12 @@ export default function VaultScreen() {
         rows={visible}
         rowKey={(row) => row.id}
         onRowDragStart={(event, row) => startItemDrag(event, [row.id])}
+        actionsHeader={actionsHeader(
+          'Copy',
+          (folders.tabs?.length ?? 0) >= 2 && 'Move',
+          'Share',
+          fullDevice && 'Delete',
+        )}
         emptyIcon={<VaultIcon className="h-6 w-6" />}
         emptyText={
           rows?.length === 0
@@ -140,22 +146,38 @@ export default function VaultScreen() {
           {
             header: 'Updated',
             kind: 'meta',
-            render: (row) => `${new Date(row.updatedAt).toLocaleString()} · ${formatBytes(row.bytes)}`,
+            render: (row) => <DateTimeCell at={row.updatedAt} />,
           },
         ]}
         actions={(row) => (
           <>
-            {row.readable ? <CopyButton value={row.value} label="Copy" /> : null}
-            <MoveToTab state={folders} itemIds={[row.id]} label={`Move ${row.name} to another tab`} />
-            <Button variant="ghost" aria-label={`Share ${row.name}`} onClick={() => setSharing(row.id)}>
-              <SharingIcon />
-              Share
-            </Button>
+            {row.readable ? <CopyButton value={row.value} label="Copy" iconOnly hintPlacement="above" /> : null}
+            <MoveToTab
+              state={folders}
+              itemIds={[row.id]}
+              label={`Move ${row.name} to another tab`}
+              iconOnly
+              hintPlacement="above"
+            />
+            <HintedIconButton
+              hint="Share"
+              aria-label={`Share ${row.name}`}
+              placement="above"
+              onClick={() => setSharing(row.id)}
+            >
+              <SharingIcon className="h-4 w-4 shrink-0" />
+            </HintedIconButton>
             {fullDevice ? (
-              <Button variant="danger" disabled={busy} onClick={() => void removeSecret(row.id)}>
-                <TrashIcon />
-                Delete
-              </Button>
+              <HintedIconButton
+                hint="Delete"
+                aria-label={`Delete ${row.name}`}
+                placement="above"
+                tone="danger"
+                disabled={busy}
+                onClick={() => void removeSecret(row.id)}
+              >
+                <TrashIcon className="h-4 w-4 shrink-0" />
+              </HintedIconButton>
             ) : null}
           </>
         )}

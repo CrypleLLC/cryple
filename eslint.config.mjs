@@ -81,8 +81,9 @@ const config = [
   },
 
   // The one localStorage exemption: src/lib/app/icon-size.ts persists one
-  // of four literal words naming how large the drive's icons are drawn. It is a
-  // view preference with no bearing on secrets, and losing it on every reload is
+  // literal word naming how large a grid draws its icons, and one naming
+  // whether the drive or documents is drawn as a grid or a list. Both are view
+  // preferences with no bearing on secrets, and losing them on every reload is
   // the kind of small wrongness a user notices on every visit.
   {
     files: ['src/lib/app/icon-size.ts'],

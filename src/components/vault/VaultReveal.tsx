@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { EyeIcon, EyeOffIcon } from '@/components/ui/icons';
-import { Button } from '@/components/ui';
+import { HintedIconButton } from '@/components/ui';
 
 interface VaultRevealValue {
   revealed: boolean;
@@ -31,13 +31,8 @@ export function VaultRevealAction() {
   const { revealed, toggle } = useVaultReveal();
 
   return (
-    <Button
-      variant="secondary"
-      onClick={toggle}
-      title={revealed ? 'Hide every value in the list' : 'Show every value in the list'}
-    >
+    <HintedIconButton onClick={toggle} aria-pressed={revealed} hint={revealed ? 'Hide values' : 'Show values'}>
       {revealed ? <EyeOffIcon className="h-4 w-4 shrink-0" /> : <EyeIcon className="h-4 w-4 shrink-0" />}
-      {revealed ? 'Hide values' : 'Show values'}
-    </Button>
+    </HintedIconButton>
   );
 }

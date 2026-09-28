@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { CLIPBOARD_COPIED_LABEL, createSensitiveClipboard, type SensitiveClipboard } from '@/lib/app';
-import { Button } from './Button';
+import { Button, HintedIconButton, type HintPlacement } from './Button';
 import { CheckIcon, ClipboardIcon } from './icons';
 
 let secretClipboard: SensitiveClipboard | undefined;
@@ -21,17 +21,47 @@ export function CopyButton({
   copiedLabel = CLIPBOARD_COPIED_LABEL,
   disabled = false,
   className = '',
+  iconOnly = false,
+  hintPlacement,
 }: {
   value: string;
   label?: string;
   copiedLabel?: string;
   disabled?: boolean;
   className?: string;
+  iconOnly?: boolean;
+  hintPlacement?: HintPlacement;
 }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => () => clearTimeout(timer.current), []);
+
+  const copy = () => {
+    void clipboardForSecrets()
+      ?.copy(value)
+      .then(() => {
+        setCopied(true);
+        clearTimeout(timer.current);
+        timer.current = setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => undefined);
+  };
+  const glyph = copied ? <CheckIcon className="h-4 w-4 shrink-0 text-success" /> : <ClipboardIcon />;
+
+  if (iconOnly) {
+    return (
+      <HintedIconButton
+        hint={copied ? copiedLabel : label}
+        placement={hintPlacement}
+        disabled={disabled}
+        className={className}
+        onClick={copy}
+      >
+        {glyph}
+      </HintedIconButton>
+    );
+  }
 
   return (
     <Button
@@ -41,18 +71,9 @@ export function CopyButton({
       title={label}
       aria-label={copied ? copiedLabel : label}
       className={className}
-      onClick={() => {
-        void clipboardForSecrets()
-          ?.copy(value)
-          .then(() => {
-            setCopied(true);
-            clearTimeout(timer.current);
-            timer.current = setTimeout(() => setCopied(false), 2000);
-          })
-          .catch(() => undefined);
-      }}
+      onClick={copy}
     >
-      {copied ? <CheckIcon className="h-4 w-4 shrink-0 text-success" /> : <ClipboardIcon />}
+      {glyph}
       <span>{copied ? copiedLabel : label}</span>
     </Button>
   );

@@ -7,11 +7,12 @@ no item type. Import them from the barrel, `@/components/ui`; the icons are a se
 | File | What it holds |
 | --- | --- |
 | `Card.tsx` | `Card` — a heading, an optional subtitle, an `actions` slot and the content — `PanelGrid`, and `Panel` |
-| `Button.tsx` | `Button` and its variants, `IconButton`, and `FloatingAddButton` ([Adding an item](#adding-an-item)) |
+| `Button.tsx` | `Button` and its variants, `IconButton`, `HintedIconButton` ([Icon-only header buttons](#icon-only-header-buttons)), and `FloatingAddButton` ([Adding an item](#adding-an-item)) |
 | `CopyButton.tsx` | The only way a secret reaches the clipboard: it clears the clipboard after 30 s ([`lib/app`](../../lib/app/README.md#plaintext-the-browser-would-otherwise-send-away)) |
 | `fields.tsx` | `Field`, `PinField`, `TextArea`, `SecretField`, `Select` — they share one input and label style |
 | `Badge.tsx`, `Notice.tsx`, `Empty.tsx`, `Spinner.tsx` | Status and empty-state surfaces |
 | `SizeStepper.tsx` | The grids' icon-size control ([The size control](#the-size-control)) |
+| `LayoutToggle.tsx` | Grid or list, on the drive and documents ([Grid or list](../tiles/README.md#grid-or-list)) |
 | `icons.tsx` | The stroke-icon set shared by navigation and primitives, plus `FileTypeIcon` and `FolderGlyph` |
 
 **Text entry goes through these fields, never a bare `<input>`.** `Field` and `TextArea` turn
@@ -68,6 +69,35 @@ tab bar. Inside the app, cards stay panel-less.
 An empty list renders `Empty`: an icon chip and one sentence.
 
 Every interactive primitive carries a `focus-visible` brand ring.
+
+## Icon-only header buttons
+
+The top bar's own controls — the Vault and Passwords *Show values* / *Hide values* toggle, and
+*Lock* — are icons only, drawn by `HintedIconButton`: the secondary button's border, surface and
+shadow on a 36px square.
+
+- **The name appears under the button on hover and on keyboard focus**, as a small dark label,
+  immediately. The browser's own `title` tooltip waits about a second and cannot be styled, which
+  is too slow for the one control, Lock, a person reaches for in a hurry.
+- **The same text is the button's `aria-label`**, so a screen reader hears *Lock* or *Show values*;
+  the visible label is `aria-hidden` so it is not read twice.
+- **The reveal toggle carries `aria-pressed`**, and its label names what a press will do next.
+
+**The Vault's and Passwords' row controls are the same buttons**: Copy, Move to another tab, Share,
+Edit and Delete, each an icon with its name on hover.
+
+- **Their hint opens above, `placement="above"`.** `ItemTable` sits in an `overflow-x-auto`
+  wrapper, which clips on both axes, so a hint hanging below the last row would be cut off or
+  would add a scrollbar. Above, the first row's hint lands over the table header, still inside.
+- **`tone="danger"` gives Delete the danger border and colour**, as the text button had.
+- **The visible hint is short, the accessible name is not.** A row's buttons pass their own
+  `aria-label` — *Delete Bank PIN*, *Edit github.com* — because five rows of buttons all called
+  *Delete* are indistinguishable to a screen reader.
+- **`CopyButton iconOnly`** is the same copy-then-clear button; its hint turns into the copied
+  label after a copy.
+- **`MoveToTab iconOnly`** is a folder icon with the native `<select>` laid over it at zero opacity,
+  so the tap still opens the browser's own menu of tabs — the platform picker on a phone — and the
+  keyboard reaches the select directly. The frame draws the focus ring with `has-[:focus-visible]`.
 
 ## The size control
 

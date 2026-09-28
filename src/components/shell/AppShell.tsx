@@ -20,9 +20,19 @@ import SharedScreen from '@/components/sharing/SharedScreen';
 import SettingsModal from '@/components/settings/SettingsModal';
 import VaultScreen from '@/components/vault/VaultScreen';
 import { VaultRevealAction, VaultRevealProvider } from '@/components/vault/VaultReveal';
+import HomeScreen from '@/components/home/HomeScreen';
+import {
+  DocumentsFeatureIcon,
+  DriveFeatureIcon,
+  NotesFeatureIcon,
+  PasswordsFeatureIcon,
+  SecretsFeatureIcon,
+  SharingFeatureIcon,
+} from '@/components/home/FeatureIcons';
 import {
   DocumentsIcon,
   DriveIcon,
+  HomeIcon,
   LockSessionIcon,
   LogOutIcon,
   MenuIcon,
@@ -36,7 +46,8 @@ import {
 import StorageMeter from './StorageMeter';
 import { ScreenStripSlotProvider } from './ScreenStrip';
 import { SidePanelSlotProvider } from './SidePanel';
-import { Button, Notice, Spinner } from '@/components/ui';
+import { ShellNavigationProvider, type ShellDestination } from './ShellNavigation';
+import { Button, HintedIconButton, Notice, Spinner } from '@/components/ui';
 
 const DocumentsScreen = dynamic(() => import('@/components/documents/DocumentsScreen'), {
   loading: () => <Spinner />,
@@ -51,6 +62,7 @@ interface NavItem {
   label: string;
   description: string;
   icon: ComponentType<IconProps>;
+  appIcon?: ComponentType;
   screen: ComponentType;
   actions?: ComponentType;
   miniatures?: boolean;
@@ -59,11 +71,19 @@ interface NavItem {
 
 const NAV_ITEMS = [
   {
+    id: 'home',
+    label: 'Home',
+    description: 'Everything Cryple keeps for you, one tap away.',
+    icon: HomeIcon,
+    screen: HomeScreen,
+  },
+  {
     id: 'vault',
     scope: 'secrets',
     label: 'Vault',
     description: 'Everything stored under your account.',
     icon: VaultIcon,
+    appIcon: SecretsFeatureIcon,
     screen: VaultScreen,
     actions: VaultRevealAction,
   },
@@ -73,6 +93,7 @@ const NAV_ITEMS = [
     label: 'Passwords',
     description: 'Website logins, encrypted here and never looked up by the server.',
     icon: PasswordsIcon,
+    appIcon: PasswordsFeatureIcon,
     screen: PasswordsScreen,
     actions: VaultRevealAction,
   },
@@ -82,6 +103,7 @@ const NAV_ITEMS = [
     label: 'Notes',
     description: 'Letters and instructions you write, encrypted before they leave this device.',
     icon: NotesIcon,
+    appIcon: NotesFeatureIcon,
     screen: NotesScreen,
     miniatures: true,
   },
@@ -91,6 +113,7 @@ const NAV_ITEMS = [
     label: 'Documents',
     description: 'Long-form writing, encrypted here and synced across your devices.',
     icon: DocumentsIcon,
+    appIcon: DocumentsFeatureIcon,
     screen: DocumentsScreen,
     miniatures: true,
   },
@@ -100,6 +123,7 @@ const NAV_ITEMS = [
     label: 'Drive',
     description: 'Files, encrypted on this device before they are stored.',
     icon: DriveIcon,
+    appIcon: DriveFeatureIcon,
     screen: DriveScreen,
     miniatures: true,
   },
@@ -108,6 +132,7 @@ const NAV_ITEMS = [
     label: 'Shared',
     description: 'What other accounts have sent you, decrypted on this device.',
     icon: SharingIcon,
+    appIcon: SharingFeatureIcon,
     screen: SharedScreen,
     miniatures: true,
   },
@@ -146,6 +171,12 @@ export default function AppShell() {
     setTab(id as TabId);
     setMenuOpen(false);
   }
+
+  const destinations: ShellDestination[] = navItems.flatMap((item) =>
+    item.appIcon === undefined
+      ? []
+      : [{ id: item.id, label: item.label, description: item.description, appIcon: item.appIcon }],
+  );
 
   function run(exit: SessionExit) {
     if (exit.confirm !== undefined && confirming?.id !== exit.id) {
@@ -255,7 +286,9 @@ export default function AppShell() {
 
             <ScreenStripSlotProvider value={stripSlot}>
               <SidePanelSlotProvider value={panelSlot}>
-                <Screen />
+                <ShellNavigationProvider value={{ destinations, open: select }}>
+                  <Screen />
+                </ShellNavigationProvider>
               </SidePanelSlotProvider>
             </ScreenStripSlotProvider>
           </main>
@@ -373,9 +406,8 @@ function LockButton({ exit, onRun }: { exit: SessionExit; onRun: (exit: SessionE
   const ExitIcon = EXIT_ICONS[exit.id];
 
   return (
-    <Button variant="secondary" title={exit.description} onClick={() => onRun(exit)}>
+    <HintedIconButton hint={exit.label} onClick={() => onRun(exit)}>
       <ExitIcon className="h-4 w-4 shrink-0" />
-      {exit.label}
-    </Button>
+    </HintedIconButton>
   );
 }

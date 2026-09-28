@@ -25,6 +25,8 @@ import {
   fileKind,
   fileName,
   formatBytes,
+  freeBytes,
+  usedShareLabel,
   isOpenable,
   isResumable,
   replicationLabel,
@@ -224,6 +226,24 @@ describe('the storage bar', () => {
     expect(bar.percent).toBe(0);
     expect(bar.reservedPercent).toBe(0);
     expect(bar.nearlyFull).toBe(false);
+  });
+});
+
+describe('the free space the home screen reports', () => {
+  it('counts reservations as taken, because they are what refuses the next upload', () => {
+    const usage = { used_bytes: 300, stored_bytes: 100, quota_bytes: 1000, file_count: 2 };
+
+    expect(freeBytes(usage)).toBe(700);
+  });
+
+  it('never goes below zero on an account over its ceiling', () => {
+    expect(freeBytes({ used_bytes: 1200, stored_bytes: 1200, quota_bytes: 1000, file_count: 1 })).toBe(0);
+  });
+
+  it('states the share of the ceiling the stored files take', () => {
+    expect(usedShareLabel({ used_bytes: 0, stored_bytes: 0, quota_bytes: 524_288_000, file_count: 0 })).toBe(
+      `0% of ${formatBytes(524_288_000)}`,
+    );
   });
 });
 

@@ -12,6 +12,8 @@ import {
 import { descendantsOf, moveItemsToFolder } from '@/lib/folders';
 import {
   DOCUMENT_MINIATURE_TEXT_SHARE,
+  DOCUMENT_TYPE_LABEL,
+  LISTING_EMPTY_CELL,
   buildDocumentTiles,
   defaultIconSize,
   documentCountLabel,
@@ -19,26 +21,48 @@ import {
   documentDeleteConfirmation,
   documentHref,
   documentMiniatureTitlePixels,
+  documentStatusLabel,
   folderItemsLabel,
+  formatBytes,
   gridTemplate,
+  listingDateLabel,
+  newestCreatedFirst,
   pagePixels,
   miniatureTextPixels,
   readIconSize,
+  readItemLayout,
   retainSelectable,
   UNTITLED_DOCUMENT,
   toggleNoteSelection,
   writeIconSize,
+  writeItemLayout,
   type DocumentTile,
   type IconSize,
+  type ItemLayout,
 } from '@/lib/app';
 import { openWithSessionHandoff } from '@/lib/session/handoff';
 import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
-import { DocumentsIcon, TrashIcon } from '@/components/ui/icons';
-import { Button, Card, Empty, FloatingAddButton, Notice, SizeStepper, Spinner } from '@/components/ui';
-import { PageTile } from '@/components/tiles';
+import { DocumentsIcon, FileTypeIcon, SharingIcon, TrashIcon } from '@/components/ui/icons';
+import {
+  Button,
+  Card,
+  Empty,
+  FloatingAddButton,
+  LayoutToggle,
+  Notice,
+  SizeStepper,
+  Spinner,
+} from '@/components/ui';
+import { Listing, ListingRow, PageTile, TileAction } from '@/components/tiles';
 import ShareItemDialog from '@/components/sharing/ShareItemDialog';
 import { startItemDrag } from '@/components/folders/FolderTabs';
-import { FolderPath, FolderTile, MoveToFolder, useFolderTree } from '@/components/folders/FolderBrowser';
+import {
+  FolderPath,
+  FolderRow,
+  FolderTile,
+  MoveToFolder,
+  useFolderTree,
+} from '@/components/folders/FolderBrowser';
 import { FolderDetailsPanel } from '@/components/folders/FolderDetailsPanel';
 import { PanelFacts } from '@/components/shell/SidePanel';
 
@@ -54,15 +78,24 @@ export default function DocumentsScreen() {
   const [sharing, setSharing] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [pageSize, setPageSize] = useState<IconSize>(defaultIconSize('documents'));
+  const [layout, setLayout] = useState<ItemLayout>('grid');
   const [detailedFolder, setDetailedFolder] = useState<string>();
   const [folderCount, setFolderCount] = useState<{ id: string; items: number } | { id: string; error: string }>();
   const closeDetails = useCallback(() => setDetailedFolder(undefined), []);
 
-  useEffect(() => setPageSize(readIconSize('documents')), []);
+  useEffect(() => {
+    setPageSize(readIconSize('documents'));
+    setLayout(readItemLayout('documents'));
+  }, []);
 
   const resize = useCallback((next: IconSize) => {
     setPageSize(next);
     writeIconSize('documents', next);
+  }, []);
+
+  const relayout = useCallback((next: ItemLayout) => {
+    setLayout(next);
+    writeItemLayout('documents', next);
   }, []);
 
   const reloadDocuments = useRef<() => void>(() => undefined);
@@ -237,7 +270,7 @@ export default function DocumentsScreen() {
         </p>
 
         <div className="flex flex-wrap items-center gap-2">
-          {tiles.length + folderTiles.length > 0 && (
+          {layout === 'grid' && tiles.length + folderTiles.length > 0 && (
             <SizeStepper
               size={pageSize}
               onChange={resize}
@@ -246,6 +279,7 @@ export default function DocumentsScreen() {
               largerLabel="Larger documents"
             />
           )}
+          {tiles.length + folderTiles.length > 0 && <LayoutToggle layout={layout} onChange={relayout} />}
           {tiles.length > 0 && (
             <Button
               variant="secondary"
@@ -292,6 +326,37 @@ export default function DocumentsScreen() {
               : 'This folder is empty. Drag documents onto it, or create one while it is open.'}
           </Empty>
         </Card>
+      ) : layout === 'list' ? (
+        <Listing>
+          {newestCreatedFirst(folderTiles).map((folder) => (
+            <FolderRow
+              key={folder.id}
+              state={tree}
+              folder={folder}
+              nouns={DOCUMENT_NOUNS}
+              itemIdsFor={sameIds}
+              onDetails={() => setDetailedFolder((current) => (current === folder.id ? undefined : folder.id))}
+            />
+          ))}
+          {newestCreatedFirst(tiles).map((tile) => (
+            <DocumentRow
+              key={tile.id}
+              tile={tile}
+              selecting={selecting}
+              selected={selected.includes(tile.id)}
+              busy={busy}
+              onOpen={() => activate(tile.id)}
+              onDragStart={(event) =>
+                startItemDrag(event, selected.includes(tile.id) ? selected : [tile.id])
+              }
+              onShare={() => setSharing(tile.id)}
+              onToggle={() => {
+                setSelecting(true);
+                setSelected((current) => toggleNoteSelection(current, tile.id));
+              }}
+            />
+          ))}
+        </Listing>
       ) : (
         <ul
           className="grid gap-1"
@@ -421,5 +486,53 @@ function DocumentFile({
         </span>
       </span>
     </PageTile>
+  );
+}
+
+function DocumentRow({
+  tile,
+  selecting,
+  selected,
+  busy,
+  onOpen,
+  onShare,
+  onToggle,
+  onDragStart,
+}: {
+  tile: DocumentTile;
+  selecting: boolean;
+  selected: boolean;
+  busy: boolean;
+  onOpen: () => void;
+  onShare: () => void;
+  onToggle: () => void;
+  onDragStart: (event: DragEvent) => void;
+}) {
+  return (
+    <ListingRow
+      icon={<FileTypeIcon kind="document" />}
+      name={tile.title}
+      nameClassName={tile.readable ? 'text-ink' : 'italic text-ink-muted'}
+      type={DOCUMENT_TYPE_LABEL}
+      size={tile.bytes === undefined ? LISTING_EMPTY_CELL : formatBytes(tile.bytes)}
+      modified={listingDateLabel(tile.updatedAt)}
+      status={documentStatusLabel(tile.readable)}
+      statusClassName={tile.readable ? 'text-ink-muted' : 'text-danger'}
+      title={tile.readable ? tile.edited : (tile.failure ?? 'Could not be decrypted here')}
+      openLabel={selecting ? `${selected ? 'Deselect' : 'Select'} ${tile.title}` : tile.title}
+      disabled={busy}
+      onOpen={onOpen}
+      selection={{ selecting, selected, disabled: busy, onToggle }}
+      highlighted={selected}
+      draggable={!busy}
+      onDragStart={onDragStart}
+      actions={
+        selecting ? undefined : (
+          <TileAction label={`Share ${tile.title}`} disabled={busy || !tile.readable} onClick={onShare}>
+            <SharingIcon className="h-3 w-3 shrink-0" />
+          </TileAction>
+        )
+      }
+    />
   );
 }

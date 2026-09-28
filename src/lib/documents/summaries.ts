@@ -1,3 +1,4 @@
+import * as Y from 'yjs';
 import { apiTransport } from './index';
 import type { DocumentsContext } from './api';
 import { readBodyText, readTitle } from './content';
@@ -16,6 +17,7 @@ export interface DocumentSummary {
   snapshotSeq: number;
   revision: number;
   readable: boolean;
+  bytes?: number;
   failure?: string;
 }
 
@@ -41,6 +43,7 @@ export async function loadDocumentSummary(
       title: readTitle(sync.doc),
       preview: readBodyText(sync.doc),
       readable: true,
+      bytes: Y.encodeStateAsUpdate(sync.doc).byteLength,
     };
   } catch (error) {
     return {

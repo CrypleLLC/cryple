@@ -363,3 +363,12 @@ already takes a `ReadableStream` — what is missing is a streaming save target 
 
 No cache and no thumbnails; both are deferred, and
 [Task 109.8](../../../tasks/tasks.md) explains why the cache is trivial when it arrives.
+
+## Counting files
+
+`countStoredFiles` answers "how many files does this account have", which `GET /files/usage`'s
+`file_count` does not: that counts every live row, and a thumbnail is a row of its own
+([Thumbnails are files](#thumbnails-are-files)), as is an unfinished upload. It lists every file,
+opens each manifest to collect the `thumbnail_id`s, and `storedFileCount` keeps the rows that are
+stored (`r2_state = 'ok'`) and are not a thumbnail. A row whose manifest will not open is counted
+as a file, like the drive draws it. Each DEK is zeroed after its manifest is read.

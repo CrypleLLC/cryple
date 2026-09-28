@@ -29,10 +29,26 @@ A screen describes its columns and nothing else:
   keeps the same width either way and the mask does not reveal the value's length.
 - **`width` is a Tailwind class passed as a literal** (`'max-w-[14rem]'`), so Tailwind finds it in
   the caller's source. Building it from a number would produce a class Tailwind never generates.
-- **The last column is always *Actions*,** right-aligned, rendered from `actions(row)`. A row's
-  controls are a component's business, not the table's.
+- **The last column holds the row's controls**, right-aligned, rendered from `actions(row)`. A row's
+  controls are a component's business, not the table's. Its heading is `actionsHeader`, and since
+  the buttons are icons only, a screen names them there in the order they are drawn, with
+  `actionsHeader()` from `lib/app/listing.ts`: *Copy | Share | Delete*. A button the screen will
+  not draw is passed as `false` and left out — the Vault's *Move* when there is only one tab, and
+  *Delete* on a browser that is not a full device. Without the prop the heading reads *Actions*.
+- **The controls column never wraps.** Its heading and its buttons are `whitespace-nowrap`, the
+  buttons `shrink-0`, and the column is `w-px`, so it takes exactly the width of its widest row and
+  the other columns give up the rest. On a phone that is narrower than the whole row, the table
+  scrolls sideways inside its wrapper instead of stacking the buttons or breaking the heading.
 - **`onRowDragStart` makes rows draggable** and gives them the grab cursor. The Vault passes it so a
   secret can be dropped onto a tab; Passwords has no tabs and does not.
 
-The rows' first and last cells carry the horizontal padding, so the table runs edge to edge inside
-its card, and the rows are separated by a hairline — which is how a table stays scannable.
+**A date column is `DateTimeCell`**, the date on one line and the time under it in a lighter ink
+(`dateAndTimeLabels` in `lib/app/listing.ts`, both in the browser's locale). One
+`toLocaleString()` line was the widest thing in the row and never wrapped, so it pushed the
+actions off a narrow screen. Both screens show the date and the time and nothing else.
+
+**The first column has no left padding**, so the names line up with the screen's own left edge —
+the tabs, the page title, everything else on the page — rather than sitting indented inside a card
+that is no longer drawn ([A block is not drawn at all](../README.md#the-token-layer)). Only the
+controls column keeps an inset on its right. The rows are separated by a hairline, which is how a
+table stays scannable.

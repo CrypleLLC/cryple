@@ -4,6 +4,7 @@ export * from './Card';
 export * from './CopyButton';
 export * from './Empty';
 export * from './fields';
+export * from './LayoutToggle';
 export * from './Notice';
 export * from './SizeStepper';
 export * from './Spinner';

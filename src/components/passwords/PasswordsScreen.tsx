@@ -11,6 +11,7 @@ import {
   writeCredential,
 } from '@/lib/credentials';
 import {
+  actionsHeader,
   buildPasswordRows,
   decodeCredentialPayload,
   MASKED_PASSWORD,
@@ -20,10 +21,10 @@ import {
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
 import { useVaultReveal } from '@/components/vault/VaultReveal';
-import { HistoryIcon, PasswordsIcon, TrashIcon } from '@/components/ui/icons';
-import { Button, CopyButton, FloatingAddButton } from '@/components/ui';
+import { HistoryIcon, PasswordsIcon, PencilIcon, TrashIcon } from '@/components/ui/icons';
+import { Button, CopyButton, FloatingAddButton, HintedIconButton } from '@/components/ui';
 import { ConfirmDeleteModal } from '@/components/modal';
-import { ItemList } from '@/components/item-list';
+import { DateTimeCell, ItemList } from '@/components/item-list';
 import { SIDE_PANEL_TRIGGER } from '@/components/shell/SidePanel';
 import DeletedPasswords, { type DeletedPasswordRow } from './DeletedPasswords';
 import PasswordFormModal from './PasswordFormModal';
@@ -163,6 +164,7 @@ export default function PasswordsScreen() {
         onDismissMessage={() => setMessage(undefined)}
         rows={rows}
         rowKey={(row) => row.id}
+        actionsHeader={actionsHeader('Copy', 'Edit', 'Delete')}
         emptyIcon={<PasswordsIcon className="h-6 w-6" />}
         emptyText="No passwords saved yet. Add your first one below — the server never sees the site you saved it for."
         columns={[
@@ -179,20 +181,31 @@ export default function PasswordsScreen() {
             width: 'max-w-[12rem]',
             render: (row) => (revealed && row.readable ? row.password : MASKED_PASSWORD),
           },
-          { header: 'Changed', kind: 'meta', render: (row) => new Date(row.changedAt).toLocaleString() },
+          { header: 'Changed', kind: 'meta', render: (row) => <DateTimeCell at={row.changedAt} /> },
         ]}
         actions={(row) => (
           <>
-            {row.readable ? <CopyButton value={row.password} label="Copy" /> : null}
+            {row.readable ? <CopyButton value={row.password} label="Copy" iconOnly hintPlacement="above" /> : null}
             {row.readable ? (
-              <Button variant="ghost" onClick={() => setForm({ editing: row })}>
-                Edit
-              </Button>
+              <HintedIconButton
+                hint="Edit"
+                aria-label={`Edit ${siteLabel(row.site)}`}
+                placement="above"
+                onClick={() => setForm({ editing: row })}
+              >
+                <PencilIcon className="h-4 w-4 shrink-0" />
+              </HintedIconButton>
             ) : null}
-            <Button variant="danger" disabled={busy} onClick={() => setConfirmingDelete(row)}>
-              <TrashIcon />
-              Delete
-            </Button>
+            <HintedIconButton
+              hint="Delete"
+              aria-label={`Delete ${row.readable ? siteLabel(row.site) : row.site}`}
+              placement="above"
+              tone="danger"
+              disabled={busy}
+              onClick={() => setConfirmingDelete(row)}
+            >
+              <TrashIcon className="h-4 w-4 shrink-0" />
+            </HintedIconButton>
           </>
         )}
       />

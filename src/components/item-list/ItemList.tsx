@@ -1,6 +1,7 @@
 'use client';
 
 import type { DragEvent, ReactNode } from 'react';
+import { dateAndTimeLabels } from '@/lib/app';
 import { Card, Empty, Notice, Spinner } from '@/components/ui';
 
 const CELL_CLASSES = {
@@ -11,6 +12,17 @@ const CELL_CLASSES = {
 } as const;
 
 export type ItemColumnKind = keyof typeof CELL_CLASSES;
+
+export function DateTimeCell({ at }: { at: string }) {
+  const { date, time } = dateAndTimeLabels(at);
+
+  return (
+    <span className="block leading-tight">
+      <span className="block">{date}</span>
+      <span className="block text-ink-faint">{time}</span>
+    </span>
+  );
+}
 
 export interface ItemColumn<Row> {
   header: string;
@@ -26,6 +38,7 @@ export function ItemList<Row>({
   rowKey,
   columns,
   actions,
+  actionsHeader,
   emptyIcon,
   emptyText,
   onRowDragStart,
@@ -36,6 +49,7 @@ export function ItemList<Row>({
   rowKey: (row: Row) => string;
   columns: readonly ItemColumn<Row>[];
   actions: (row: Row) => ReactNode;
+  actionsHeader?: string;
   emptyIcon: ReactNode;
   emptyText: ReactNode;
   onRowDragStart?: (event: DragEvent, row: Row) => void;
@@ -60,6 +74,7 @@ export function ItemList<Row>({
           rowKey={rowKey}
           columns={columns}
           actions={actions}
+          actionsHeader={actionsHeader}
           onRowDragStart={onRowDragStart}
         />
       )}
@@ -72,12 +87,14 @@ export function ItemTable<Row>({
   rowKey,
   columns,
   actions,
+  actionsHeader = 'Actions',
   onRowDragStart,
 }: {
   rows: readonly Row[];
   rowKey: (row: Row) => string;
   columns: readonly ItemColumn<Row>[];
   actions: (row: Row) => ReactNode;
+  actionsHeader?: string;
   onRowDragStart?: (event: DragEvent, row: Row) => void;
 }) {
   const draggable = onRowDragStart !== undefined;
@@ -87,12 +104,12 @@ export function ItemTable<Row>({
       <table className="w-full text-left text-sm">
         <thead>
           <tr className="border-b border-line bg-raised text-caption uppercase text-ink-muted">
-            {columns.map((column, index) => (
-              <th key={column.header} className={`py-3 pr-4 text-left ${index === 0 ? 'pl-5' : ''}`}>
+            {columns.map((column) => (
+              <th key={column.header} className="py-3 pr-4 text-left">
                 {column.header}
               </th>
             ))}
-            <th className="py-3 pl-4 pr-5 text-right">Actions</th>
+            <th className="w-px whitespace-nowrap py-3 pl-4 pr-5 text-right">{actionsHeader}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-line">
@@ -105,16 +122,16 @@ export function ItemTable<Row>({
                 draggable ? 'cursor-grab active:cursor-grabbing' : ''
               }`}
             >
-              {columns.map((column, index) => (
+              {columns.map((column) => (
                 <td
                   key={column.header}
-                  className={`py-3.5 pr-4 ${index === 0 ? 'pl-5' : ''} ${column.width ?? ''} ${CELL_CLASSES[column.kind]}`}
+                  className={`py-3.5 pr-4 ${column.width ?? ''} ${CELL_CLASSES[column.kind]}`}
                 >
                   {column.render(row)}
                 </td>
               ))}
-              <td className="py-3.5 pl-4 pr-5">
-                <div className="flex justify-end gap-2">{actions(row)}</div>
+              <td className="w-px whitespace-nowrap py-3.5 pl-4 pr-5">
+                <div className="flex flex-nowrap justify-end gap-2 *:shrink-0">{actions(row)}</div>
               </td>
             </tr>
           ))}

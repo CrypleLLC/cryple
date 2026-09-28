@@ -166,7 +166,8 @@ CI runs typecheck, lint (`--max-warnings 0`) and tests.
 - **`no-console` is an error, with no exemptions.**
 - **`localStorage`, `sessionStorage` and `indexedDB` are blocked**, as globals and through
   `window`, `globalThis` and `self`. The exemptions:
-  - `src/lib/app/icon-size.ts` — one of four words naming how large a grid draws its icons;
+  - `src/lib/app/icon-size.ts` — one word naming how large a grid draws its icons, and one naming
+    whether the drive or documents is drawn as a grid or a list;
   - `src/lib/device/store.ts` — the device record, in IndexedDB because only IndexedDB can store
     a non-extractable `CryptoKey`; it also _removes_ two `localStorage` keys an earlier deployment
     left behind, and never reads or writes them;
