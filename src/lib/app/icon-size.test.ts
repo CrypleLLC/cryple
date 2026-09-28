@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PreferenceStorage as VaultStorage } from './icon-size';
 import {
+  DEFAULT_ITEM_LAYOUT,
   DOCUMENT_MINIATURE_TEXT_SHARE,
   ICON_SIZES,
   MINIATURE_TEXT_FLOOR_PIXELS,
@@ -15,8 +16,10 @@ import {
   miniatureTextPixels,
   pagePixels,
   readIconSize,
+  readItemLayout,
   smallerIconSize,
   writeIconSize,
+  writeItemLayout,
   type IconGrid,
 } from './index';
 
@@ -51,12 +54,6 @@ describe('the icon scale', () => {
       const scale = iconScale(size);
       expect(scale.tilePixels).toBeGreaterThan(scale.glyphPixels);
     }
-  });
-
-  it('stops labelling the glyph where the label would be too small to read', () => {
-    expect(iconScale('tiny').labelsTheGlyph).toBe(false);
-    expect(iconScale('small').labelsTheGlyph).toBe(false);
-    expect(iconScale('medium').labelsTheGlyph).toBe(true);
   });
 });
 
@@ -178,5 +175,38 @@ describe('remembering the chosen size', () => {
   it('is a no-op without storage, so server rendering does not throw', () => {
     expect(() => writeIconSize('notes', 'small', undefined)).not.toThrow();
     expect(readIconSize('notes', undefined)).toBe(defaultIconSize('notes'));
+  });
+});
+
+describe('remembering grid or list', () => {
+  it('opens as a grid until a list is chosen', () => {
+    const storage = memoryStorage();
+
+    expect(readItemLayout('drive', storage)).toBe(DEFAULT_ITEM_LAYOUT);
+    expect(DEFAULT_ITEM_LAYOUT).toBe('grid');
+  });
+
+  it('keeps the drive and documents apart', () => {
+    const storage = memoryStorage();
+    writeItemLayout('drive', 'list', storage);
+
+    expect(readItemLayout('drive', storage)).toBe('list');
+    expect(readItemLayout('documents', storage)).toBe('grid');
+  });
+
+  it('does not share a key with the icon size', () => {
+    const storage = memoryStorage();
+    writeItemLayout('drive', 'list', storage);
+
+    expect(readIconSize('drive', storage)).toBe(defaultIconSize('drive'));
+  });
+
+  it('treats an unrecognised value, or no storage, as the grid', () => {
+    const storage = memoryStorage();
+    storage.setItem('cryple_documents_layout', 'table');
+
+    expect(readItemLayout('documents', storage)).toBe('grid');
+    expect(readItemLayout('documents', undefined)).toBe('grid');
+    expect(() => writeItemLayout('documents', 'list', undefined)).not.toThrow();
   });
 });

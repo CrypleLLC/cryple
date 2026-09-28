@@ -168,5 +168,54 @@ export async function deleteSecrets(
   return response.data;
 }
 
+export interface DeletedSecretRecord extends SecretRecord {
+  deleted_at: string;
+}
+
+export async function listDeletedSecrets(context: SecretsContext): Promise<DeletedSecretRecord[]> {
+  const response = await request<DeletedSecretRecord[]>({
+    method: 'GET',
+    path: '/secrets/deleted',
+    token: requireToken(context),
+    timeoutMs: context.timeoutMs,
+  });
+  return response.data ?? [];
+}
+
+export async function restoreSecret(context: SecretsContext, id: string): Promise<SecretRecord> {
+  const response = await request<SecretRecord>({
+    method: 'POST',
+    path: `/secrets/${assertCanonicalUuid(id)}/restore`,
+    token: requireToken(context),
+    timeoutMs: context.timeoutMs,
+  });
+  return response.data;
+}
+
+export interface PurgeResult {
+  requested: number;
+  purged: number;
+}
+
+export async function purgeSecrets(
+  context: SecretsContext,
+  ids: readonly string[],
+): Promise<PurgeResult> {
+  const canonical = ids.map((id) => assertCanonicalUuid(id));
+  const normalized = normalizeActionArgs('secret-purge', canonical);
+
+  const envelope = await signActionEnvelope('secret-purge', normalized, context.session.signer());
+
+  const response = await request<PurgeResult>({
+    method: 'DELETE',
+    path: '/secrets/deleted',
+    token: requireToken(context),
+    timeoutMs: context.timeoutMs,
+    body: { ids: normalized, ...envelope },
+  });
+
+  return response.data;
+}
+
 export * from './dek';
 export * from './codec';

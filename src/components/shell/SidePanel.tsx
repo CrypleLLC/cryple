@@ -28,14 +28,18 @@ export function SidePanel({
   const panel = useRef<HTMLElement>(null);
 
   useEffect(() => {
+    function inModalAbove(element: Element | null): boolean {
+      const dialog = element?.closest('[aria-modal="true"]');
+      return dialog !== null && dialog !== undefined && !panel.current?.contains(dialog);
+    }
     function onKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !inModalAbove(document.activeElement)) {
         onClose();
       }
     }
     function onPointerDown(event: PointerEvent) {
       const target = event.target;
-      if (!(target instanceof Element) || panel.current?.contains(target)) {
+      if (!(target instanceof Element) || panel.current?.contains(target) || inModalAbove(target)) {
         return;
       }
       if (target.closest('[data-side-panel-trigger]') === null) {

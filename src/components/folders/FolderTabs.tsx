@@ -33,7 +33,7 @@ import {
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
 import { FolderIcon, FolderPlusIcon, PencilIcon, TrashIcon } from '@/components/ui/icons';
-import { Button, Notice } from '@/components/ui';
+import { Button, HINTED_ICON_FRAME, HintFrame, Notice, type HintPlacement } from '@/components/ui';
 import { ConfirmDeleteModal } from '@/components/modal';
 import { ScreenStrip } from '@/components/shell/ScreenStrip';
 
@@ -536,23 +536,30 @@ function TabNameInput({
   );
 }
 
+export const MOVE_TO_TAB_HINT = 'Move to another tab';
+
 export function MoveToTab({
   state,
   itemIds,
   label,
+  iconOnly = false,
+  hintPlacement,
 }: {
   state: FolderTabsState;
   itemIds: readonly string[];
   label: string;
+  iconOnly?: boolean;
+  hintPlacement?: HintPlacement;
 }) {
   const tabs = state.tabs;
   if (tabs === undefined || tabs.length < 2 || itemIds.length === 0) {
     return null;
   }
-  return (
+
+  const select = (
     <select
       aria-label={label}
-      title={label}
+      title={iconOnly ? undefined : label}
       value=""
       disabled={state.busy}
       onChange={(event) => {
@@ -560,7 +567,11 @@ export function MoveToTab({
           void state.move(itemIds, event.target.value);
         }
       }}
-      className="h-9 max-w-[10rem] cursor-pointer rounded-lg border border-line bg-surface px-2 text-compact font-semibold text-ink-soft shadow-card transition hover:border-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 disabled:opacity-50"
+      className={
+        iconOnly
+          ? 'absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0 disabled:cursor-default'
+          : 'h-9 max-w-[10rem] cursor-pointer rounded-lg border border-line bg-surface px-2 text-compact font-semibold text-ink-soft shadow-card transition hover:border-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 disabled:opacity-50'
+      }
     >
       <option value="">Move to…</option>
       {tabs
@@ -571,5 +582,20 @@ export function MoveToTab({
           </option>
         ))}
     </select>
+  );
+
+  if (!iconOnly) {
+    return select;
+  }
+
+  return (
+    <HintFrame hint={MOVE_TO_TAB_HINT} placement={hintPlacement}>
+      <span
+        className={`${HINTED_ICON_FRAME} relative border-line text-ink-soft hover:border-line-strong hover:bg-raised hover:text-ink has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-500/50 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-ground has-[:disabled]:opacity-50`}
+      >
+        <FolderIcon className="h-4 w-4 shrink-0" />
+        {select}
+      </span>
+    </HintFrame>
   );
 }

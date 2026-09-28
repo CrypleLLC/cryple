@@ -7,6 +7,7 @@ The frame around every screen, and what sits in it.
 | `AppShell.tsx` | Task 25 — the sidebar shell and the navigation registry, `NAV_ITEMS` |
 | `AccountMenu.tsx` | The avatar menu in the top bar: *Settings* and *Remove this browser* |
 | `ScreenStrip.tsx` | The full-width bar slot under the top bar, for a screen's own tabs |
+| `ShellNavigation.tsx` | The context a screen uses to open another section — how Home's icons navigate |
 | `SidePanel.tsx` | The right-hand panel a screen opens for its own context — `SidePanel` and `PanelFacts` |
 | `StorageMeter.tsx` | The account's storage bar, in the sidebar corner — stored bytes solid, reservations behind them |
 | `StagingBanner.tsx` | The walking red warning banner, dev-only — see [`app`](../../app/README.md#the-staging-banner) |
@@ -24,7 +25,7 @@ page behind does not scroll while it is open. A screen's own tabs — the Vault 
 on the page under the top bar, not in the drawer: they belong to the screen, not to navigation.
 
 Navigation is one registry, `NAV_ITEMS` in `AppShell.tsx`. Each entry is
-`{ id, label, description, icon, screen, actions? }`; adding a section means adding one entry and
+`{ id, label, description, icon, appIcon?, screen, actions? }`; adding a section means adding one entry and
 its screen component — the sidebar, the mobile nav and the top-bar heading all render from the
 same array. Notes was added exactly that way, as one entry; Guardians was **removed** exactly that
 way on 2026-09-04, by deleting one. `actions` is the optional slot for a component rendered in the
@@ -32,6 +33,13 @@ top bar beside Lock and the account menu, for controls that belong to the whole 
 panel; the Vault's global reveal toggle is the first of them. State shared between such a control
 and its screen lives in a provider wrapping the shell, as `VaultReveal.tsx` does, since the header
 sits outside the screen's tree.
+
+**Home is the first entry, so it is the screen the app opens on.** It is the one screen that
+changes section itself, and a screen is rendered as `<Screen />` with no props, so the shell hands
+it the way through a context: `ShellNavigationProvider` wraps the screen with the scope-filtered
+sections that carry an `appIcon` and the same `select` the sidebar calls. `appIcon` is the large
+feature mark Home draws ([`components/home`](../home/README.md)); `icon` stays the small outline
+glyph the sidebar draws. Home has no `appIcon`, so it does not list itself.
 
 ## The screen strip
 
@@ -67,6 +75,12 @@ spread `SIDE_PANEL_TRIGGER` on a `Button`, or pass `triggersSidePanel` to a `Til
 screen makes it a toggle instead: *Recently deleted* opens and closes its panel, and a tile's
 *Details* closes the panel when it is already showing that tile, or switches to it when it is
 showing another.
+
+**A modal opened from the panel is the other exception.** The Vault's *Recently deleted* asks for
+confirmation before a permanent delete, in a [`Modal`](../modal/README.md) portalled outside the
+panel. A press inside any `aria-modal="true"` dialog that is not the panel itself, and an Escape
+while focus is in one, belong to that dialog: without this, confirming would close the panel
+under it, and Escape would close both at once.
 
 `PanelFacts` is the label-over-value list the details use, so every panel's facts look the same.
 

@@ -85,17 +85,18 @@ describe('rewrapScope', () => {
           ],
         },
       },
+      { status: 200, body: { data: [] } },
       { status: 200, body: { data: { requested: 1, rekeyed: 1 } } },
     );
 
     const outcome = await rewrapScope(context, 'secrets');
 
     expect(outcome).toEqual({ scope: 'secrets', requested: 1, rekeyed: 1 });
-    expect(calls).toHaveLength(2);
-    expect(calls[1].url).toContain('/secrets/keys');
-    expect(calls[1].init.method).toBe('PUT');
+    expect(calls).toHaveLength(3);
+    expect(calls[2].url).toContain('/secrets/keys');
+    expect(calls[2].init.method).toBe('PUT');
 
-    const body = bodyOf(calls[1].init);
+    const body = bodyOf(calls[2].init);
     expect(body.key_generation).toBe(2);
 
     const items = body.items as { id: string; wrapped_dek: string }[];
@@ -135,12 +136,13 @@ describe('rewrapScope', () => {
           ],
         },
       },
+      { status: 200, body: { data: [] } },
       { status: 200, body: { data: { requested: 2, rekeyed: 2 } } },
     );
 
     await rewrapScope(context, 'secrets');
 
-    const body = bodyOf(calls[1].init);
+    const body = bodyOf(calls[2].init);
     const payload = buildActionPayload(
       String(body.challenge),
       Number(body.timestamp),
@@ -151,6 +153,44 @@ describe('rewrapScope', () => {
     expect(
       await verifyPayload(payload, String(body.signature), spkiBase64ToUncompressedPoint(device.signingPublicKey)),
     ).toBe(true);
+  });
+
+  it('re-wraps a secret in Recently deleted too, so restoring it never brings back a retired wrap', async () => {
+    const { context, keks } = await openTestSession({ generations: { secrets: 2 } });
+    const old = keks.get('secrets:1')!;
+    const live = 'aaaaaaaa-0000-4000-8000-000000000001';
+    const deleted = 'dddddddd-0000-4000-8000-000000000004';
+
+    const calls = mockFetch(
+      {
+        status: 200,
+        body: { data: [{ id: live, wrapped_dek: await sealBlob(crypto.getRandomValues(new Uint8Array(32)), old), key_generation: 1 }] },
+      },
+      {
+        status: 200,
+        body: {
+          data: [
+            {
+              id: deleted,
+              ciphertext: 'c',
+              wrapped_dek: await sealBlob(crypto.getRandomValues(new Uint8Array(32)), old),
+              key_generation: 1,
+              version: 'v1',
+              created_at: 't',
+              updated_at: 't',
+              deleted_at: 'd',
+            },
+          ],
+        },
+      },
+      { status: 200, body: { data: { requested: 2, rekeyed: 2 } } },
+    );
+
+    const outcome = await rewrapScope(context, 'secrets');
+
+    expect(calls[1].url).toMatch(/\/secrets\/deleted$/);
+    expect(outcome.requested).toBe(2);
+    expect((bodyOf(calls[2].init).items as { id: string }[]).map((item) => item.id)).toEqual([live, deleted]);
   });
 
   it('skips a file the drive has not finished storing', async () => {
@@ -204,7 +244,7 @@ describe('rewrapAfterRotation', () => {
     const outcomes = await rewrapAfterRotation(context, ['secrets', 'notes', 'files']);
 
     expect(outcomes.map((outcome) => outcome.scope)).toEqual(['secrets']);
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
   });
 });
 

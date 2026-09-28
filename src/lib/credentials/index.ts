@@ -299,5 +299,14 @@ export async function pruneCredential(
   return response.data;
 }
 
+export const PURGE_KEEP_LAST = 1;
+
+export async function purgeDeletedCredential(
+  context: CredentialsContext,
+  deleted: DeletedCredential,
+): Promise<PruneResult> {
+  return pruneCredential(context, deleted.credentialId, PURGE_KEEP_LAST);
+}
+
 export * from './dek';
 export * from './codec';

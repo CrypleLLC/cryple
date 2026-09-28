@@ -41,9 +41,15 @@ path is written once:
 
 | Scope | Listing | Route | Names |
 | --- | --- | --- | --- |
-| `secrets`, `notes`, `documents` | `?fields=meta` | `PUT /<scope>/keys` | `id` |
+| `secrets` | `?fields=meta` **and `GET /secrets/deleted`** | `PUT /secrets/keys` | `id` |
+| `notes`, `documents` | `?fields=meta` | `PUT /<scope>/keys` | `id` |
 | `files` | `GET /files` | `PUT /files/keys` | `id` |
 | `passwords` | `GET /credentials?fields=meta` | `PUT /credentials/keys` | **`revision_id`** |
+
+**The secrets walk lists Recently deleted too.** The meta listing no longer shows a deleted secret,
+but the server re-wraps one like any other, and it has to: a secret left on the rotated-out
+generation is still open to the device the rotation removed, and restoring it would bring that wrap
+back into the vault. A test pins that a stale deleted secret is in the `PUT`.
 
 **`passwords` is in `DEK_SCOPES` but not in `ITEM_SCOPES`**, and that distinction exists for this
 module. `ITEM_SCOPES` means "a scope whose items this walks by item id"; credentials are walked by

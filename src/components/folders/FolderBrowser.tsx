@@ -25,7 +25,10 @@ import {
   folderDeleteConfirmation,
   folderMoveProblem,
   folderNameProblem,
+  FOLDER_TYPE_LABEL,
   INVALID_TREE_MESSAGE,
+  LISTING_EMPTY_CELL,
+  listingDateLabel,
   UNREADABLE_FOLDER,
   type FolderNouns,
 } from '@/lib/app';
@@ -34,7 +37,7 @@ import { DRAGGED_ITEMS_TYPE } from './FolderTabs';
 import { FolderGlyph, FolderPlusIcon, InfoIcon, TrashIcon } from '@/components/ui/icons';
 import { Button, Field, Notice } from '@/components/ui';
 import { ConfirmDeleteModal, FormModal } from '@/components/modal';
-import { TileAction } from '@/components/tiles';
+import { ListingRow, TileAction } from '@/components/tiles';
 import { SIDE_PANEL_TRIGGER } from '@/components/shell/SidePanel';
 
 export const DRAGGED_FOLDER_TYPE = 'application/x-cryple-folder';
@@ -373,10 +376,6 @@ export function FolderTile({
   const drop = useDropTarget(state, folder.id, itemIdsFor);
   const [deleting, setDeleting] = useState(false);
   const label = folderLabel(folder);
-  const subfolders = useMemo(
-    () => descendantsOf(state.folders ?? [], folder.id).size - 1,
-    [state.folders, folder.id],
-  );
 
   return (
     <li className="group relative" {...drop.props}>
@@ -429,23 +428,104 @@ export function FolderTile({
       </div>
 
       {deleting ? (
-        <ConfirmDeleteModal
-          title={`Delete “${label}”`}
-          busy={state.busy}
-          confirmLabel={state.busy ? 'Deleting…' : 'Delete folder and contents'}
-          onKeep={() => setDeleting(false)}
-          onConfirm={() =>
-            void state.remove(folder.id).then((result) => {
-              if (result !== undefined) {
-                setDeleting(false);
-              }
-            })
-          }
-        >
-          {folderDeleteConfirmation(label, subfolders, nouns)}
-        </ConfirmDeleteModal>
+        <DeleteFolderModal state={state} folder={folder} nouns={nouns} onDone={() => setDeleting(false)} />
       ) : null}
     </li>
+  );
+}
+
+function DeleteFolderModal({
+  state,
+  folder,
+  nouns,
+  onDone,
+}: {
+  state: FolderTreeState;
+  folder: TreeFolder;
+  nouns: FolderNouns;
+  onDone: () => void;
+}) {
+  const label = folderLabel(folder);
+  const subfolders = useMemo(
+    () => descendantsOf(state.folders ?? [], folder.id).size - 1,
+    [state.folders, folder.id],
+  );
+
+  return (
+    <ConfirmDeleteModal
+      title={`Delete “${label}”`}
+      busy={state.busy}
+      confirmLabel={state.busy ? 'Deleting…' : 'Delete folder and contents'}
+      onKeep={onDone}
+      onConfirm={() =>
+        void state.remove(folder.id).then((result) => {
+          if (result !== undefined) {
+            onDone();
+          }
+        })
+      }
+    >
+      {folderDeleteConfirmation(label, subfolders, nouns)}
+    </ConfirmDeleteModal>
+  );
+}
+
+export function FolderRow({
+  state,
+  folder,
+  nouns,
+  itemIdsFor,
+  onDetails,
+}: {
+  state: FolderTreeState;
+  folder: TreeFolder;
+  nouns: FolderNouns;
+  itemIdsFor: (ids: string[]) => string[];
+  onDetails?: () => void;
+}) {
+  const { fullDevice } = useCryple();
+  const drop = useDropTarget(state, folder.id, itemIdsFor);
+  const [deleting, setDeleting] = useState(false);
+  const label = folderLabel(folder);
+
+  return (
+    <ListingRow
+      icon={<FolderGlyph open={drop.over} />}
+      name={label}
+      nameClassName={folder.name === undefined ? 'italic text-ink-muted' : 'text-ink'}
+      type={FOLDER_TYPE_LABEL}
+      size={LISTING_EMPTY_CELL}
+      modified={listingDateLabel(folder.updatedAt)}
+      status={LISTING_EMPTY_CELL}
+      openLabel={`Open folder ${label}`}
+      disabled={state.busy}
+      onOpen={() => state.open(folder.id)}
+      highlighted={drop.over}
+      draggable={!state.busy}
+      onDragStart={(event) => {
+        event.stopPropagation();
+        startFolderDrag(event, folder.id);
+      }}
+      dropProps={drop.props}
+      actions={
+        <>
+          {onDetails ? (
+            <TileAction label={`Details of ${label}`} tone="neutral" triggersSidePanel onClick={onDetails}>
+              <InfoIcon className="h-3 w-3 shrink-0" />
+            </TileAction>
+          ) : null}
+          {fullDevice ? (
+            <TileAction label={`Delete ${label}`} tone="danger" disabled={state.busy} onClick={() => setDeleting(true)}>
+              <TrashIcon className="h-3 w-3 shrink-0" />
+            </TileAction>
+          ) : null}
+        </>
+      }
+    >
+      {deleting ? (
+        <DeleteFolderModal state={state} folder={folder} nouns={nouns} onDone={() => setDeleting(false)} />
+      ) : null}
+    </ListingRow>
   );
 }
 

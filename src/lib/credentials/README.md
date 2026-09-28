@@ -49,6 +49,15 @@ behind it stays. `deletedCredentials` finds, from the whole feed, each credentia
 is a tombstone, with its last live revision; `restoreCredential` opens that revision and writes its
 plaintext again as a new revision of the same credential. Only `pruneCredential` destroys anything.
 
+`purgeDeletedCredential` is the permanent delete *Recently deleted* offers: `pruneCredential` with
+`PURGE_KEEP_LAST` (1). A deleted credential's newest revision is its tombstone, and the server never
+prunes a tombstone, so keeping the newest one destroys every revision that sealed a password and
+leaves only the marker a not-yet-synced extension needs. `deletedCredentials` needs a live revision
+to list a credential, so a purged one drops out of the list without any client-side bookkeeping.
+If the credential was restored on another device between reading the list and the purge, its
+newest revision is that restored one, and the prune keeps it: the purge can erase history, never
+the current password.
+
 ## The passwords KEK
 
 `scopeDekWrapper(context, 'passwords')`. That scope is in `DEK_SCOPES` but **not in `ITEM_SCOPES`**,

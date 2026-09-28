@@ -32,6 +32,10 @@ screen. `useFolderTabs(scope, itemIds)` owns the sealed manifest
 
 ### Folders — Documents and the Drive (`FolderBrowser.tsx`)
 
+`FolderTile` draws a folder in the grid and `FolderRow` in the [list](../tiles/README.md#grid-or-list). Both use the
+same drop target and the same delete confirmation (`DeleteFolderModal`), so a folder behaves the
+same in either layout.
+
 **The path bar sits at the top of the screen, under the header**: the scope's name, then one segment
 per folder down to the open one, and *New folder* on the right. `useFolderTree(scope, onItemsChanged)`
 holds the tree and the open folder; the screen lists only the open folder's items

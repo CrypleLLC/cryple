@@ -12,6 +12,8 @@ import {
   listCredentialsMeta,
   openCredential,
   pruneCredential,
+  purgeDeletedCredential,
+  PURGE_KEEP_LAST,
   syncCredentials,
   writeCredential,
   MAX_PLAINTEXT_BYTES,
@@ -268,5 +270,31 @@ describe('recently deleted', () => {
       revision('c', 7, false),
     ]);
     expect(found.map((entry) => [entry.credentialId, entry.lastLive.seq])).toEqual([['a', 2]]);
+  });
+
+  it('forgets a credential once a purge has left nothing but its tombstone', () => {
+    expect(deletedCredentials([revision('a', 4, true)])).toEqual([]);
+    expect(deletedCredentials([revision('a', 2, true), revision('a', 4, true)])).toEqual([]);
+  });
+
+  it('deletes permanently by pruning to the tombstone alone, under a signature that says so', async () => {
+    const context = await newContext();
+    const calls = mockFetch({ status: 200, body: { data: { pruned: 3 } } });
+    const [deleted] = deletedCredentials([revision(ID_A, 1, false), revision(ID_A, 2, true)]);
+
+    expect(await purgeDeletedCredential(context, deleted)).toEqual({ pruned: 3 });
+
+    const body = calls[0].body as Record<string, unknown>;
+    expect(PURGE_KEEP_LAST).toBe(1);
+    expect(calls[0].method).toBe('POST');
+    expect(calls[0].url).toContain(`/credentials/${ID_A}/prune`);
+    expect(body.keep_last).toBe(1);
+    expect(
+      verifyPayload(
+        buildActionPayload(body.challenge as string, body.timestamp as number, 'credential-prune', [ID_A, '1']),
+        body.signature as string,
+        spkiBase64ToUncompressedPoint(context.session.device.signingPublicKey),
+      ),
+    ).toBe(true);
   });
 });

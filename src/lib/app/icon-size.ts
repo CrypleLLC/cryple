@@ -28,7 +28,6 @@ export interface IconScale {
   glyphPixels: number;
   tilePixels: number;
   pagePixels: number;
-  labelsTheGlyph: boolean;
 }
 
 const SCALES: Record<IconSize, IconScale> = {
@@ -38,7 +37,6 @@ const SCALES: Record<IconSize, IconScale> = {
     glyphPixels: 32,
     tilePixels: 80,
     pagePixels: 104,
-    labelsTheGlyph: false,
   },
   small: {
     name: 'small',
@@ -46,7 +44,6 @@ const SCALES: Record<IconSize, IconScale> = {
     glyphPixels: 48,
     tilePixels: 96,
     pagePixels: 136,
-    labelsTheGlyph: false,
   },
   medium: {
     name: 'medium',
@@ -54,7 +51,6 @@ const SCALES: Record<IconSize, IconScale> = {
     glyphPixels: 64,
     tilePixels: 128,
     pagePixels: 160,
-    labelsTheGlyph: true,
   },
   large: {
     name: 'large',
@@ -62,7 +58,6 @@ const SCALES: Record<IconSize, IconScale> = {
     glyphPixels: 96,
     tilePixels: 176,
     pagePixels: 200,
-    labelsTheGlyph: true,
   },
   huge: {
     name: 'huge',
@@ -70,7 +65,6 @@ const SCALES: Record<IconSize, IconScale> = {
     glyphPixels: 128,
     tilePixels: 224,
     pagePixels: 264,
-    labelsTheGlyph: true,
   },
 };
 
@@ -151,4 +145,34 @@ export function writeIconSize(
   storage = defaultStorage(),
 ): void {
   storage?.setItem(STORAGE_KEYS[grid], size);
+}
+
+export const ITEM_LAYOUTS = ['grid', 'list'] as const;
+
+export type ItemLayout = (typeof ITEM_LAYOUTS)[number];
+
+export type LayoutScreen = Exclude<IconGrid, 'notes'>;
+
+const LAYOUT_STORAGE_KEYS: Record<LayoutScreen, string> = {
+  drive: 'cryple_drive_layout',
+  documents: 'cryple_documents_layout',
+};
+
+export const DEFAULT_ITEM_LAYOUT: ItemLayout = 'grid';
+
+function isItemLayout(value: string | null): value is ItemLayout {
+  return value !== null && (ITEM_LAYOUTS as readonly string[]).includes(value);
+}
+
+export function readItemLayout(screen: LayoutScreen, storage = defaultStorage()): ItemLayout {
+  const raw = storage?.getItem(LAYOUT_STORAGE_KEYS[screen]) ?? null;
+  return isItemLayout(raw) ? raw : DEFAULT_ITEM_LAYOUT;
+}
+
+export function writeItemLayout(
+  screen: LayoutScreen,
+  layout: ItemLayout,
+  storage = defaultStorage(),
+): void {
+  storage?.setItem(LAYOUT_STORAGE_KEYS[screen], layout);
 }
