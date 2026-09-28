@@ -1,6 +1,6 @@
 'use client';
 
-import type { ButtonHTMLAttributes } from 'react';
+import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { CONTENT_GUTTER, contentMeasure, FLOATING_SPREAD_GUTTER, SIDEBAR_INSET } from '@/lib/app';
 import { PlusIcon } from './icons';
 
@@ -47,6 +47,70 @@ export function IconButton({
     >
       {children}
     </button>
+  );
+}
+
+const HINT_PLACEMENTS = {
+  below: 'top-full left-1/2 mt-2 -translate-x-1/2',
+  above: 'bottom-full left-1/2 mb-2 -translate-x-1/2',
+  left: 'right-full top-1/2 mr-2 -translate-y-1/2',
+} as const;
+
+export type HintPlacement = keyof typeof HINT_PLACEMENTS;
+
+const HINTED_TONES = {
+  neutral: 'border-line text-ink-soft hover:border-line-strong hover:bg-raised hover:text-ink',
+  danger: 'border-danger-line text-danger hover:bg-danger-bg',
+} as const;
+
+export const HINTED_ICON_FRAME =
+  'inline-flex h-9 w-9 items-center justify-center rounded-lg border bg-surface shadow-card transition-all duration-200';
+
+export function HintFrame({
+  hint,
+  placement = 'below',
+  children,
+}: {
+  hint: string;
+  placement?: HintPlacement;
+  children: ReactNode;
+}) {
+  return (
+    <span className="group/hint relative inline-flex">
+      {children}
+      <span
+        aria-hidden="true"
+        className={`pointer-events-none absolute z-30 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-caption normal-case tracking-normal text-white opacity-0 shadow-raised transition-opacity duration-150 group-hover/hint:opacity-100 group-has-[:focus-visible]/hint:opacity-100 ${HINT_PLACEMENTS[placement]}`}
+      >
+        {hint}
+      </span>
+    </span>
+  );
+}
+
+export function HintedIconButton({
+  hint,
+  placement,
+  tone = 'neutral',
+  className = '',
+  children,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  hint: string;
+  placement?: HintPlacement;
+  tone?: keyof typeof HINTED_TONES;
+}) {
+  return (
+    <HintFrame hint={hint} placement={placement}>
+      <button
+        type="button"
+        aria-label={hint}
+        className={`${HINTED_ICON_FRAME} ${HINTED_TONES[tone]} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-ground active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 ${className}`}
+        {...props}
+      >
+        {children}
+      </button>
+    </HintFrame>
   );
 }
 

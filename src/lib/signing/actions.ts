@@ -21,6 +21,7 @@ export const ACTIONS = {
   'pin-evaluate': { args: ['user_address', 'blinded_element'], signer: 'root', pinProof: false },
   'username-update': { args: ['username'], signer: 'device', pinProof: false },
   'secret-delete': { args: ['secret_id'], signer: 'device', pinProof: false, variadic: true },
+  'secret-purge': { args: ['secret_id'], signer: 'device', pinProof: false, variadic: true },
   'note-delete': { args: ['note_id'], signer: 'device', pinProof: false, variadic: true },
   'document-delete': {
     args: ['document_id'],

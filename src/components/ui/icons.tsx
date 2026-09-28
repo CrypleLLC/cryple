@@ -21,6 +21,14 @@ function Icon({ children, ...props }: IconProps & { children: ReactNode }) {
   );
 }
 
+export function HomeIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 10.5 12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5H15v-5.5H9v5.5H5.5A1.5 1.5 0 0 1 4 19v-8.5Z" />
+    </Icon>
+  );
+}
+
 export function VaultIcon(props: IconProps) {
   return (
     <Icon {...props}>
@@ -213,6 +221,43 @@ export function MenuIcon(props: IconProps) {
   );
 }
 
+export function GridIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="4" y="4" width="6.5" height="6.5" rx="1.5" />
+      <rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5" />
+      <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5" />
+      <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5" />
+    </Icon>
+  );
+}
+
+export function ListIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M9 6.5h11" />
+      <path d="M9 12h11" />
+      <path d="M9 17.5h11" />
+      <path d="M4.5 6.5h.01" />
+      <path d="M4.5 12h.01" />
+      <path d="M4.5 17.5h.01" />
+    </Icon>
+  );
+}
+
+export function GripIcon(props: IconProps) {
+  return (
+    <Icon strokeWidth={2.6} {...props}>
+      <path d="M9 6h.01" />
+      <path d="M15 6h.01" />
+      <path d="M9 12h.01" />
+      <path d="M15 12h.01" />
+      <path d="M9 18h.01" />
+      <path d="M15 18h.01" />
+    </Icon>
+  );
+}
+
 export function InfoIcon(props: IconProps) {
   return (
     <Icon {...props}>
@@ -338,19 +383,27 @@ export function TrashIcon(props: IconProps) {
 
 
 
-const FILE_BAND: Record<FileKind, string> = {
-  image: 'fill-success',
-  video: 'fill-accent-600',
-  audio: 'fill-brand-500',
-  pdf: 'fill-danger',
-  archive: 'fill-warning',
-  document: 'fill-brand-600',
-  sheet: 'fill-success',
-  slides: 'fill-warning',
-  code: 'fill-accent-500',
-  text: 'fill-ink-muted',
-  other: 'fill-ink-faint',
+const FILE_SHEET_COLOUR: Record<FileKind, string | undefined> = {
+  pdf: 'fill-file-pdf',
+  document: 'fill-file-document',
+  sheet: 'fill-file-sheet',
+  slides: 'fill-file-slides',
+  archive: 'fill-file-archive',
+  image: 'fill-file-image',
+  video: 'fill-file-video',
+  audio: 'fill-file-audio',
+  code: 'fill-file-code',
+  text: undefined,
+  other: undefined,
 };
+
+const FILE_SHEET_PATH =
+  'M10 3h19l12 12v27a3 3 0 0 1-3 3H10a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z';
+const FILE_FOLD_PATH = 'M29 3v9a3 3 0 0 0 3 3h9Z';
+const FILE_LABEL_FONT_SIZE = 11;
+const FILE_LABEL_BASELINE = 37;
+const FILE_LABEL_FULL_WIDTH = 27;
+const FILE_LABEL_CONDENSED_FROM = 4;
 
 const FILE_MARKS: Record<FileKind, ReactNode> = {
   image: (
@@ -363,7 +416,7 @@ const FILE_MARKS: Record<FileKind, ReactNode> = {
   video: (
     <>
       <rect x="16" y="10.5" width="16" height="12" rx="1.6" />
-      <path d="m22 14 6 2.5-6 2.5z" className="fill-ink-faint" />
+      <path d="m22 14 6 2.5-6 2.5z" fill="currentColor" />
     </>
   ),
   audio: (
@@ -424,10 +477,11 @@ const FILE_MARKS: Record<FileKind, ReactNode> = {
 export function FileTypeIcon({
   kind,
   extension,
-  labelled = true,
   ...props
-}: IconProps & { kind: FileKind; extension?: string; labelled?: boolean }) {
-  const label = labelled && extension !== undefined && extension !== '' ? extension : undefined;
+}: IconProps & { kind: FileKind; extension?: string }) {
+  const label = extension !== undefined && extension !== '' ? extension : undefined;
+  const colour = FILE_SHEET_COLOUR[kind];
+  const paper = colour === undefined;
 
   return (
     <svg
@@ -438,33 +492,40 @@ export function FileTypeIcon({
       {...props}
     >
       <path
-        d="M12.5 4h15.9L38 13.6V41.5a2.5 2.5 0 0 1-2.5 2.5h-23A2.5 2.5 0 0 1 10 41.5v-35A2.5 2.5 0 0 1 12.5 4Z"
-        className="fill-surface stroke-line-strong"
-        strokeWidth={1.4}
+        d={FILE_SHEET_PATH}
+        className={paper ? 'fill-surface stroke-line-strong' : colour}
+        strokeWidth={paper ? 1.2 : undefined}
+        strokeLinejoin="round"
       />
       <path
-        d="M28.4 4 38 13.6h-7.1a2.5 2.5 0 0 1-2.5-2.5Z"
-        className="fill-raised stroke-line-strong"
-        strokeWidth={1.4}
-      />
-      <g
-        className="stroke-ink-faint"
-        strokeWidth={1.6}
-        strokeLinecap="round"
+        d={FILE_FOLD_PATH}
+        className={paper ? 'fill-line stroke-line-strong' : colour}
+        strokeWidth={paper ? 1.2 : undefined}
         strokeLinejoin="round"
-      >
-        {FILE_MARKS[kind]}
-      </g>
-      <rect x="7" y="27.5" width="27" height="11" rx="2.6" className={FILE_BAND[kind]} />
-      {label !== undefined && (
+      />
+      {paper ? null : <path d={FILE_FOLD_PATH} className="fill-ink" opacity={0.28} />}
+      {label === undefined ? (
+        <g
+          transform="translate(0 8)"
+          className={paper ? 'text-ink-faint' : 'text-white'}
+          stroke="currentColor"
+          strokeWidth={1.8}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          {FILE_MARKS[kind]}
+        </g>
+      ) : (
         <text
-          x="20.5"
-          y="35.4"
+          x="24"
+          y={FILE_LABEL_BASELINE}
           textAnchor="middle"
-          className="fill-white"
-          fontSize={label.length > 3 ? 7 : 8.4}
-          fontWeight={700}
-          letterSpacing={0.2}
+          className={paper ? 'fill-ink-soft' : 'fill-white'}
+          fontSize={FILE_LABEL_FONT_SIZE}
+          fontWeight={800}
+          letterSpacing={0.3}
+          textLength={label.length >= FILE_LABEL_CONDENSED_FROM ? FILE_LABEL_FULL_WIDTH : undefined}
+          lengthAdjust="spacingAndGlyphs"
         >
           {label}
         </text>

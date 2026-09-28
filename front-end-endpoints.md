@@ -528,7 +528,7 @@ Getting a `pin_proof` means calling `POST /oprf/account/evaluate` first (§20). 
 
 ## 9. Secrets Endpoints
 
-> **Scope `secrets`.** Every route in this section needs a device holding `secrets` (`404` otherwise); deletes need a **full** device and are signed by it; every `wrapped_dek` write carries the current `key_generation` (`409 STALE_KEY_GENERATION` otherwise). Responses return `key_generation` beside `wrapped_dek`.
+> **Scope `secrets`.** Every route in this section needs a device holding `secrets` (`404` otherwise); deletes and purges need a **full** device and are signed by it; every `wrapped_dek` write carries the current `key_generation` (`409 STALE_KEY_GENERATION` otherwise). Responses return `key_generation` beside `wrapped_dek`.
 
 🔒 All protected. A "secret" is one encrypted legacy item. The server stores three opaque strings and never decrypts anything.
 
@@ -587,7 +587,7 @@ that was already stored. Same body either way:
 > every call creates an item, and a retried timeout leaves you two, each separately
 > indistinguishable from the original, because only you can read either.
 
-**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (`id` is not a canonical UUID) · `400 BAD_REQUEST` (`ciphertext is required` / `wrapped_dek is required` / unsupported `version`) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
+**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (`id` is not a canonical UUID) · `400 BAD_REQUEST` (`ciphertext is required` / `wrapped_dek is required` / unsupported `version`) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (the `id` belongs to one of your secrets in Recently deleted: restore it, or purge it before reusing the id) · `500 INTERNAL_ERROR`.
 
 ### `GET /secrets`
 
@@ -658,7 +658,9 @@ Like the full listing, this one is **not paginated** — it deliberately returns
 
 ### `DELETE /secrets/{id}`
 
-Signed with `secret-delete` over the path `{id}`.
+Moves one secret to **Recently deleted**. Signed with `secret-delete` over the path `{id}`.
+
+**A delete hides the secret; it does not destroy it.** The row keeps its ciphertext and wrap and gains a `deleted_at`. From then on `GET /secrets`, `?fields=meta` and `GET /secrets/{id}` do not return it, `GET /secrets/deleted` does, and `POST /secrets/{id}/restore` brings it back unchanged. Only [`DELETE /secrets/deleted`](#delete-secretsdeleted--purge) destroys it. Deleting a secret that is already deleted is `404`, like any secret the listing does not show.
 
 **Request** — the body is **required**; it carries the signature that authorizes the deletion. The three signature fields below are required, signed by **the calling device**, which must be full (`404` otherwise). See [§5.3](./front-end-guide.md#53-action-signature-everything-destructive).
 
@@ -698,7 +700,64 @@ One `secret-delete` signature covering a whole set, so a multi-select delete cos
 }
 ```
 
-`requested` is the de-duplicated count. `deleted` can be lower without being an error: an id that is not yours simply does not match, exactly as a cross-user read is invisible. Compare the two if you need to tell the user something was already gone.
+`requested` is the de-duplicated count. `deleted` can be lower without being an error: an id that is not yours, or that is already deleted, simply does not match, exactly as a cross-user read is invisible. Compare the two if you need to tell the user something was already gone. Like the single route, this moves the set to Recently deleted.
+
+### `GET /secrets/deleted`
+
+What is in **Recently deleted**, most recently deleted first. The same objects as `GET /secrets`, each with a `deleted_at`, and **with the full `ciphertext`** — the name is inside it, and a list of deleted items the user cannot recognise is no use.
+
+**`200 OK`:**
+
+```json
+{
+  "message": "Deleted secrets retrieved successfully",
+  "data": [
+    {
+      "id": "…",
+      "ciphertext": "…",
+      "wrapped_dek": "…",
+      "key_generation": 1,
+      "version": "v1",
+      "created_at": "…",
+      "updated_at": "…",
+      "deleted_at": "2026-09-28T12:00:00Z"
+    }
+  ]
+}
+```
+
+Always an array; not paginated. **Include these in a re-wrap after a rotation.** `PUT /secrets/keys` re-wraps a deleted secret like a live one, and the meta listing does not show it: a deleted secret left on an old generation is readable by the device the rotation removed, and comes back that way when restored.
+
+**Errors:** `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `500 INTERNAL_ERROR`.
+
+### `POST /secrets/{id}/restore`
+
+Takes one secret out of Recently deleted. **No signature and no body**: restoring destroys nothing, so the JWT of a device holding `secrets` is enough, as it is for `POST /secrets`.
+
+**`200 OK`** — `data` is the restored secret, exactly as it was before the delete: same `id`, `ciphertext`, `created_at`. Its placement in the vault's tabs is the client's own manifest and was never touched.
+
+**Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (not deleted, purged, never existed, or not yours — indistinguishable by design) · `500 INTERNAL_ERROR`.
+
+### `DELETE /secrets/deleted` — purge
+
+**Destroys** secrets that are in Recently deleted. Signed with **`secret-purge`**, a separate action from `secret-delete`, by a **full** device, over the ids sorted ascending and de-duplicated — so a signature that hid a secret can never be replayed to destroy it.
+
+**Request:**
+
+```json
+{
+  "ids": ["3f6b…-uuid", "9b2e…-uuid"],
+  "challenge": "64 lowercase hex characters",
+  "timestamp": 1737676800,
+  "signature": "base64 P1363 signature"
+}
+```
+
+**`200 OK`:** `{ "requested": 2, "purged": 2 }`
+
+**Only a deleted secret is ever purged.** An id that is live, already purged or not yours does not match, and `purged` is lower — never an error. This is the one call in the section that cannot be undone.
+
+**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (any id is not a canonical UUID — nothing is purged) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (empty id set, or not a full device) · `500 INTERNAL_ERROR`.
 
 **Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (any id is not a canonical UUID — nothing is deleted) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (empty id set) · `500 INTERNAL_ERROR`.
 

@@ -17,7 +17,8 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | `notes.ts` | The notes file-grid view model — title, thumbnail, selection, character budget and autosave state |
 | `folders.ts` | The folder copy and view models: the tab strip (`buildFolderTabs`, `itemsInTab`, tab naming and deleting) and the documents/drive tree (folder naming, what a delete takes, why a move was refused) |
 | `pairing.ts` | The *Connect a browser extension* flow's copy, its steps and its countdown |
-| `icon-size.ts` | The four-step size scale shared by all three grids, the columns each draws, and the remembered choice per screen |
+| `icon-size.ts` | The four-step size scale shared by all three grids, the columns each draws, and the remembered size and grid-or-list layout per screen |
+| `listing.ts` | The list layout: newest-created-first order, the modified date, and the short status labels ([Grid or list](../../components/tiles/README.md#grid-or-list)) |
 | `modal.ts` | A modal's keyboard contract, backdrop dismissal and scroll-lock counting |
 | `shell.ts` | `accountInitial`, the sidebar avatar's letter |
 | `username.ts` | The rename screen's validation and the copy that has to be on it |
@@ -526,10 +527,11 @@ where a title is still readable and the body is at least a texture.
   preview is a texture rather than something to read — the text sits at
   `MINIATURE_TEXT_FLOOR_PIXELS` — which is what the step is for: the shape of many items, not
   their words.
-- **`labelsTheGlyph` is false at `tiny` and `small`.** The drive's extension badge is drawn inside a
-  48-unit viewBox, so at 48px it renders around 6px tall, and smaller still at 32px — present, unreadable, and noise. The
-  coloured band it sits on stays: the colour is the type signal at that size, exactly as it is on a
-  desktop.
+- **The drive's type icon is labelled at every step.** It is one SVG drawing, so the extension is
+  the same share of the icon at 32px as at 128px — about 7px of bold capitals at the smallest step.
+  An earlier version dropped the label below `medium`, which made a PDF indistinguishable from any
+  other red file exactly where a grid shows the most of them. See
+  [the drive tile](../../components/drive/README.md#the-drive-tile-is-an-icon-not-a-page).
 - **Stepping holds at the ends rather than wrapping**, because a `+` that jumps from the largest
   back to the smallest is a control nobody can aim.
 
@@ -566,6 +568,10 @@ is not key material and it is not content. Holding it in memory instead was the 
 `AppShell` renders one section at a time, so a module-level store would survive a tab switch — but
 not a reload, and a size that resets every visit is the kind of small wrongness a user meets every
 single time.
+
+The drive and documents also remember whether they are drawn as a grid or a list —
+`cryple_drive_layout`, `cryple_documents_layout` — through the same exemption and for the same
+reason: one of two literal words, read back through a guard that falls back to the grid.
 
 Reading it during render would desynchronise the server-rendered HTML from the first client paint,
 so each screen starts at `defaultIconSize(grid)` and reads the stored value in an effect.

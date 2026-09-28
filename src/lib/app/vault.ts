@@ -136,3 +136,39 @@ export function formatBytes(bytes: number): string {
 
   return `${value.toFixed(1)} ${BYTE_UNITS[unit]}`;
 }
+
+export const SECRET_DELETE_CONFIRMATION =
+  'It disappears from every device and moves to Recently deleted, where it can be restored ' +
+  'until you delete it permanently. Until then it stays stored, still encrypted.';
+
+export const SECRET_PURGE_CONFIRMATION =
+  'Deleting permanently cannot be undone. Only this account holds the key, so nobody — ' +
+  'including Cryple — can bring it back.';
+
+export const RECENTLY_DELETED_SUBTITLE =
+  'A deleted secret stays here until you delete it permanently, so it can be brought back.';
+
+export interface DeletedVaultRow {
+  id: string;
+  name: string;
+  readable: boolean;
+  deletedAt: string;
+}
+
+export interface OpenedDeletedSecret {
+  record: SecretRecord & { deleted_at: string };
+  plaintext?: string;
+}
+
+export function buildDeletedVaultRows(opened: readonly OpenedDeletedSecret[]): DeletedVaultRow[] {
+  return opened
+    .map(({ record, plaintext }) => {
+      const { name, readable } = toVaultRow({ record, plaintext });
+      return { id: record.id, name, readable, deletedAt: record.deleted_at };
+    })
+    .sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
+}
+
+export function purgeConfirmationTitle(count: number): string {
+  return count === 1 ? 'Delete this secret permanently?' : `Delete ${count} secrets permanently?`;
+}

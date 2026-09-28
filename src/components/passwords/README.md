@@ -23,10 +23,25 @@ so opening a different row always starts from that row's values.
 **A delete is confirmed, and restorable.** The confirmation is a
 [`ConfirmDeleteModal`](../modal/README.md) that says the login disappears from every device,
 including the browser extensions, and can be brought back from *Recently deleted* until it is
-pruned. *Recently deleted* is a button above the list that opens the right-hand
+deleted permanently. *Recently deleted* is a button above the list that opens the right-hand
 [side panel](../shell/README.md#the-side-panel). It reads nothing until it is opened, because it
 walks every revision of every credential, and it reads again each time it opens and after every
 delete while it is open. A failure to read it is reported inside the panel, never as an empty list.
+
+**Delete permanently** is on each row of the panel, with *Delete all permanently* under a list of
+more than one — the same controls, the same confirmation shape and the same full-device condition as
+the Vault's ([`components/vault`](../vault/README.md)). The confirmation,
+`PASSWORD_PURGE_CONFIRMATION`, says the previous passwords go too, because they do.
+
+It needs no endpoint of its own. `purgeDeletedCredential` in [`lib/credentials`](../../lib/credentials/README.md)
+is `POST /credentials/{id}/prune` with **`keep_last: 1`**, signed `credential-prune`: the newest
+revision of a deleted credential is its tombstone, which the server never prunes, so keeping one
+destroys every revision that held a password and leaves the tombstone. The tombstone staying is
+the point — it is what tells a browser extension that has not synced yet that the credential is
+gone, where a missing row would let its stale copy live on. With no live revision left,
+`deletedCredentials` no longer lists it. *Delete all* prunes one credential at a time, each under
+its own signature, because a prune binds one id; a failure stops there and the panel reloads to
+show what is left.
 
 The list is an [`ItemList`](../item-list/README.md), and the passwords mask with the same top-bar
 toggle as the Vault's values (`VaultReveal`).

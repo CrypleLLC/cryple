@@ -268,7 +268,6 @@ function SharedGlyph({ item }: { item: ReceivedItem }) {
       <FileTypeIcon
         kind={item.kind}
         extension={item.readable ? fileExtension(item.name) : ''}
-        labelled
       />
     );
   }

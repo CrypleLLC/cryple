@@ -6,6 +6,7 @@ The parts every file grid shares — Notes, Documents and the Drive. Import from
 | --- | --- | --- |
 | `TileCheckbox.tsx` | The selection checkbox in a tile's corner, invisible until hover or selection mode | `PageTile`, the drive tile |
 | `TileAction.tsx` | The small square control in a tile's corner — share, download, rename, delete, dismiss | `PageTile`, the drive tile, folder tiles |
+| `ListingRow.tsx` | `Listing`, the list layout's header and rows, and `ListingRow`, one folder or file in it ([Grid or list](#grid-or-list)) | The drive, Documents, folder rows |
 | `PageTile.tsx` | A page miniature: paper frame, content or an unreadable glyph, bottom fade, title, and an optional caption | Notes, Documents |
 
 `TileCheckbox` takes its position as a class (`left-3 top-3` on a page, `left-1 top-1` on a drive
@@ -81,3 +82,37 @@ The document miniature differs from the note's in the three places where a docum
 
 The date line keeps the documents' own `edited` label ("Edited 2 hours ago") rather than the note's
 raw `toLocaleDateString`, since it already existed and says more.
+
+## Grid or list
+
+The drive and documents each draw their folder in one of two layouts, chosen with `LayoutToggle`
+next to the size control. **The grid is the default and is unchanged**; the list is the same
+contents as a table with details. The choice is remembered per screen
+(`readItemLayout`/`writeItemLayout` in [`lib/app/icon-size`](../../lib/app/README.md#remembered-per-screen-not-once)),
+and the size control is hidden while the list is shown, because there is nothing for it to size.
+
+`Listing` draws the header and holds the rows; `ListingRow` is one row. The columns:
+
+| Column | Drive file | Document | Folder |
+| --- | --- | --- | --- |
+| Name | the thumbnail or type icon, then the name | a blue document icon, then the title | the folder glyph, then the name |
+| Type | `fileTypeLabel` — *Spreadsheet · XLSX* | *Document* | *Folder* |
+| Size | the file's true size | the size of the document's encoded content | — |
+| Modified | `listingDateLabel(updated_at)` | the same | the same |
+| Status | `fileStatusShortLabel`, or the upload's progress | *Saved*, or *Could not be decrypted* | — |
+
+- **Folders come first, then files, each newest created first** (`newestCreatedFirst`). An upload
+  still in flight has no creation time yet, and sorts above everything, where it was just dropped.
+- **The narrow columns go in a fixed order.** Status goes first, then Modified; Name, Type and
+  Size always stay. The breakpoints are **container queries** (`@container` on `Listing`,
+  `@lg` for Modified, `@2xl` for Status), not viewport ones, because the width that matters is the
+  content area's: the side panel and the sidebar take room from it at any window size.
+- **The status column is short, and the full sentence is the row's tooltip.** The drive's
+  durability sentences (*"Saved. A second copy is made within a minute."*) do not fit a column, so
+  `fileStatusShortLabel` names the same states in two words, and the pending one is tested never to
+  say *two* or *provider*, the same rule the long one keeps.
+- **Everything the grid does, the list does.** A row opens, downloads or toggles selection exactly as
+  its tile does; its checkbox sits in the left gutter, its corner controls at the right end on
+  hover; rows drag onto folders and path segments, and folder rows are drop targets. The drive's
+  controls are one component, `DriveFileActions`, drawn by both the tile and the row, so the two
+  layouts cannot offer different actions.

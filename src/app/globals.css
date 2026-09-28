@@ -78,6 +78,16 @@ html[data-staging] {
   --color-folder-shine: #c7d2fe;
   --color-folder-edge: #6366f1;
 
+  --color-file-pdf: #dc2626;
+  --color-file-document: #2563eb;
+  --color-file-sheet: #16a34a;
+  --color-file-slides: #ea580c;
+  --color-file-archive: #6b7280;
+  --color-file-image: #7c3aed;
+  --color-file-video: #db2777;
+  --color-file-audio: #0891b2;
+  --color-file-code: #475569;
+
   --text-caption: 0.6875rem;
   --text-caption--line-height: 0.875rem;
   --text-caption--letter-spacing: 0.05em;

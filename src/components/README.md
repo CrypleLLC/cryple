@@ -23,6 +23,7 @@ Domains — one folder each:
 | Folder | What it is |
 | --- | --- |
 | [`session`](./session/README.md) | The session provider, the gate, onboarding and unlock |
+| [`home`](./home/README.md) | The Home screen: every section as an app icon |
 | [`shell`](./shell/README.md) | The sidebar shell, navigation, account menu, storage meter, staging banner |
 | [`vault`](./vault/README.md) | The Vault, and the show/hide-values toggle |
 | [`passwords`](./passwords/README.md) | The Passwords tab |

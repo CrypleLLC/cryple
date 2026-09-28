@@ -163,3 +163,12 @@ export function siteLabel(site: string): string {
     return trimmed;
   }
 }
+
+export const PASSWORD_PURGE_CONFIRMATION =
+  'Deleting permanently erases every saved version of it, its previous passwords included, from ' +
+  'every device. It cannot be undone: only this account holds the key, so nobody — including ' +
+  'Cryple — can bring it back.';
+
+export function passwordPurgeConfirmationTitle(count: number): string {
+  return count === 1 ? 'Delete this password permanently?' : `Delete ${count} passwords permanently?`;
+}

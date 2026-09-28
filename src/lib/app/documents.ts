@@ -88,6 +88,8 @@ export interface DocumentTile {
   thumbnail: string;
   edited: string;
   updatedAt: string;
+  createdAt: string;
+  bytes?: number;
   readable: boolean;
   pendingUpdates: number;
   failure?: string;
@@ -105,6 +107,8 @@ export function buildDocumentTiles(
       thumbnail: summary.readable ? documentThumbnail(summary.preview) : '',
       edited: editedLabel(summary.updatedAt, now),
       updatedAt: summary.updatedAt,
+      createdAt: summary.createdAt,
+      bytes: summary.bytes,
       readable: summary.readable,
       pendingUpdates: Math.max(summary.latestSeq - summary.snapshotSeq, 0),
       failure: summary.failure,

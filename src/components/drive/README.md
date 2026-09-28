@@ -120,17 +120,43 @@ the grid read as a table.
   a square of the glyph size, so a portrait photo stays portrait and a landscape one stays
   landscape — the box is a ceiling on the longest edge, not a shape imposed on the picture.
   `object-cover` was the previous behaviour and it centre-cropped every photo to A4.
-- **Everything else gets a type icon.** `FileTypeIcon` in [`icons.tsx`](../ui/icons.tsx) draws one sheet
-  with a folded corner, a mark saying what kind of thing it is, and a coloured band carrying the
-  extension — the shape a desktop uses, for the reason a desktop uses it: the extension is the
-  fastest identifier a user has, and the colour is what makes a wall of them scannable. The kind
+- **Everything else gets a type icon.** `FileTypeIcon` in [`icons.tsx`](../ui/icons.tsx) is one SVG:
+  a sheet coloured by its kind, a folded corner, and the extension written across it in white — the
+  extension is the fastest identifier a user has, and the colour is what makes a wall of them
+  scannable. The colours are the `--color-file-*` tokens in [`globals.css`](../../app/globals.css):
+
+  | Kind | Sheet | Typical extensions |
+  | --- | --- | --- |
+  | `pdf` | red | PDF |
+  | `document` | blue | DOC, DOCX, ODT, RTF |
+  | `sheet` | green | XLS, XLSX, ODS, CSV |
+  | `slides` | orange | PPT, PPTX, ODP |
+  | `archive` | grey | ZIP, TAR, GZ, 7Z, RAR |
+  | `image`, `video`, `audio`, `code` | violet, pink, cyan, slate | |
+  | `text`, `other` | white, with a grey outline and a grey label | TXT, MD |
+
+  The drawing is built so it holds up at every step of the size control:
+
+  - **The fold is cut out of the sheet, not laid on top of it.** The sheet's outline runs along the
+    diagonal, and the flap is a triangle on exactly that diagonal, darkened by a translucent
+    overlay of the ink token. An earlier version drew a flap over a full rectangle, which left the
+    square corner showing around it.
+  - **The label is always drawn, at one size.** It is 11 units of a 48-unit box, so it is the same
+    share of the icon at 32px as at 128px — there is no step where it disappears or changes weight.
+    A four-letter extension (`DOCX`, `XLSX`, `JPEG`) is fitted to the sheet's width with
+    `textLength`, which condenses it slightly instead of shrinking it, so `PDF` and `DOCX` read at
+    the same height side by side.
+  - **A file with no usable extension shows its kind's mark instead**, centred on the sheet, in the
+    label's colour.
+
+  The kind
   comes from the MIME type via `fileKind`, which now separates the office families (`document`,
   `sheet`, `slides`) and `code` rather than dropping all of them into `other`, because those are
   exactly the files a drive is full of and an icon that cannot tell a `.docx` from a `.zip` is not
   doing its job. The band's label comes from the **name**, not the type — `fileExtension` is what a
   file manager shows, and it stays empty rather than guessing when the suffix is missing, long, or
   not plain alphanumeric.
-- **A glyph the browser could not decrypt is the generic sheet** — grey band, no mark — which is
+- **A glyph the browser could not decrypt is the generic sheet** — white, no label, no mark — which is
   precisely what an OS shows for a type it does not know. The name already says the file is
   unreadable; the icon does not need to say it twice.
 - **The icons on the miniature are the ones that had to shrink.** The checkbox and the hover actions
@@ -138,6 +164,11 @@ the grid read as a table.
   the old 24px controls at `inset-3` did not fit inside it.
 - **Icons bottom-align within their box.** A landscape thumbnail is shorter than a portrait one, and
   aligning them on their tops would leave a ragged row of names.
+
+### The list layout
+
+The drive can also be shown as a list with name, type, size, modified and status columns. It is
+shared with documents and described in [Grid or list](../tiles/README.md#grid-or-list).
 
 ### What moved off the miniature
 

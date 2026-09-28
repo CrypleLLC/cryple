@@ -6,24 +6,28 @@ import {
   deletedCredentials,
   listCredentials,
   openCredential,
+  purgeDeletedCredential,
   restoreCredential,
   syncAllRevisions,
   writeCredential,
 } from '@/lib/credentials';
 import {
+  actionsHeader,
   buildPasswordRows,
   decodeCredentialPayload,
   MASKED_PASSWORD,
+  PASSWORD_PURGE_CONFIRMATION,
+  passwordPurgeConfirmationTitle,
   siteLabel,
   type OpenedCredential,
   type PasswordRow,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
 import { useVaultReveal } from '@/components/vault/VaultReveal';
-import { HistoryIcon, PasswordsIcon, TrashIcon } from '@/components/ui/icons';
-import { Button, CopyButton, FloatingAddButton } from '@/components/ui';
+import { HistoryIcon, PasswordsIcon, PencilIcon, TrashIcon } from '@/components/ui/icons';
+import { Button, CopyButton, FloatingAddButton, HintedIconButton } from '@/components/ui';
 import { ConfirmDeleteModal } from '@/components/modal';
-import { ItemList } from '@/components/item-list';
+import { DateTimeCell, ItemList } from '@/components/item-list';
 import { SIDE_PANEL_TRIGGER } from '@/components/shell/SidePanel';
 import DeletedPasswords, { type DeletedPasswordRow } from './DeletedPasswords';
 import PasswordFormModal from './PasswordFormModal';
@@ -45,6 +49,7 @@ export default function PasswordsScreen() {
   const [deletedRows, setDeletedRows] = useState<DeletedPasswordRow[]>();
   const [deletedError, setDeletedError] = useState<string>();
   const [showingDeleted, setShowingDeleted] = useState(false);
+  const [confirmingPurge, setConfirmingPurge] = useState<DeletedPasswordRow[]>();
 
   const load = useCallback(async () => {
     try {
@@ -116,6 +121,23 @@ export default function PasswordsScreen() {
     }
   }
 
+  async function purge(chosen: readonly DeletedPasswordRow[]) {
+    setBusy(true);
+    try {
+      for (const row of chosen) {
+        await purgeDeletedCredential(context, row.deleted);
+      }
+      setConfirmingPurge(undefined);
+      await loadDeleted();
+    } catch (error) {
+      setConfirmingPurge(undefined);
+      setDeletedError(reportError(error));
+      await loadDeleted();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveCredential(encodedPayload: string) {
     const credentialId = form?.editing?.id;
     setBusy(true);
@@ -163,36 +185,48 @@ export default function PasswordsScreen() {
         onDismissMessage={() => setMessage(undefined)}
         rows={rows}
         rowKey={(row) => row.id}
+        actionsHeader={actionsHeader('Copy', 'Edit', 'Delete')}
         emptyIcon={<PasswordsIcon className="h-6 w-6" />}
         emptyText="No passwords saved yet. Add your first one below — the server never sees the site you saved it for."
         columns={[
           {
             header: 'Site',
             kind: 'name',
-            width: 'max-w-[14rem]',
+            width: 'min-w-[32ch] max-w-[16rem]',
             render: (row) => (row.readable ? siteLabel(row.site) : row.site),
           },
           { header: 'Username', kind: 'text', width: 'max-w-[12rem]', render: (row) => row.username },
           {
             header: 'Password',
             kind: 'secret',
-            width: 'max-w-[12rem]',
+            width: 'min-w-[32ch] max-w-[20rem]',
             render: (row) => (revealed && row.readable ? row.password : MASKED_PASSWORD),
           },
-          { header: 'Changed', kind: 'meta', render: (row) => new Date(row.changedAt).toLocaleString() },
+          { header: 'Changed', kind: 'meta', render: (row) => <DateTimeCell at={row.changedAt} /> },
         ]}
         actions={(row) => (
           <>
-            {row.readable ? <CopyButton value={row.password} label="Copy" /> : null}
+            {row.readable ? <CopyButton value={row.password} label="Copy" iconOnly hintPlacement="above" /> : null}
             {row.readable ? (
-              <Button variant="ghost" onClick={() => setForm({ editing: row })}>
-                Edit
-              </Button>
+              <HintedIconButton
+                hint="Edit"
+                aria-label={`Edit ${siteLabel(row.site)}`}
+                placement="above"
+                onClick={() => setForm({ editing: row })}
+              >
+                <PencilIcon className="h-4 w-4 shrink-0" />
+              </HintedIconButton>
             ) : null}
-            <Button variant="danger" disabled={busy} onClick={() => setConfirmingDelete(row)}>
-              <TrashIcon />
-              Delete
-            </Button>
+            <HintedIconButton
+              hint="Delete"
+              aria-label={`Delete ${row.readable ? siteLabel(row.site) : row.site}`}
+              placement="above"
+              tone="danger"
+              disabled={busy}
+              onClick={() => setConfirmingDelete(row)}
+            >
+              <TrashIcon className="h-4 w-4 shrink-0" />
+            </HintedIconButton>
           </>
         )}
       />
@@ -202,9 +236,28 @@ export default function PasswordsScreen() {
           rows={deletedRows}
           error={deletedError}
           busy={busy}
+          canPurge={fullDevice}
           onRestore={(row) => void restore(row)}
+          onPurge={setConfirmingPurge}
           onClose={hideDeleted}
         />
+      ) : null}
+
+      {confirmingPurge !== undefined ? (
+        <ConfirmDeleteModal
+          title={passwordPurgeConfirmationTitle(confirmingPurge.length)}
+          subtitle={
+            confirmingPurge.length === 1
+              ? `${siteLabel(confirmingPurge[0].site)}${confirmingPurge[0].username === '' ? '' : ` · ${confirmingPurge[0].username}`}`
+              : undefined
+          }
+          confirmLabel={busy ? 'Deleting…' : 'Delete permanently'}
+          busy={busy}
+          onKeep={() => setConfirmingPurge(undefined)}
+          onConfirm={() => void purge(confirmingPurge)}
+        >
+          {PASSWORD_PURGE_CONFIRMATION}
+        </ConfirmDeleteModal>
       ) : null}
 
       {confirmingDelete !== undefined ? (
@@ -217,8 +270,8 @@ export default function PasswordsScreen() {
           onConfirm={() => void removeCredential(confirmingDelete.id)}
         >
           It disappears from every device, including your browser extensions. Its history is kept,
-          so it can be restored from <strong>Recently deleted</strong> until it is pruned
-          {fullDevice ? '' : ' from a full device'}.
+          so it can be restored from <strong>Recently deleted</strong> until it is deleted
+          permanently{fullDevice ? '' : ' from a full device'}.
         </ConfirmDeleteModal>
       ) : null}
 

@@ -1,16 +1,9 @@
-import type { DeletedCredential } from '@/lib/credentials';
-import { dateAndTimeLabels, siteLabel } from '@/lib/app';
+import { dateAndTimeLabels, RECENTLY_DELETED_SUBTITLE, type DeletedVaultRow } from '@/lib/app';
 import { Button, HintedIconButton, Notice, Spinner } from '@/components/ui';
 import { TrashIcon } from '@/components/ui/icons';
 import { SidePanel } from '@/components/shell/SidePanel';
 
-export interface DeletedPasswordRow {
-  deleted: DeletedCredential;
-  site: string;
-  username: string;
-}
-
-export default function DeletedPasswords({
+export default function DeletedSecrets({
   rows,
   error,
   busy,
@@ -19,20 +12,16 @@ export default function DeletedPasswords({
   onPurge,
   onClose,
 }: {
-  rows: readonly DeletedPasswordRow[] | undefined;
+  rows: readonly DeletedVaultRow[] | undefined;
   error: string | undefined;
   busy: boolean;
   canPurge: boolean;
-  onRestore: (row: DeletedPasswordRow) => void;
-  onPurge: (rows: DeletedPasswordRow[]) => void;
+  onRestore: (row: DeletedVaultRow) => void;
+  onPurge: (ids: string[]) => void;
   onClose: () => void;
 }) {
   return (
-    <SidePanel
-      title="Recently deleted"
-      subtitle="A deleted password keeps its history until it is deleted permanently, so it can be brought back."
-      onClose={onClose}
-    >
+    <SidePanel title="Recently deleted" subtitle={RECENTLY_DELETED_SUBTITLE} onClose={onClose}>
       {error !== undefined ? (
         <Notice tone="danger">{error}</Notice>
       ) : rows === undefined ? (
@@ -43,15 +32,18 @@ export default function DeletedPasswords({
         <div className="space-y-4">
           <ul className="-my-3 divide-y divide-line">
             {rows.map((row) => {
-              const { date, time } = dateAndTimeLabels(row.deleted.deletedAt);
+              const { date, time } = dateAndTimeLabels(row.deletedAt);
 
               return (
-                <li key={row.deleted.credentialId} className="flex items-center justify-between gap-3 py-3">
+                <li key={row.id} className="flex items-center justify-between gap-3 py-3">
                   <div className="min-w-0">
-                    <p className="truncate text-compact font-semibold text-ink">{siteLabel(row.site)}</p>
-                    {row.username !== '' ? (
-                      <p className="truncate text-compact text-ink-soft">{row.username}</p>
-                    ) : null}
+                    <p
+                      className={`truncate text-compact font-semibold ${
+                        row.readable ? 'text-ink' : 'italic text-ink-muted'
+                      }`}
+                    >
+                      {row.name}
+                    </p>
                     <p className="truncate text-caption tracking-normal text-ink-muted normal-case">
                       Deleted {date} {time}
                     </p>
@@ -63,11 +55,11 @@ export default function DeletedPasswords({
                     {canPurge ? (
                       <HintedIconButton
                         hint="Delete permanently"
-                        aria-label={`Delete ${siteLabel(row.site)} permanently`}
+                        aria-label={`Delete ${row.name} permanently`}
                         placement="left"
                         tone="danger"
                         disabled={busy}
-                        onClick={() => onPurge([row])}
+                        onClick={() => onPurge([row.id])}
                       >
                         <TrashIcon className="h-4 w-4 shrink-0" />
                       </HintedIconButton>
@@ -79,7 +71,7 @@ export default function DeletedPasswords({
           </ul>
           {canPurge && rows.length > 1 ? (
             <div className="border-t border-line pt-4">
-              <Button variant="danger" disabled={busy} onClick={() => onPurge([...rows])}>
+              <Button variant="danger" disabled={busy} onClick={() => onPurge(rows.map((row) => row.id))}>
                 <TrashIcon className="h-4 w-4 shrink-0" />
                 Delete all permanently
               </Button>

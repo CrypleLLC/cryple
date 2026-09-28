@@ -5,7 +5,7 @@ import { listDocumentsMeta } from '@/lib/documents';
 import { listFiles } from '@/lib/files';
 import { scopeDekWrapper } from '@/lib/keyrings';
 import { listNotesMeta } from '@/lib/notes';
-import { listSecretsMeta } from '@/lib/secrets';
+import { listDeletedSecrets, listSecretsMeta } from '@/lib/secrets';
 import { zeroBytes } from '@/lib/encoding';
 import { DEK_SCOPES, type DekScope } from '@/lib/scopes';
 import { normalizeActionArgs, signActionEnvelope, type DeviceActionLabel } from '@/lib/signing';
@@ -41,7 +41,7 @@ const ROUTES = {
     path: '/secrets/keys',
     action: 'secret-rekey',
     idField: 'id',
-    list: (context) => listSecretsMeta(context),
+    list: async (context) => [...(await listSecretsMeta(context)), ...(await listDeletedSecrets(context))],
   },
   notes: {
     path: '/notes/keys',

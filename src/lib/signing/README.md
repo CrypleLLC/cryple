@@ -72,6 +72,10 @@ is batchable. The count is asserted.
 - **The four deletes** (`secret-delete`, `note-delete`, `document-delete`, `file-delete`) are
   batchable: ids are sorted and de-duplicated before signing, and the single delete is the
   one-element case. They need a full device.
+- **`secret-purge`** is `secret-delete`'s shape with a different label. Since a vault delete only
+  moves a secret to Recently deleted, the purge is the destruction, and a separate label means a
+  captured delete signature can never be replayed as one
+  ([ADR 00016](../../../../api-general/docs/adr/00016_deleted_secrets_are_recoverable.md)).
 - **Sharing actions bind the counterparty or the item**: `connection-invite` binds the username,
   the blob and both key generations; `connection-keys` and `address-book-update` bind a digest
   of exactly what is stored.
