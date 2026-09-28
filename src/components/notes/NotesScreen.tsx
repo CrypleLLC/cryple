@@ -11,6 +11,7 @@ import {
   buildNoteTiles,
   defaultIconSize,
   gridTemplate,
+  iconScale,
   miniatureTextPixels,
   NOTE_NOUNS,
   noteCountLabel,
@@ -265,6 +266,7 @@ export default function NotesScreen() {
               key={tile.id}
               tile={tile}
               textPixels={miniatureTextPixels('notes', pageSize, NOTE_MINIATURE_TEXT_SHARE)}
+              labelClass={iconScale(pageSize).labelClass}
               selecting={selecting}
               selected={selected.includes(tile.id)}
               busy={deleting}
@@ -299,9 +301,11 @@ function NoteFile({
   onShare,
   onToggle,
   onDragStart,
+  labelClass,
 }: {
   tile: NoteTile;
   textPixels: number;
+  labelClass: string;
   selecting: boolean;
   selected: boolean;
   busy: boolean;
@@ -324,6 +328,7 @@ function NoteFile({
       onShare={onShare}
       onToggle={onToggle}
       onDragStart={onDragStart}
+      labelClass={labelClass}
     >
       <span
         style={{ fontSize: `${textPixels}px` }}

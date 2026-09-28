@@ -362,6 +362,7 @@ export function FolderTile({
   folder,
   nouns,
   glyphPixels,
+  labelClass = 'text-compact',
   itemIdsFor,
   onDetails,
 }: {
@@ -369,6 +370,7 @@ export function FolderTile({
   folder: TreeFolder;
   nouns: FolderNouns;
   glyphPixels?: number;
+  labelClass?: string;
   itemIdsFor: (ids: string[]) => string[];
   onDetails?: () => void;
 }) {
@@ -405,7 +407,7 @@ export function FolderTile({
         </span>
         <span className="block w-full min-w-0">
           <span
-            className={`line-clamp-2 block break-words text-compact font-medium ${
+            className={`line-clamp-2 block break-words ${labelClass} font-medium ${
               folder.name === undefined ? 'italic text-ink-muted' : 'text-ink'
             }`}
           >

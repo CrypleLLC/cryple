@@ -36,6 +36,14 @@ fails, because it runs the check again.
 check and disables *Accept* while it shows an alarm, so a changed fingerprint can never be accepted
 into a new pin. See `lib/sharing/README.md` § Checking a connection against its pin.
 
+### A received image or video opens in the viewer
+
+A shared file whose type the browser can show opens in the
+[media viewer](../modal/README.md#the-media-viewer) as well as selecting it, so its card, with *Copy
+to my account*, is there when the viewer closes. The viewer walks every received image and video.
+It needs the file's type, so `describeReceived` now returns `mime` beside `kind` from the manifest it
+already opens. Its download is the card's *Download*.
+
 ### Shared reads every tile before it can draw one
 
 A shared tile shows a real name — a filename, a note title, a secret's name — and none of those

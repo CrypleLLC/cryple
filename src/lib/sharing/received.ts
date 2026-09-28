@@ -16,6 +16,7 @@ export interface ReceivedItem {
   problem?: string;
   sizeBytes?: number;
   kind?: FileKind;
+  mime?: string;
   text?: string;
 }
 
@@ -71,6 +72,7 @@ export async function describeReceived(
         readable: true,
         sizeBytes: manifest.size,
         kind: fileKind(manifest.mime),
+        mime: manifest.mime,
       };
     }
 

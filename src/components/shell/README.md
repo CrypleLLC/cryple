@@ -84,6 +84,15 @@ under it, and Escape would close both at once.
 
 `PanelFacts` is the label-over-value list the details use, so every panel's facts look the same.
 
+## A screen can fill the page
+
+`main` is a flex column, `flex-1` under the sticky header, with the notices and the screen spaced by
+`gap-8`. A screen that is also a **surface you act on**, not only a list you read, makes its root
+`flex-1` and so reaches the bottom of the window however little it holds. The drive and Documents do:
+dropping files and drawing a selection box both work anywhere the user can see the screen, including
+the empty space under the last row, because to a user the whole screen *is* the drive. Nothing is
+drawn to show that area; it is the screen. Every other screen is as tall as its content, as before.
+
 ## Reading widths are capped; miniature grids are not
 
 `main` is `mx-auto w-full`, and the cap depends on what the screen shows. Beyond about 1150px a

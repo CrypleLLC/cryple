@@ -18,6 +18,7 @@ import {
   defaultIconSize,
   documentCountLabel,
   DOCUMENT_NOUNS,
+  countOf,
   documentDeleteConfirmation,
   documentHref,
   documentMiniatureTitlePixels,
@@ -25,6 +26,7 @@ import {
   folderItemsLabel,
   formatBytes,
   gridTemplate,
+  iconScale,
   listingDateLabel,
   newestCreatedFirst,
   pagePixels,
@@ -53,7 +55,7 @@ import {
   SizeStepper,
   Spinner,
 } from '@/components/ui';
-import { Listing, ListingRow, PageTile, TileAction } from '@/components/tiles';
+import { Listing, ListingRow, PageTile, TileAction, useMarqueeSelection } from '@/components/tiles';
 import ShareItemDialog from '@/components/sharing/ShareItemDialog';
 import { startItemDrag } from '@/components/folders/FolderTabs';
 import {
@@ -167,6 +169,31 @@ export default function DocumentsScreen() {
 
   const sameIds = useCallback((ids: string[]) => ids, []);
 
+  const selectBox = useCallback((ids: string[]) => {
+    setSelected(ids);
+    if (ids.length > 0) {
+      setSelecting(true);
+    }
+  }, []);
+
+  const toggleOne = useCallback((id: string) => {
+    setSelecting(true);
+    setSelected((current) => toggleNoteSelection(current, id));
+  }, []);
+
+  const exitSelection = useCallback(() => {
+    setSelecting(false);
+    setSelected([]);
+    setConfirming(false);
+  }, []);
+
+  const marquee = useMarqueeSelection({ selected, onSelect: selectBox, onToggle: toggleOne, onExit: exitSelection });
+
+  const dragDocuments = (event: DragEvent, id: string) => {
+    const moving = selected.includes(id) ? selected : [id];
+    startItemDrag(event, moving, moving.length > 1 ? countOf(moving.length, DOCUMENT_NOUNS) : undefined);
+  };
+
   const tiles = useMemo(
     () => (summaries === undefined ? undefined : buildDocumentTiles(summaries)),
     [summaries],
@@ -242,7 +269,7 @@ export default function DocumentsScreen() {
     detailedFolderRecord === undefined ? 0 : descendantsOf(treeFolders ?? [], detailedFolderRecord.id).size - 1;
 
   return (
-    <div className="space-y-5">
+    <div className="flex-1 space-y-5" {...marquee.containerProps}>
       {path}
 
       {message !== undefined && (
@@ -346,9 +373,7 @@ export default function DocumentsScreen() {
               selected={selected.includes(tile.id)}
               busy={busy}
               onOpen={() => activate(tile.id)}
-              onDragStart={(event) =>
-                startItemDrag(event, selected.includes(tile.id) ? selected : [tile.id])
-              }
+              onDragStart={(event) => dragDocuments(event, tile.id)}
               onShare={() => setSharing(tile.id)}
               onToggle={() => {
                 setSelecting(true);
@@ -369,6 +394,7 @@ export default function DocumentsScreen() {
               folder={folder}
               nouns={DOCUMENT_NOUNS}
               glyphPixels={pagePixels('documents', pageSize)}
+              labelClass={iconScale(pageSize).labelClass}
               itemIdsFor={sameIds}
               onDetails={() => setDetailedFolder((current) => (current === folder.id ? undefined : folder.id))}
             />
@@ -380,13 +406,12 @@ export default function DocumentsScreen() {
               textPixels={miniatureTextPixels('documents', pageSize, DOCUMENT_MINIATURE_TEXT_SHARE)}
               titlePixels={documentMiniatureTitlePixels(pageSize)}
               pageWidth={pagePixels('documents', pageSize)}
+              labelClass={iconScale(pageSize).labelClass}
               selecting={selecting}
               selected={selected.includes(tile.id)}
               busy={busy}
               onOpen={() => activate(tile.id)}
-              onDragStart={(event) =>
-                startItemDrag(event, selected.includes(tile.id) ? selected : [tile.id])
-              }
+              onDragStart={(event) => dragDocuments(event, tile.id)}
               onShare={() => setSharing(tile.id)}
               onToggle={() => {
                 setSelecting(true);
@@ -396,6 +421,8 @@ export default function DocumentsScreen() {
           ))}
         </ul>
       )}
+
+      {marquee.overlay}
 
       {detailedFolderRecord !== undefined ? (
         <FolderDetailsPanel state={tree} folder={detailedFolderRecord} onClose={closeDetails}>
@@ -440,11 +467,13 @@ function DocumentFile({
   onToggle,
   onDragStart,
   pageWidth,
+  labelClass,
 }: {
   tile: DocumentTile;
   textPixels: number;
   titlePixels: number;
   pageWidth: number;
+  labelClass: string;
   selecting: boolean;
   selected: boolean;
   busy: boolean;
@@ -468,6 +497,8 @@ function DocumentFile({
       onToggle={onToggle}
       onDragStart={onDragStart}
       pageWidth={pageWidth}
+      selectId={tile.id}
+      labelClass={labelClass}
     >
       <span className="block px-[12%] py-[8.5%]">
         {tile.title !== UNTITLED_DOCUMENT && (
@@ -523,6 +554,7 @@ function DocumentRow({
       disabled={busy}
       onOpen={onOpen}
       selection={{ selecting, selected, disabled: busy, onToggle }}
+      selectId={tile.id}
       highlighted={selected}
       draggable={!busy}
       onDragStart={onDragStart}

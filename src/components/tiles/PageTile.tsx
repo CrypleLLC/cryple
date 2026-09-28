@@ -18,6 +18,8 @@ export function PageTile({
   onToggle,
   onDragStart,
   pageWidth,
+  selectId,
+  labelClass = 'text-compact',
   children,
 }: {
   title: string;
@@ -34,12 +36,14 @@ export function PageTile({
   onToggle: () => void;
   onDragStart: (event: DragEvent) => void;
   pageWidth?: number;
+  selectId?: string;
+  labelClass?: string;
   children: ReactNode;
 }) {
   const iconSized = pageWidth !== undefined;
 
   return (
-    <li className="group relative" draggable={!busy} onDragStart={onDragStart}>
+    <li className="group relative" draggable={!busy} onDragStart={onDragStart} data-select-id={selectId}>
       <button
         type="button"
         onClick={onOpen}
@@ -70,7 +74,7 @@ export function PageTile({
 
         <span className="block w-full min-w-0 px-0.5">
           <span
-            className={`block text-compact text-ink ${
+            className={`block ${labelClass} text-ink ${
               iconSized ? 'line-clamp-2 break-words font-medium' : 'truncate font-semibold'
             }`}
           >

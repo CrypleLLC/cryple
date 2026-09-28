@@ -53,6 +53,7 @@ export function ListingRow({
   dropProps,
   actions,
   actionsAlwaysVisible = false,
+  selectId,
   children,
 }: {
   icon: ReactNode;
@@ -75,10 +76,17 @@ export function ListingRow({
   dropProps?: HTMLAttributes<HTMLLIElement>;
   actions?: ReactNode;
   actionsAlwaysVisible?: boolean;
+  selectId?: string;
   children?: ReactNode;
 }) {
   return (
-    <li className="group relative" draggable={draggable} onDragStart={onDragStart} {...dropProps}>
+    <li
+      className="group relative"
+      draggable={draggable}
+      onDragStart={onDragStart}
+      data-select-id={selectId}
+      {...dropProps}
+    >
       <button
         type="button"
         onClick={onOpen}

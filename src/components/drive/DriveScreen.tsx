@@ -50,6 +50,7 @@ import {
   fileExtension,
   fileDeleteConfirmation,
   FILE_NOUNS,
+  countOf,
   fileKind,
   fileName,
   folderContents,
@@ -60,6 +61,8 @@ import {
   iconScale,
   isOpenable,
   listingDateLabel,
+  browserCanPlayVideo,
+  mediaKindOf,
   newestCreatedFirst,
   isResumable,
   previewUrls,
@@ -87,6 +90,7 @@ import {
   type IconSize,
   type ItemLayout,
   type Transfer,
+  type ViewableMedia,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
 import {
@@ -109,8 +113,9 @@ import {
   SizeStepper,
   Spinner,
 } from '@/components/ui';
-import { Listing, ListingRow, TileAction, TileCheckbox } from '@/components/tiles';
+import { Listing, ListingRow, TileAction, TileCheckbox, useMarqueeSelection } from '@/components/tiles';
 import ShareItemDialog from '@/components/sharing/ShareItemDialog';
+import { MediaViewer, type MediaLoader } from '@/components/modal';
 import { startItemDrag } from '@/components/folders/FolderTabs';
 import {
   FolderPath,
@@ -159,6 +164,7 @@ export default function DriveScreen() {
   const [iconSize, setIconSize] = useState<IconSize>(defaultIconSize('drive'));
   const [layout, setLayout] = useState<ItemLayout>('grid');
   const [details, setDetails] = useState<DriveDetailsTarget>();
+  const [viewing, setViewing] = useState<number>();
   const [folderContentsFound, setFolderContentsFound] = useState<{ id: string; contents: FolderContents }>();
   const [folderContentsError, setFolderContentsError] = useState<{ id: string; text: string }>();
   const closeDetails = useCallback(() => setDetails(undefined), []);
@@ -579,15 +585,57 @@ export default function DriveScreen() {
     return [...waiting, ...rows];
   }, [tiles, transfers]);
 
+  const ordered = useMemo(() => (layout === 'list' ? newestCreatedFirst(grid) : grid), [layout, grid]);
+
+  const media = useMemo(
+    () =>
+      ordered.flatMap((tile): ViewableMedia[] => {
+        if (!tile.openable || !tile.readable || tile.placeholder === true) {
+          return [];
+        }
+        const kind = mediaKindOf(tile.kind, tile.mime, browserCanPlayVideo);
+        return kind === undefined ? [] : [{ id: tile.id, name: tile.fullName, mime: tile.mime, kind }];
+      }),
+    [ordered],
+  );
+
+  const selectBox = useCallback((ids: string[]) => {
+    setSelected(ids);
+    if (ids.length > 0) {
+      setSelecting(true);
+    }
+  }, []);
+
+  const toggleOne = useCallback((id: string) => {
+    setSelecting(true);
+    setSelected((current) => toggleFileSelection(current, id));
+  }, []);
+
+  const marquee = useMarqueeSelection({ selected, onSelect: selectBox, onToggle: toggleOne, onExit: stopSelecting });
+
+  const loadMedia = useCallback<MediaLoader>(
+    async (item, onProgress, signal) =>
+      (await downloadFile(context, item.id, { onProgress, signal })).bytes,
+    [context],
+  );
+
   function fileActions(tile: DriveTile, transfer: Transfer | undefined): DriveFileHandlers {
+    const mediaIndex = media.findIndex((item) => item.id === tile.id);
+
     return {
       onOpen: () => {
         if (selecting) {
           setSelected((current) => toggleFileSelection(current, tile.id));
           return;
         }
+        if (mediaIndex >= 0) {
+          setViewing(mediaIndex);
+          return;
+        }
         void save(tile);
       },
+      onDownload: () => void save(tile),
+      opensViewer: mediaIndex >= 0,
       onToggle: () => {
         setSelecting(true);
         setSelected((current) => toggleFileSelection(current, tile.id));
@@ -595,8 +643,14 @@ export default function DriveScreen() {
       onDelete: fullDevice || tile.resume !== undefined ? () => setConfirming(tile) : undefined,
       onShare: () => setSharing(tile.id),
       onDetails: () => toggleDetails({ kind: 'file', id: tile.id }),
-      onDragStart: (event) =>
-        startItemDrag(event, withTheirThumbnails(selected.includes(tile.id) ? selected : [tile.id])),
+      onDragStart: (event) => {
+        const moving = selected.includes(tile.id) ? selected : [tile.id];
+        startItemDrag(
+          event,
+          withTheirThumbnails(moving),
+          moving.length > 1 ? countOf(moving.length, FILE_NOUNS) : undefined,
+        );
+      },
       onResume: () => void resume(tile),
       onDismiss: transfer === undefined ? undefined : () => dropTransfer(transfer.key),
     };
@@ -623,7 +677,8 @@ export default function DriveScreen() {
 
   return (
     <div
-      className="space-y-5"
+      className="flex-1 space-y-5"
+      {...marquee.containerProps}
       onDragOver={(event: DragEvent) => {
         if (!isFileDrop(event)) {
           return;
@@ -801,7 +856,7 @@ export default function DriveScreen() {
               onDetails={() => toggleDetails({ kind: 'folder', id: folder.id })}
             />
           ))}
-          {newestCreatedFirst(grid).map((tile) => {
+          {ordered.map((tile) => {
             const transfer = byFile.get(tile.id);
             const actions = fileActions(tile, transfer);
 
@@ -831,6 +886,7 @@ export default function DriveScreen() {
               folder={folder}
               nouns={FILE_NOUNS}
               glyphPixels={iconScale(iconSize).glyphPixels}
+              labelClass={iconScale(iconSize).labelClass}
               itemIdsFor={withTheirThumbnails}
               onDetails={() => toggleDetails({ kind: 'folder', id: folder.id })}
             />
@@ -859,7 +915,25 @@ export default function DriveScreen() {
         <p className="text-compact text-brand-700">Drop the files here.</p>
       )}
 
+      {marquee.overlay}
+
       {detailedFile !== undefined ? <FileDetails file={detailedFile} onClose={closeDetails} /> : null}
+
+      {viewing !== undefined && media.length > 0 ? (
+        <MediaViewer
+          items={media}
+          startIndex={Math.min(viewing, media.length - 1)}
+          load={loadMedia}
+          explain={reportError}
+          onDownload={(item) => {
+            const tile = grid.find((candidate) => candidate.id === item.id);
+            if (tile !== undefined) {
+              void save(tile);
+            }
+          }}
+          onClose={() => setViewing(undefined)}
+        />
+      ) : null}
       {detailedFolderRecord !== undefined ? (
         <FolderDetails
           state={tree}
@@ -884,6 +958,8 @@ export default function DriveScreen() {
 
 interface DriveFileHandlers {
   onOpen: () => void;
+  onDownload: () => void;
+  opensViewer: boolean;
   onToggle: () => void;
   onDelete?: () => void;
   onShare: () => void;
@@ -920,14 +996,21 @@ function DriveFile({
   const inert = running || tile.placeholder === true;
 
   return (
-    <li className="group relative" draggable={!busy && !inert} onDragStart={onDragStart}>
+    <li
+      className="group relative"
+      draggable={!busy && !inert}
+      onDragStart={onDragStart}
+      data-select-id={inert ? undefined : tile.id}
+    >
       <button
         type="button"
         onClick={onOpen}
         disabled={busy || inert || (!selecting && !tile.openable)}
         title={failed ? transfer.error : fileCaption(tile.status, tile.trueBytes)}
         aria-label={
-          selecting ? `${selected ? 'Deselect' : 'Select'} ${tile.name}` : `Download ${tile.name}`
+          selecting
+            ? `${selected ? 'Deselect' : 'Select'} ${tile.name}`
+            : `${handlers.opensViewer ? 'Open' : 'Download'} ${tile.name}`
         }
         className={`flex w-full flex-col items-center gap-1.5 rounded-lg p-2 text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 disabled:opacity-60 ${
           selected ? 'bg-brand-50 ring-1 ring-brand-300' : 'hover:bg-raised'
@@ -962,7 +1045,7 @@ function DriveFile({
         </span>
 
         <span className="block w-full min-w-0">
-          <span className="line-clamp-2 block break-words text-compact font-medium text-ink">
+          <span className={`line-clamp-2 block break-words ${scale.labelClass} font-medium text-ink`}>
             {tile.name}
           </span>
           {transfer !== undefined && (
@@ -996,7 +1079,7 @@ function DriveFile({
           failed ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
         }`}
       >
-        <DriveFileActions tile={tile} busy={busy} failed={failed} onOpen={onOpen} {...handlers} />
+        <DriveFileActions tile={tile} busy={busy} failed={failed} {...handlers} />
       </div>
     </li>
   );
@@ -1006,13 +1089,13 @@ function DriveFileActions({
   tile,
   busy,
   failed,
-  onOpen,
+  onDownload,
   onDelete,
   onShare,
   onDetails,
   onResume,
   onDismiss,
-}: Omit<DriveFileHandlers, 'onToggle' | 'onDragStart'> & { tile: DriveTile; busy: boolean; failed: boolean }) {
+}: Omit<DriveFileHandlers, 'onOpen' | 'onToggle' | 'onDragStart'> & { tile: DriveTile; busy: boolean; failed: boolean }) {
   return (
     <>
       {tile.placeholder !== true && (
@@ -1021,7 +1104,7 @@ function DriveFileActions({
         </TileAction>
       )}
       {tile.openable && (
-        <TileAction label={`Download ${tile.name}`} disabled={busy} onClick={onOpen}>
+        <TileAction label={`Download ${tile.name}`} disabled={busy} onClick={onDownload}>
           <DownloadIcon className="h-3 w-3 shrink-0" />
         </TileAction>
       )}
@@ -1132,7 +1215,11 @@ function DriveFileRow({
       }
       statusClassName={failed ? 'text-danger' : running ? 'text-brand-700' : 'text-ink-muted'}
       title={failed ? transfer.error : tile.status === '' ? undefined : tile.status}
-      openLabel={selecting ? `${selected ? 'Deselect' : 'Select'} ${tile.name}` : `Download ${tile.name}`}
+      openLabel={
+        selecting
+          ? `${selected ? 'Deselect' : 'Select'} ${tile.name}`
+          : `${handlers.opensViewer ? 'Open' : 'Download'} ${tile.name}`
+      }
       disabled={busy || inert || (!selecting && !tile.openable)}
       onOpen={onOpen}
       selection={
@@ -1141,9 +1228,10 @@ function DriveFileRow({
       highlighted={selected}
       draggable={!busy && !inert}
       onDragStart={onDragStart}
+      selectId={inert ? undefined : tile.id}
       actions={
         selecting || running ? undefined : (
-          <DriveFileActions tile={tile} busy={busy} failed={failed} onOpen={onOpen} {...handlers} />
+          <DriveFileActions tile={tile} busy={busy} failed={failed} {...handlers} />
         )
       }
       actionsAlwaysVisible={failed}

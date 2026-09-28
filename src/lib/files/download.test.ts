@@ -175,6 +175,19 @@ describe('downloading', () => {
     expect(manifest.size).toBe(40_000);
   });
 
+  it('reports progress in plaintext bytes, from zero to the whole file', async () => {
+    const context = await newContext();
+    const stored = await store(bytes(40_000), context);
+    mockApi(stored);
+    const seen: [number, number][] = [];
+
+    await downloadFile(context, ID, { onProgress: (done, total) => seen.push([done, total]) });
+
+    expect(seen[0]).toEqual([0, 40_000]);
+    expect(seen.at(-1)).toEqual([40_000, 40_000]);
+    expect(seen.every(([done], index) => index === 0 || done >= seen[index - 1][0])).toBe(true);
+  });
+
   it('round-trips an empty file', async () => {
     const context = await newContext();
     const stored = await store(new Uint8Array(0), context);

@@ -10,6 +10,8 @@ export * from './documents';
 export * from './files';
 export * from './icon-size';
 export * from './listing';
+export * from './viewer';
+export * from './marquee';
 export * from './transfers';
 export * from './usage';
 export * from './previews';
