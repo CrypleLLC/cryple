@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef } from 'react';
-import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject } from 'react';
 import { FOCUSABLE_SELECTOR, isBackdropDismissal, scrollLockTransition, trapAction } from '@/lib/app';
 import { IconButton } from '@/components/ui';
 import { CloseIcon } from '@/components/ui/icons';
@@ -25,45 +25,10 @@ export function Modal({
   const dialog = useRef<HTMLDivElement>(null);
   const pressedOnBackdrop = useRef(false);
 
-  useEffect(() => {
-    const trigger = document.activeElement as HTMLElement | null;
-
-    if (scrollLockTransition(openModals, 1) === 'lock') {
-      document.body.style.overflow = 'hidden';
-    }
-    openModals += 1;
-
-    const first = tabbables(dialog.current)[0] ?? dialog.current;
-    first?.focus();
-
-    return () => {
-      openModals -= 1;
-      if (scrollLockTransition(openModals + 1, -1) === 'unlock') {
-        document.body.style.overflow = '';
-      }
-      trigger?.focus();
-    };
-  }, []);
+  useDialogLifecycle(dialog);
 
   function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-    const elements = tabbables(dialog.current);
-    const action = trapAction(event, {
-      count: elements.length,
-      active: elements.indexOf(document.activeElement as HTMLElement),
-    });
-
-    if (action.kind === 'pass') {
-      return;
-    }
-
-    event.preventDefault();
-
-    if (action.kind === 'close') {
-      onClose();
-    }
-    if (action.kind === 'focus') {
-      elements[action.index]?.focus();
-    }
+    trapDialogKeys(event, dialog.current, onClose);
   }
 
   return (
@@ -113,6 +78,53 @@ export function Modal({
 }
 
 let openModals = 0;
+
+export function useDialogLifecycle(dialog: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const trigger = document.activeElement as HTMLElement | null;
+
+    if (scrollLockTransition(openModals, 1) === 'lock') {
+      document.body.style.overflow = 'hidden';
+    }
+    openModals += 1;
+
+    const first = tabbables(dialog.current)[0] ?? dialog.current;
+    first?.focus();
+
+    return () => {
+      openModals -= 1;
+      if (scrollLockTransition(openModals + 1, -1) === 'unlock') {
+        document.body.style.overflow = '';
+      }
+      trigger?.focus();
+    };
+  }, [dialog]);
+}
+
+export function trapDialogKeys(
+  event: ReactKeyboardEvent<HTMLElement>,
+  root: HTMLElement | null,
+  onClose: () => void,
+) {
+  const elements = tabbables(root);
+  const action = trapAction(event, {
+    count: elements.length,
+    active: elements.indexOf(document.activeElement as HTMLElement),
+  });
+
+  if (action.kind === 'pass') {
+    return;
+  }
+
+  event.preventDefault();
+
+  if (action.kind === 'close') {
+    onClose();
+  }
+  if (action.kind === 'focus') {
+    elements[action.index]?.focus();
+  }
+}
 
 function tabbables(root: HTMLElement | null): HTMLElement[] {
   return root === null ? [] : Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));

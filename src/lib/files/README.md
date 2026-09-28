@@ -336,6 +336,10 @@ pressure. That is correct for a cache and the reason nothing here is a source of
 layout check before anything is decrypted**. `downloadFile` streams the object through
 `decryptStream` and hands back plaintext.
 
+`downloadFile` takes an `onProgress(doneBytes, totalBytes)`, in plaintext bytes and called from 0 to
+the whole size as chunks are verified, and a `signal` that aborts the object fetch. The media viewer
+uses both: one for its percentage, the other so moving to the next photo stops decrypting this one.
+
 - **Each chunk is verified before its bytes are released**, not after assembly — the GCM tag _and_
   the position header. That is what makes streaming a large file safe rather than trusting four
   gigabytes on a hash that cannot be computed until the end.

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   NothingToCopyError,
   copySharedItem,
@@ -16,19 +16,23 @@ import {
   type ReceivedItem,
 } from '@/lib/sharing';
 import {
+  browserCanPlayVideo,
   fileExtension,
   formatBytes,
+  mediaKindOf,
   gridTemplate,
   iconScale,
   ITEM_LABELS,
   sharedNoteView,
   sharedSecretView,
   SHARING_COPY,
+  type ViewableMedia,
 } from '@/lib/app';
 import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
 import { scopeForItemType } from '@/lib/scopes';
 import { Button, Card, Empty, Notice, Spinner } from '@/components/ui';
 import { DocumentsIcon, FileTypeIcon, NotesIcon, SharingIcon, VaultIcon } from '@/components/ui/icons';
+import { MediaViewer, type MediaLoader } from '@/components/modal';
 
 const SCALE = iconScale('medium');
 
@@ -42,6 +46,7 @@ export default function SharedScreen() {
   const [message, setMessage] = useState<string>();
   const [opened, setOpened] = useState<ReceivedItem>();
   const [busy, setBusy] = useState(false);
+  const [viewing, setViewing] = useState<number>();
 
   const load = useCallback(async () => {
     try {
@@ -86,9 +91,37 @@ export default function SharedScreen() {
     void load();
   }, [load]);
 
+  const media = useMemo(
+    () =>
+      (items ?? []).flatMap((item): ViewableMedia[] => {
+        if (item.itemType !== 'file' || !item.readable || item.kind === undefined || item.mime === undefined) {
+          return [];
+        }
+        const kind = mediaKindOf(item.kind, item.mime, browserCanPlayVideo);
+        return kind === undefined ? [] : [{ id: item.shareId, name: item.name, mime: item.mime, kind }];
+      }),
+    [items],
+  );
+
+  const loadMedia = useCallback<MediaLoader>(
+    async (item) => {
+      const received = items?.find((candidate) => candidate.shareId === item.id);
+      const connection = received === undefined ? undefined : connections.get(received.connectionId);
+      if (connection === undefined) {
+        throw new Error(SHARING_COPY.lostConnection);
+      }
+      return (await openSharedFile(context, connection, item.id)).bytes;
+    },
+    [context, connections, items],
+  );
+
   function open(item: ReceivedItem) {
     setNotice(undefined);
     setOpened(item);
+    const mediaIndex = media.findIndex((candidate) => candidate.id === item.shareId);
+    if (mediaIndex >= 0) {
+      setViewing(mediaIndex);
+    }
   }
 
   async function copy(item: ReceivedItem) {
@@ -168,6 +201,22 @@ export default function SharedScreen() {
           ))}
         </ul>
       )}
+
+      {viewing !== undefined && media.length > 0 ? (
+        <MediaViewer
+          items={media}
+          startIndex={Math.min(viewing, media.length - 1)}
+          load={loadMedia}
+          explain={reportError}
+          onDownload={(item) => {
+            const received = items.find((candidate) => candidate.shareId === item.id);
+            if (received !== undefined) {
+              void download(received);
+            }
+          }}
+          onClose={() => setViewing(undefined)}
+        />
+      ) : null}
 
       {opened ? (
         <Card title={opened.name} subtitle={`${ITEM_LABELS[opened.itemType]} from ${opened.from}`}>

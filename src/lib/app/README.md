@@ -18,6 +18,7 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | `folders.ts` | The folder copy and view models: the tab strip (`buildFolderTabs`, `itemsInTab`, tab naming and deleting) and the documents/drive tree (folder naming, what a delete takes, why a move was refused) |
 | `pairing.ts` | The *Connect a browser extension* flow's copy, its steps and its countdown |
 | `icon-size.ts` | The four-step size scale shared by all three grids, the columns each draws, and the remembered size and grid-or-list layout per screen |
+| `viewer.ts` | What the media viewer opens (`mediaKindOf`), its keys, stepping and copy ([The media viewer](../../components/modal/README.md#the-media-viewer)) |
 | `listing.ts` | The list layout: newest-created-first order, the modified date, and the short status labels ([Grid or list](../../components/tiles/README.md#grid-or-list)) |
 | `modal.ts` | A modal's keyboard contract, backdrop dismissal and scroll-lock counting |
 | `shell.ts` | `accountInitial`, the sidebar avatar's letter |
