@@ -59,13 +59,24 @@ The DEK is fresh per item and zeroed in a `finally` on every path.
 | `listSecrets` | `GET /secrets` | Full payloads — the heaviest response the API produces |
 | `getSecret` | `GET /secrets/{id}` | |
 | `openSecret` | — | `unwrapDek` + decrypt |
-| `deleteSecret` | `DELETE /secrets/{id}` | `secret-delete`, one-element case |
-| `deleteSecrets` | `DELETE /secrets` | `secret-delete`, batch |
+| `deleteSecret` | `DELETE /secrets/{id}` | `secret-delete`, one-element case. Moves it to Recently deleted |
+| `deleteSecrets` | `DELETE /secrets` | `secret-delete`, batch. Moves them to Recently deleted |
+| `listDeletedSecrets` | `GET /secrets/deleted` | Recently deleted, with ciphertext and `deleted_at` |
+| `restoreSecret` | `POST /secrets/{id}/restore` | Unsigned, no body |
+| `purgeSecrets` | `DELETE /secrets/deleted` | **`secret-purge`**, batch. The only call that destroys |
 | `hashReceivedCiphertext` | — | See below |
 
 `SecretsContext` extends the shared `AuthedContext` with an optional `dek: DekWrapper`. Omitted,
-it defaults to the `secrets` scope wrapper. Deletes are signed by **this device's** key, and need
-a full device.
+it defaults to the `secrets` scope wrapper. Deletes and purges are signed by **this device's** key,
+and need a full device.
+
+**A delete is recoverable; a purge is not**
+([ADR 00016](../../../../api-general/docs/adr/00016_deleted_secrets_are_recoverable.md)). A deleted
+secret disappears from `listSecrets`, `listSecretsMeta` and `getSecret` and appears in
+`listDeletedSecrets` until it is restored or purged. The purge is its own action, and a test signs a
+purge and checks the signature does **not** verify as `secret-delete`. A `createSecret` replaying the
+id of a deleted secret is `404`: pick a fresh id, as `createSecret` always does unless told
+otherwise.
 
 ## Rules this domain is built to
 

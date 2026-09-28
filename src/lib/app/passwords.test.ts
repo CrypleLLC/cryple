@@ -4,6 +4,8 @@ import {
   decodeCredentialPayload,
   encodeCredentialPayload,
   MalformedCredentialPayloadError,
+  PASSWORD_PURGE_CONFIRMATION,
+  passwordPurgeConfirmationTitle,
   siteLabel,
   UNREADABLE_CREDENTIAL_SITE,
   type OpenedCredential,
@@ -131,5 +133,17 @@ describe('fields this app does not know', () => {
     expect(() => decodeCredentialPayload('{"site":"a","username":"b","password":"c","match":"x"}')).toThrow(
       MalformedCredentialPayloadError,
     );
+  });
+});
+
+describe('deleting a password permanently', () => {
+  it('says the history goes too, and that it cannot be undone', () => {
+    expect(PASSWORD_PURGE_CONFIRMATION).toMatch(/previous passwords/);
+    expect(PASSWORD_PURGE_CONFIRMATION).toMatch(/cannot be undone/);
+  });
+
+  it('counts what it is about to destroy', () => {
+    expect(passwordPurgeConfirmationTitle(1)).toBe('Delete this password permanently?');
+    expect(passwordPurgeConfirmationTitle(4)).toBe('Delete 4 passwords permanently?');
   });
 });

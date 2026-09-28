@@ -51,8 +51,9 @@ export function IconButton({
 }
 
 const HINT_PLACEMENTS = {
-  below: 'top-full mt-2',
-  above: 'bottom-full mb-2',
+  below: 'top-full left-1/2 mt-2 -translate-x-1/2',
+  above: 'bottom-full left-1/2 mb-2 -translate-x-1/2',
+  left: 'right-full top-1/2 mr-2 -translate-y-1/2',
 } as const;
 
 export type HintPlacement = keyof typeof HINT_PLACEMENTS;
@@ -79,7 +80,7 @@ export function HintFrame({
       {children}
       <span
         aria-hidden="true"
-        className={`pointer-events-none absolute left-1/2 z-30 -translate-x-1/2 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-caption normal-case tracking-normal text-white opacity-0 shadow-raised transition-opacity duration-150 group-hover/hint:opacity-100 group-has-[:focus-visible]/hint:opacity-100 ${HINT_PLACEMENTS[placement]}`}
+        className={`pointer-events-none absolute z-30 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-caption normal-case tracking-normal text-white opacity-0 shadow-raised transition-opacity duration-150 group-hover/hint:opacity-100 group-has-[:focus-visible]/hint:opacity-100 ${HINT_PLACEMENTS[placement]}`}
       >
         {hint}
       </span>

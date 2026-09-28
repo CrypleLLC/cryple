@@ -14,8 +14,11 @@ import {
   generateDek,
   getSecret,
   hashReceivedCiphertext,
+  listDeletedSecrets,
   listSecrets,
   listSecretsMeta,
+  purgeSecrets,
+  restoreSecret,
   openSecret,
   openText,
   sealText,
@@ -412,5 +415,53 @@ describe('deletes', () => {
     await expect(deleteSecrets(await newContext(), [ID_A, 'nope'])).rejects.toThrow(
       /canonical/,
     );
+  });
+});
+
+describe('recently deleted', () => {
+  it('lists the deleted secrets with their ciphertext, so their names can be shown', async () => {
+    const deleted = { id: ID_A, ciphertext: 'c', wrapped_dek: 'w', key_generation: 1, version: 'v1', created_at: 't', updated_at: 't', deleted_at: 'd' };
+    const calls = mockFetch({ status: 200, body: { data: [deleted] } });
+
+    expect(await listDeletedSecrets(await newContext())).toEqual([deleted]);
+    expect(calls[0].method).toBe('GET');
+    expect(calls[0].url).toMatch(/\/secrets\/deleted$/);
+  });
+
+  it('returns an empty array when nothing is deleted', async () => {
+    mockFetch({ status: 200, body: { data: [] } });
+    expect(await listDeletedSecrets(await newContext())).toEqual([]);
+  });
+
+  it('restores with no body and no signature: it destroys nothing', async () => {
+    const calls = mockFetch({ status: 200, body: { data: { id: ID_A } } });
+
+    await restoreSecret(await newContext(), ID_A);
+    expect(calls[0].method).toBe('POST');
+    expect(calls[0].url).toMatch(new RegExp(`/secrets/${ID_A}/restore$`));
+    expect(calls[0].body).toBeUndefined();
+  });
+
+  it('purges under secret-purge, never secret-delete, over the sorted de-duplicated set', async () => {
+    const calls = mockFetch({ status: 200, body: { data: { requested: 2, purged: 2 } } });
+    const context = await newContext();
+
+    expect(await purgeSecrets(context, [ID_B, ID_A, ID_B])).toEqual({ requested: 2, purged: 2 });
+
+    const body = calls[0].body!;
+    expect(calls[0].method).toBe('DELETE');
+    expect(calls[0].url).toMatch(/\/secrets\/deleted$/);
+    expect(body.ids).toEqual([ID_A, ID_B]);
+    const signer = spkiBase64ToUncompressedPoint(context.session.device.signingPublicKey);
+    const payload = (action: 'secret-purge' | 'secret-delete') =>
+      buildActionPayload(body.challenge as string, body.timestamp as number, action, [ID_A, ID_B]);
+    expect(verifyPayload(payload('secret-purge'), body.signature as string, signer)).toBe(true);
+    expect(verifyPayload(payload('secret-delete'), body.signature as string, signer)).toBe(false);
+  });
+
+  it('refuses a non-canonical id to restore or purge', async () => {
+    mockFetch({ status: 200 });
+    await expect(restoreSecret(await newContext(), 'nope')).rejects.toThrow(/canonical/);
+    await expect(purgeSecrets(await newContext(), [ID_A, 'nope'])).rejects.toThrow(/canonical/);
   });
 });

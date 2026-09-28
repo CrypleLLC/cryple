@@ -89,6 +89,10 @@ Edit and Delete, each an icon with its name on hover.
 - **Their hint opens above, `placement="above"`.** `ItemTable` sits in an `overflow-x-auto`
   wrapper, which clips on both axes, so a hint hanging below the last row would be cut off or
   would add a scrollbar. Above, the first row's hint lands over the table header, still inside.
+- **`placement="left"` opens the hint beside the button**, for a button at the right edge of a
+  scrolling panel. The side panel's content scrolls under its own header, so a hint above the first
+  row of *Recently deleted* was drawn behind that header; to the left it lands over the row's own
+  *Restore* button, inside the panel, on every row.
 - **`tone="danger"` gives Delete the danger border and colour**, as the text button had.
 - **The visible hint is short, the accessible name is not.** A row's buttons pass their own
   `aria-label` — *Delete Bank PIN*, *Edit github.com* — because five rows of buttons all called

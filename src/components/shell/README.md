@@ -76,6 +76,12 @@ screen makes it a toggle instead: *Recently deleted* opens and closes its panel,
 *Details* closes the panel when it is already showing that tile, or switches to it when it is
 showing another.
 
+**A modal opened from the panel is the other exception.** The Vault's *Recently deleted* asks for
+confirmation before a permanent delete, in a [`Modal`](../modal/README.md) portalled outside the
+panel. A press inside any `aria-modal="true"` dialog that is not the panel itself, and an Escape
+while focus is in one, belong to that dialog: without this, confirming would close the panel
+under it, and Escape would close both at once.
+
 `PanelFacts` is the label-over-value list the details use, so every panel's facts look the same.
 
 ## Reading widths are capped; miniature grids are not

@@ -3,11 +3,13 @@
 import type { DragEvent, ReactNode } from 'react';
 import { dateAndTimeLabels } from '@/lib/app';
 import { Card, Empty, Notice, Spinner } from '@/components/ui';
+import { GripIcon } from '@/components/ui/icons';
 
 const CELL_CLASSES = {
-  name: 'truncate text-compact font-semibold text-ink',
-  text: 'truncate text-compact text-ink-soft',
-  secret: 'truncate font-mono text-compact text-ink-soft',
+  name: 'whitespace-pre-wrap [overflow-wrap:anywhere] text-compact font-semibold text-ink',
+  text: 'whitespace-pre-wrap [overflow-wrap:anywhere] text-compact text-ink-soft',
+  secret:
+    'max-h-40 overflow-y-auto whitespace-pre-wrap break-all font-mono text-compact text-ink-soft',
   meta: 'whitespace-nowrap text-caption normal-case tracking-normal text-ink-muted',
 } as const;
 
@@ -42,6 +44,7 @@ export function ItemList<Row>({
   emptyIcon,
   emptyText,
   onRowDragStart,
+  dragHandleLabel,
 }: {
   message?: string;
   onDismissMessage?: () => void;
@@ -53,6 +56,7 @@ export function ItemList<Row>({
   emptyIcon: ReactNode;
   emptyText: ReactNode;
   onRowDragStart?: (event: DragEvent, row: Row) => void;
+  dragHandleLabel?: string;
 }) {
   return (
     <Card>
@@ -76,6 +80,7 @@ export function ItemList<Row>({
           actions={actions}
           actionsHeader={actionsHeader}
           onRowDragStart={onRowDragStart}
+          dragHandleLabel={dragHandleLabel}
         />
       )}
     </Card>
@@ -89,6 +94,7 @@ export function ItemTable<Row>({
   actions,
   actionsHeader = 'Actions',
   onRowDragStart,
+  dragHandleLabel = 'Drag to move',
 }: {
   rows: readonly Row[];
   rowKey: (row: Row) => string;
@@ -96,6 +102,7 @@ export function ItemTable<Row>({
   actions: (row: Row) => ReactNode;
   actionsHeader?: string;
   onRowDragStart?: (event: DragEvent, row: Row) => void;
+  dragHandleLabel?: string;
 }) {
   const draggable = onRowDragStart !== undefined;
 
@@ -104,6 +111,7 @@ export function ItemTable<Row>({
       <table className="w-full text-left text-sm">
         <thead>
           <tr className="border-b border-line bg-raised text-caption uppercase text-ink-muted">
+            {draggable ? <th aria-hidden="true" className="w-px py-3 pr-2" /> : null}
             {columns.map((column) => (
               <th key={column.header} className="py-3 pr-4 text-left">
                 {column.header}
@@ -112,25 +120,34 @@ export function ItemTable<Row>({
             <th className="w-px whitespace-nowrap py-3 pl-4 pr-5 text-right">{actionsHeader}</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-line">
+        <tbody className="divide-y divide-line select-text">
           {rows.map((row) => (
-            <tr
-              key={rowKey(row)}
-              draggable={draggable}
-              onDragStart={draggable ? (event) => onRowDragStart(event, row) : undefined}
-              className={`transition-colors hover:bg-brand-50/40 ${
-                draggable ? 'cursor-grab active:cursor-grabbing' : ''
-              }`}
-            >
+            <tr key={rowKey(row)} className="transition-colors hover:bg-brand-50/40">
+              {draggable ? (
+                <td className="w-px py-3.5 pr-2 align-top">
+                  <span
+                    draggable
+                    title={dragHandleLabel}
+                    aria-label={dragHandleLabel}
+                    onDragStart={(event) => {
+                      const line = event.currentTarget.closest('tr');
+                      if (line !== null) {
+                        event.dataTransfer.setDragImage(line, 16, 16);
+                      }
+                      onRowDragStart(event, row);
+                    }}
+                    className="flex h-5 w-4 cursor-grab touch-none items-center justify-center text-ink-faint transition-colors select-none hover:text-ink-soft active:cursor-grabbing"
+                  >
+                    <GripIcon className="h-4 w-4 shrink-0" />
+                  </span>
+                </td>
+              ) : null}
               {columns.map((column) => (
-                <td
-                  key={column.header}
-                  className={`py-3.5 pr-4 ${column.width ?? ''} ${CELL_CLASSES[column.kind]}`}
-                >
-                  {column.render(row)}
+                <td key={column.header} className="py-3.5 pr-4 align-top">
+                  <div className={`${column.width ?? ''} ${CELL_CLASSES[column.kind]}`}>{column.render(row)}</div>
                 </td>
               ))}
-              <td className="w-px whitespace-nowrap py-3.5 pl-4 pr-5">
+              <td className="w-px whitespace-nowrap py-3.5 pl-4 pr-5 align-top">
                 <div className="flex flex-nowrap justify-end gap-2 *:shrink-0">{actions(row)}</div>
               </td>
             </tr>

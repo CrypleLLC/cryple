@@ -205,8 +205,13 @@ describe('the four batchable delete actions', () => {
 });
 
 describe('the action table matches signed-actions.md', () => {
-  it('covers all 29 actions', () => {
-    expect(Object.keys(ACTIONS)).toHaveLength(29);
+  it('covers all 30 actions', () => {
+    expect(Object.keys(ACTIONS)).toHaveLength(30);
+  });
+
+  it('keeps destroying a deleted secret a different action from deleting one', () => {
+    expect(ACTIONS['secret-purge']).toMatchObject({ signer: 'device', pinProof: false, variadic: true });
+    expect(ACTIONS['secret-purge']).not.toBe(ACTIONS['secret-delete']);
   });
 
   it('leaves writing a credential unsigned, which is what keeps an extension on the JWT side', () => {
