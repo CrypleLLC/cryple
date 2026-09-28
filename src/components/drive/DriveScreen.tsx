@@ -50,6 +50,7 @@ import {
   fileExtension,
   fileDeleteConfirmation,
   FILE_NOUNS,
+  countOf,
   fileKind,
   fileName,
   folderContents,
@@ -112,7 +113,7 @@ import {
   SizeStepper,
   Spinner,
 } from '@/components/ui';
-import { Listing, ListingRow, TileAction, TileCheckbox } from '@/components/tiles';
+import { Listing, ListingRow, TileAction, TileCheckbox, useMarqueeSelection } from '@/components/tiles';
 import ShareItemDialog from '@/components/sharing/ShareItemDialog';
 import { MediaViewer, type MediaLoader } from '@/components/modal';
 import { startItemDrag } from '@/components/folders/FolderTabs';
@@ -598,6 +599,20 @@ export default function DriveScreen() {
     [ordered],
   );
 
+  const selectBox = useCallback((ids: string[]) => {
+    setSelected(ids);
+    if (ids.length > 0) {
+      setSelecting(true);
+    }
+  }, []);
+
+  const toggleOne = useCallback((id: string) => {
+    setSelecting(true);
+    setSelected((current) => toggleFileSelection(current, id));
+  }, []);
+
+  const marquee = useMarqueeSelection({ selected, onSelect: selectBox, onToggle: toggleOne, onExit: stopSelecting });
+
   const loadMedia = useCallback<MediaLoader>(
     async (item, onProgress, signal) =>
       (await downloadFile(context, item.id, { onProgress, signal })).bytes,
@@ -628,8 +643,14 @@ export default function DriveScreen() {
       onDelete: fullDevice || tile.resume !== undefined ? () => setConfirming(tile) : undefined,
       onShare: () => setSharing(tile.id),
       onDetails: () => toggleDetails({ kind: 'file', id: tile.id }),
-      onDragStart: (event) =>
-        startItemDrag(event, withTheirThumbnails(selected.includes(tile.id) ? selected : [tile.id])),
+      onDragStart: (event) => {
+        const moving = selected.includes(tile.id) ? selected : [tile.id];
+        startItemDrag(
+          event,
+          withTheirThumbnails(moving),
+          moving.length > 1 ? countOf(moving.length, FILE_NOUNS) : undefined,
+        );
+      },
       onResume: () => void resume(tile),
       onDismiss: transfer === undefined ? undefined : () => dropTransfer(transfer.key),
     };
@@ -656,7 +677,8 @@ export default function DriveScreen() {
 
   return (
     <div
-      className="space-y-5"
+      className="flex-1 space-y-5"
+      {...marquee.containerProps}
       onDragOver={(event: DragEvent) => {
         if (!isFileDrop(event)) {
           return;
@@ -864,6 +886,7 @@ export default function DriveScreen() {
               folder={folder}
               nouns={FILE_NOUNS}
               glyphPixels={iconScale(iconSize).glyphPixels}
+              labelClass={iconScale(iconSize).labelClass}
               itemIdsFor={withTheirThumbnails}
               onDetails={() => toggleDetails({ kind: 'folder', id: folder.id })}
             />
@@ -891,6 +914,8 @@ export default function DriveScreen() {
       {dragging && grid.length > 0 && (
         <p className="text-compact text-brand-700">Drop the files here.</p>
       )}
+
+      {marquee.overlay}
 
       {detailedFile !== undefined ? <FileDetails file={detailedFile} onClose={closeDetails} /> : null}
 
@@ -971,7 +996,12 @@ function DriveFile({
   const inert = running || tile.placeholder === true;
 
   return (
-    <li className="group relative" draggable={!busy && !inert} onDragStart={onDragStart}>
+    <li
+      className="group relative"
+      draggable={!busy && !inert}
+      onDragStart={onDragStart}
+      data-select-id={inert ? undefined : tile.id}
+    >
       <button
         type="button"
         onClick={onOpen}
@@ -1015,7 +1045,7 @@ function DriveFile({
         </span>
 
         <span className="block w-full min-w-0">
-          <span className="line-clamp-2 block break-words text-compact font-medium text-ink">
+          <span className={`line-clamp-2 block break-words ${scale.labelClass} font-medium text-ink`}>
             {tile.name}
           </span>
           {transfer !== undefined && (
@@ -1198,6 +1228,7 @@ function DriveFileRow({
       highlighted={selected}
       draggable={!busy && !inert}
       onDragStart={onDragStart}
+      selectId={inert ? undefined : tile.id}
       actions={
         selecting || running ? undefined : (
           <DriveFileActions tile={tile} busy={busy} failed={failed} {...handlers} />

@@ -28,7 +28,14 @@ export interface IconScale {
   glyphPixels: number;
   tilePixels: number;
   pagePixels: number;
+  labelClass: string;
 }
+
+export const LABEL_CLASSES = {
+  tiny: 'text-[11px] leading-[14px]',
+  small: 'text-xs leading-4',
+  regular: 'text-compact',
+} as const;
 
 const SCALES: Record<IconSize, IconScale> = {
   tiny: {
@@ -37,6 +44,7 @@ const SCALES: Record<IconSize, IconScale> = {
     glyphPixels: 32,
     tilePixels: 80,
     pagePixels: 104,
+    labelClass: LABEL_CLASSES.tiny,
   },
   small: {
     name: 'small',
@@ -44,6 +52,7 @@ const SCALES: Record<IconSize, IconScale> = {
     glyphPixels: 48,
     tilePixels: 96,
     pagePixels: 136,
+    labelClass: LABEL_CLASSES.small,
   },
   medium: {
     name: 'medium',
@@ -51,6 +60,7 @@ const SCALES: Record<IconSize, IconScale> = {
     glyphPixels: 64,
     tilePixels: 128,
     pagePixels: 160,
+    labelClass: LABEL_CLASSES.regular,
   },
   large: {
     name: 'large',
@@ -58,6 +68,7 @@ const SCALES: Record<IconSize, IconScale> = {
     glyphPixels: 96,
     tilePixels: 176,
     pagePixels: 200,
+    labelClass: LABEL_CLASSES.regular,
   },
   huge: {
     name: 'huge',
@@ -65,6 +76,7 @@ const SCALES: Record<IconSize, IconScale> = {
     glyphPixels: 128,
     tilePixels: 224,
     pagePixels: 264,
+    labelClass: LABEL_CLASSES.regular,
   },
 };
 

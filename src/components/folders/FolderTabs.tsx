@@ -39,9 +39,22 @@ import { ScreenStrip } from '@/components/shell/ScreenStrip';
 
 export const DRAGGED_ITEMS_TYPE = 'application/x-cryple-items';
 
-export function startItemDrag(event: ReactDragEvent, ids: readonly string[]) {
+export function startItemDrag(event: ReactDragEvent, ids: readonly string[], badge?: string) {
   event.dataTransfer.setData(DRAGGED_ITEMS_TYPE, JSON.stringify(ids));
   event.dataTransfer.effectAllowed = 'move';
+  if (badge !== undefined) {
+    showDragBadge(event, badge);
+  }
+}
+
+function showDragBadge(event: ReactDragEvent, text: string) {
+  const badge = document.createElement('div');
+  badge.textContent = text;
+  badge.className =
+    'fixed -left-[1000px] top-0 rounded-full bg-brand-600 px-3 py-1.5 text-compact font-semibold text-white shadow-raised';
+  document.body.appendChild(badge);
+  event.dataTransfer.setDragImage(badge, 12, 12);
+  requestAnimationFrame(() => badge.remove());
 }
 
 function draggedItems(event: ReactDragEvent): string[] {

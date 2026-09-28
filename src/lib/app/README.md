@@ -18,6 +18,7 @@ can be unit-tested under the existing node-environment Vitest setup; the React c
 | `folders.ts` | The folder copy and view models: the tab strip (`buildFolderTabs`, `itemsInTab`, tab naming and deleting) and the documents/drive tree (folder naming, what a delete takes, why a move was refused) |
 | `pairing.ts` | The *Connect a browser extension* flow's copy, its steps and its countdown |
 | `icon-size.ts` | The four-step size scale shared by all three grids, the columns each draws, and the remembered size and grid-or-list layout per screen |
+| `marquee.ts` | The geometry of selecting with a dragged box ([Selecting with the mouse](../../components/tiles/README.md#selecting-with-the-mouse)) |
 | `viewer.ts` | What the media viewer opens (`mediaKindOf`), its keys, stepping and copy ([The media viewer](../../components/modal/README.md#the-media-viewer)) |
 | `listing.ts` | The list layout: newest-created-first order, the modified date, and the short status labels ([Grid or list](../../components/tiles/README.md#grid-or-list)) |
 | `modal.ts` | A modal's keyboard contract, backdrop dismissal and scroll-lock counting |
@@ -533,6 +534,13 @@ where a title is still readable and the body is at least a texture.
   An earlier version dropped the label below `medium`, which made a PDF indistinguishable from any
   other red file exactly where a grid shows the most of them. See
   [the drive tile](../../components/drive/README.md#the-drive-tile-is-an-icon-not-a-page).
+- **The names under the tiles shrink with the two smallest steps.** Each step carries a
+  `labelClass`: 11px at *Extra small*, 12px at *Small*, and the 13px body size (`text-compact`)
+  from *Medium* up, where it always was. A 13px name under a 32px glyph was louder than the icon
+  it labels, and wrapped after a few characters in the 80px tile. The drive's files and folders,
+  Documents' pages and folders, and the Notes grid all read it from the scale (`PageTile` and
+  `FolderTile` take it as `labelClass`), so one step means one text size everywhere. A test pins
+  the three sizes.
 - **Stepping holds at the ends rather than wrapping**, because a `+` that jumps from the largest
   back to the smallest is a control nobody can aim.
 

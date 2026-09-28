@@ -254,7 +254,7 @@ export default function AppShell() {
             <div ref={setStripSlot} className="empty:hidden" />
           </div>
 
-          <main className={`mx-auto w-full ${measure} flex-1 space-y-8 p-4 md:p-6`}>
+          <main className={`mx-auto w-full ${measure} flex flex-1 flex-col gap-8 p-4 md:p-6`}>
             {chainProblem && !chainProblemDismissed ? (
               <Notice tone="danger" onDismiss={() => setChainProblemDismissed(true)}>
                 {chainProblem}

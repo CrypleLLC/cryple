@@ -4,6 +4,7 @@ import {
   DEFAULT_ITEM_LAYOUT,
   DOCUMENT_MINIATURE_TEXT_SHARE,
   ICON_SIZES,
+  LABEL_CLASSES,
   MINIATURE_TEXT_FLOOR_PIXELS,
   NOTE_MINIATURE_TEXT_SHARE,
   defaultIconSize,
@@ -47,6 +48,15 @@ describe('the icon scale', () => {
     expect(ascending(ICON_SIZES.map((size) => iconScale(size).glyphPixels))).toBe(true);
     expect(ascending(ICON_SIZES.map((size) => iconScale(size).tilePixels))).toBe(true);
     expect(ascending(ICON_SIZES.map((size) => iconScale(size).pagePixels))).toBe(true);
+  });
+
+  it('writes the names smaller at the two smallest steps, and at the body size from medium up', () => {
+    expect(iconScale('tiny').labelClass).toBe(LABEL_CLASSES.tiny);
+    expect(iconScale('small').labelClass).toBe(LABEL_CLASSES.small);
+    for (const size of ['medium', 'large', 'huge'] as const) {
+      expect(iconScale(size).labelClass).toBe(LABEL_CLASSES.regular);
+    }
+    expect(new Set(Object.values(LABEL_CLASSES)).size).toBe(3);
   });
 
   it('leaves a drive tile wider than the glyph it holds, so the name has room', () => {
