@@ -330,6 +330,16 @@ holding **exactly the bytes R2 holds**. Reading one still costs a decrypt; it co
 OPFS is not durable storage: it shares the origin's quota and the browser may evict it under disk
 pressure. That is correct for a cache and the reason nothing here is a source of truth.
 
+## Renaming
+
+`renameFile(context, id, name)` is the whole of it: read the row (`GET /files/{id}`), unwrap the DEK,
+open the manifest, replace `name` and nothing else, seal it again under **the same DEK**, and
+`PUT /files/{id}/manifest` with the new `ciphertext` alone. The layout fields, `thumbnail_id` and
+`created_at` go back exactly as they came, because the next download checks the layout against the
+row and would refuse a file whose manifest had drifted. The body has no `wrapped_dek`, so a rename
+cannot re-key a file. The DEK is zeroed when it is done. A test re-opens the sent manifest with the
+original DEK and compares it field for field.
+
 ## Download
 
 `openFile` resolves the row, unwraps the DEK under the `files` scope KEK of the row's `key_generation`, opens the manifest and **runs the

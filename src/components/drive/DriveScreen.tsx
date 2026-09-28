@@ -12,6 +12,7 @@ import {
   droppedSources,
   openPreview,
   pruneCachedObjects,
+  renameFile,
   forgetSource,
   forgetSourcesExcept,
   getStorageUsage,
@@ -917,7 +918,26 @@ export default function DriveScreen() {
 
       {marquee.overlay}
 
-      {detailedFile !== undefined ? <FileDetails file={detailedFile} onClose={closeDetails} /> : null}
+      {detailedFile !== undefined ? (
+        <FileDetails
+          key={detailedFile.id}
+          file={detailedFile}
+          onRename={
+            detailedFile.readable && detailedFile.openable && detailedFile.placeholder !== true
+              ? async (name) => {
+                  try {
+                    await renameFile(context, detailedFile.id, name);
+                    await load();
+                    return undefined;
+                  } catch (error) {
+                    return reportError(error);
+                  }
+                }
+              : undefined
+          }
+          onClose={closeDetails}
+        />
+      ) : null}
 
       {viewing !== undefined && media.length > 0 ? (
         <MediaViewer

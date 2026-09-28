@@ -218,6 +218,14 @@ Every file and folder tile carries an *i* control among its corner actions, whic
   the extension, and *Unknown type* for a file that could not be decrypted rather than a guess), its
   size as the rounded figure and the exact byte count (`exactBytesLabel`), when it last changed, and
   its replication status.
+- **A file is renamed there**, exactly as a folder is: *Rename* beside the name turns it into a
+  field, Enter or *Save* stores it, Escape or *Cancel* leaves it. The rules are `fileNameProblem`
+  in `lib/app/files.ts` — not empty, at most 255 characters, no `/`, `\` or control characters,
+  because the name is what a download is saved under. Changing the extension is allowed, with a
+  note under the field that the file keeps its type, since the MIME type in the manifest does not
+  change and the icon and viewer go by it. It is offered only for a stored file this browser could
+  open: a placeholder, an unfinished upload and an unreadable file have no manifest to re-seal. A
+  failure stays in the panel with the field still open.
 - **A folder** is [`FolderDetailsPanel`](../folders/README.md) — its name, and the only place to
   rename it — with how many files and subfolders it holds, and the total size of those
   files. **The counts include every subfolder**, because a folder's size is what deleting it would
