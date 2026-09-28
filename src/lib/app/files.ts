@@ -304,3 +304,38 @@ export function folderItemsLabel(
   }
   return `${items}, ${contents.folders === 1 ? '1 folder' : `${contents.folders} folders`}`;
 }
+
+export const FILE_NAME_LIMIT = 255;
+
+export const FILE_NAME_PROBLEMS = {
+  empty: 'A file needs a name.',
+  tooLong: `A file name is at most ${FILE_NAME_LIMIT} characters.`,
+  separator: 'A file name cannot contain / or \\.',
+  control: 'A file name cannot contain line breaks or other control characters.',
+} as const;
+
+export function fileNameProblem(name: string): string | undefined {
+  const trimmed = name.trim();
+  if (trimmed === '') {
+    return FILE_NAME_PROBLEMS.empty;
+  }
+  if (Array.from(trimmed).length > FILE_NAME_LIMIT) {
+    return FILE_NAME_PROBLEMS.tooLong;
+  }
+  if (/[/\\]/.test(trimmed)) {
+    return FILE_NAME_PROBLEMS.separator;
+  }
+  if (/\p{Cc}/u.test(trimmed)) {
+    return FILE_NAME_PROBLEMS.control;
+  }
+  return undefined;
+}
+
+export function extensionChangeNote(before: string, after: string): string | undefined {
+  const was = fileExtension(before);
+  const now = fileExtension(after.trim());
+  if (was === '' || was === now) {
+    return undefined;
+  }
+  return `The file stays a ${was} file. Changing the name does not convert it.`;
+}

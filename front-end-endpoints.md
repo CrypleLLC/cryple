@@ -1460,6 +1460,18 @@ Completes the upload. **JWT only.**
 
 **Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` · `400 BAD_REQUEST` (`ciphertext_sha256` missing or not 64 hex characters) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `409 CONFLICT` (the stored object does not match the declared size) · `500 INTERNAL_ERROR`.
 
+### `PUT /files/{id}/manifest` — rename
+
+Replaces a stored file's sealed manifest — how a file is renamed, since the name lives only inside it. **JWT only**, like editing a note: a rename destroys nothing.
+
+**Request:** `{ "ciphertext": "base64 manifest re-sealed client-side" }` → **`200 OK`** with the file row, `ciphertext` the new manifest, `updated_at` advanced, `created_at` unchanged.
+
+> **⚠️ Re-seal under the file's own DEK, and change only what you mean to.** Open the manifest, change `name`, seal it again with the DEK you unwrapped. There is no `wrapped_dek` in the body on purpose — the wrap cannot change here, so a rename can never re-key the file by mistake. `size`, `chunk_size`, `chunk_count`, `first_chunk_sha256`, `thumbnail_id` and `created_at` must come back exactly as they were: the layout fields are checked against the row on every download, and the server cannot see a mistake in them.
+
+**A strict update.** The row must exist, be yours, be stored (`r2_state` is not `pending`) and not be deleted; anything else is `404` and nothing is written. The object, `size_bytes`, `ciphertext_sha256`, the wrap and the replication state are untouched.
+
+**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (path id is not a canonical UUID) · `400 BAD_REQUEST` (`ciphertext is required`) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
+
 ### `GET /files`
 
 The listing. Returns the sealed manifests — **a directory listing is your render of data this API cannot read.**

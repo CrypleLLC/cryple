@@ -26,6 +26,10 @@ import {
   fileName,
   formatBytes,
   freeBytes,
+  fileNameProblem,
+  FILE_NAME_LIMIT,
+  FILE_NAME_PROBLEMS,
+  extensionChangeNote,
   usedShareLabel,
   isOpenable,
   isResumable,
@@ -446,5 +450,36 @@ describe('folder details', () => {
 
   it('names documents when counting a documents folder', () => {
     expect(folderItemsLabel({ items: 1, folders: 2 }, DOCUMENT_NOUNS)).toBe('1 document, 2 folders');
+  });
+});
+
+describe('renaming a file', () => {
+  it('accepts an ordinary name, spaces and punctuation included', () => {
+    expect(fileNameProblem('Beach, day two (final).jpg')).toBeUndefined();
+    expect(fileNameProblem('  padded.txt  ')).toBeUndefined();
+  });
+
+  it('refuses an empty name', () => {
+    expect(fileNameProblem('   ')).toBe(FILE_NAME_PROBLEMS.empty);
+  });
+
+  it('refuses a name longer than a file system allows, counted in characters', () => {
+    expect(fileNameProblem('é'.repeat(FILE_NAME_LIMIT))).toBeUndefined();
+    expect(fileNameProblem('a'.repeat(FILE_NAME_LIMIT + 1))).toBe(FILE_NAME_PROBLEMS.tooLong);
+  });
+
+  it('refuses a path separator, which would break the name the download is saved under', () => {
+    expect(fileNameProblem('a/b.txt')).toBe(FILE_NAME_PROBLEMS.separator);
+    expect(fileNameProblem('a\\b.txt')).toBe(FILE_NAME_PROBLEMS.separator);
+  });
+
+  it('refuses control characters', () => {
+    expect(fileNameProblem('two\nlines.txt')).toBe(FILE_NAME_PROBLEMS.control);
+  });
+
+  it('says so when the extension changes, because the type does not', () => {
+    expect(extensionChangeNote('scan.pdf', 'scan.docx')).toMatch(/PDF/);
+    expect(extensionChangeNote('scan.pdf', 'renamed scan.pdf')).toBeUndefined();
+    expect(extensionChangeNote('README', 'README.md')).toBeUndefined();
   });
 });
