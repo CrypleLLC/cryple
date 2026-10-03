@@ -27,7 +27,7 @@ import {
   type OpenedSecret,
   type VaultRow,
 } from '@/lib/app';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
+import { useAuthedContext, useZekke } from '@/components/session/ZekkeProvider';
 import { useVaultReveal } from './VaultReveal';
 import FolderTabs, { MoveToTab, startItemDrag, useFolderTabs } from '@/components/folders/FolderTabs';
 import { HistoryIcon, SharingIcon, TrashIcon, VaultIcon } from '@/components/ui/icons';
@@ -40,7 +40,7 @@ import DeletedSecrets from './DeletedSecrets';
 
 export default function VaultScreen() {
   const context = useAuthedContext();
-  const { reportError, fullDevice } = useCryple();
+  const { reportError, fullDevice } = useZekke();
   const { revealed } = useVaultReveal();
 
   const [rows, setRows] = useState<VaultRow[]>();

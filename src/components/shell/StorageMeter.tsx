@@ -4,7 +4,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { ApiError } from '@/lib/api';
 import { getStorageUsage } from '@/lib/files';
 import { setStorageUsage, storageBar, storageUsage, subscribeToStorageUsage } from '@/lib/app';
-import { useAuthedContext } from '@/components/session/CrypleProvider';
+import { useAuthedContext } from '@/components/session/ZekkeProvider';
 
 export default function StorageMeter() {
   const context = useAuthedContext();

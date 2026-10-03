@@ -4,12 +4,12 @@ The Next.js App Router entry point. Routing and page-level assets only — the R
 in [`src/components`](../components/README.md) and every testable decision in
 [`src/lib/app`](../lib/app/README.md).
 
-| File                 | Role                                                                                                                 |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `layout.tsx`         | The root layout, fonts, `metadata`, `translate="no"`, the shared `AppProviders`, and `StagingBanner`                 |
-| `page.tsx`           | The dashboard, behind `SessionGate`                                                                                  |
-| `docs/[id]/page.tsx` | One document, behind `SessionGate` — the editor route                                                                |
-| `globals.css`        | Tailwind import, the `brand` colour scale, light/dark surface tokens, `.cryple-prose`, the `.staging-banner` marquee |
+| File                 | Role                                                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `layout.tsx`         | The root layout, fonts, `metadata`, `translate="no"`, the shared `AppProviders`, and `StagingBanner`                |
+| `page.tsx`           | The dashboard, behind `SessionGate`                                                                                 |
+| `docs/[id]/page.tsx` | One document, behind `SessionGate` — the editor route                                                               |
+| `globals.css`        | Tailwind import, the `brand` colour scale, light/dark surface tokens, `.zekke-prose`, the `.staging-banner` marquee |
 
 ## The page is never translated, and every response carries security headers
 
@@ -29,7 +29,7 @@ Content Security Policy that decides which hosts the page may talk to.
 ## Why the provider moved into the layout
 
 Documents open in their own browser tab, so `/` and `/docs/[id]` are separate entry points that
-both need a session. `CrypleProvider` therefore mounts once in `layout.tsx` (via the
+both need a session. `ZekkeProvider` therefore mounts once in `layout.tsx` (via the
 `AppProviders` client boundary) and each route wraps its own content in `SessionGate`, which
 renders the loading / onboarding / locked screens and passes through only when the session is
 ready.
@@ -71,12 +71,12 @@ logo's full-bleed bars would otherwise be clipped at both ends. The inset is tha
 
 ### The logo geometry
 
-Measured off `public/cryple-logo.png` and reproduced as vectors, on a 500×500 grid in `#667eea`:
+Measured off `public/zekke-logo.png` and reproduced as vectors, on a 500×500 grid in `#667eea`:
 
 - **arch** — a half annulus, outer `r=227`, inner `r=112`, flat edge at `y=227`
 - **bars** — 500×99 rounded rectangles, `rx=27`, at `y=262.5` and `y=397.5`
 - **rhythm** — a 36-unit gap below the arch and between the bars
 
 `icon.svg` is that geometry centred on the canvas; the source logo's arch sits ~4px right of
-centre, which is invisible at icon sizes and not worth reproducing. `public/cryple-logo.png` is
+centre, which is invisible at icon sizes and not worth reproducing. `public/zekke-logo.png` is
 still the raster the app itself renders in the sidebar and on the sign-in screens.

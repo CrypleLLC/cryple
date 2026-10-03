@@ -12,7 +12,7 @@ import {
   subscribeToStorageUsage,
   usedShareLabel,
 } from '@/lib/app';
-import { useAuthedContext } from '@/components/session/CrypleProvider';
+import { useAuthedContext } from '@/components/session/ZekkeProvider';
 
 export default function HomeStorage() {
   const context = useAuthedContext();

@@ -74,3 +74,18 @@ holds the tree and the open folder; the screen lists only the open folder's item
   rather than being fooled by whichever folder is open.
 - **A tree the server returns broken is reported, not rendered**: no folder tiles, and everything is
   listed flat.
+
+### The same components in Shared
+
+The Shared screen draws one friendship's folders with `FolderPath`, `FolderTile`,
+`FolderDetailsPanel` and `MoveToFolder`, fed by a `FolderTreeState` built from a sealed manifest
+rather than a table ([`components/sharing`](../sharing/README.md#one-folder-per-friendship)). Three
+things let them serve both:
+
+- **`FolderTreeState.deletes`** is `contents` for Documents and the Drive, where deleting a folder
+  takes everything in it and needs a full device, and `grouping` for Shared, where it takes nothing
+  and any device may. The tile's delete control and the confirmation follow it.
+- **`FolderPath` takes `ancestors`**: segments drawn before the root that only navigate. Shared
+  passes *Shared*, so a friendship's path reads *Shared / anacosta / Trips*.
+- **`FolderPath` takes `invalidNotice`**, for a screen whose broken tree is fixed differently — Shared
+  offers *Reset the folders*.

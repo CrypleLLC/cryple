@@ -16,6 +16,13 @@ Endpoints per [front-end-endpoints.md § 8 and § 19](../../../front-end-endpoin
 
 Turning Paranoid on and changing the account PIN are [`lib/oprf`](../oprf/README.md).
 
+## `retention_days` says what a delete does
+
+`AccountRecord.retention_days` is how long deleted documents and Drive files wait in the Trash
+([`lib/trash`](../trash/README.md)). It is data, not a plan name: `0` means a delete is final, and the
+delete confirmations, the folder delete and the Trash screen all read it from the provider's
+`account` rather than assuming either.
+
 ## `paranoid` is the only source of truth for the mode
 
 `GET /users/me` answers "who am I", and `paranoid` is the one fact a client cannot derive and

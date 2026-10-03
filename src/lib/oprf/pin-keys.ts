@@ -1,22 +1,36 @@
-import { ed25519, ristretto255, ristretto255_hasher, ristretto255_oprf } from '@noble/curves/ed25519.js';
-import { argon2idAsync } from '@noble/hashes/argon2.js';
-import { base64ToBytes, bytesToBase64, concatBytes, utf8ToBytes, zeroBytes } from '@/lib/encoding';
+import {
+  ed25519,
+  ristretto255,
+  ristretto255_hasher,
+  ristretto255_oprf,
+} from "@noble/curves/ed25519.js";
+import { argon2idAsync } from "@noble/hashes/argon2.js";
+import {
+  base64ToBytes,
+  bytesToBase64,
+  concatBytes,
+  utf8ToBytes,
+  zeroBytes,
+} from "@/lib/encoding";
 
-export const OPRF_SUITE = 'ristretto255-SHA512';
-export const OPRF_HASH_TO_GROUP_DST = 'HashToGroup-OPRFV1-\x00-ristretto255-SHA512';
+export const OPRF_SUITE = "ristretto255-SHA512";
+export const OPRF_HASH_TO_GROUP_DST =
+  "HashToGroup-OPRFV1-\x00-ristretto255-SHA512";
 export const OPRF_OUTPUT_BYTES = 64;
 export const ELEMENT_BYTES = 32;
-export const PIN_LEAF_PREFIX = 'Cryple-PIN-v1|';
-export const DEVICE_CONFIRM_PREFIX = 'Cryple-PIN-v1|device-confirm|';
+export const PIN_LEAF_PREFIX = "Cryple-PIN-v1|";
+export const DEVICE_CONFIRM_PREFIX = "Cryple-PIN-v1|device-confirm|";
 export const DEVICE_SALT_BYTES = 32;
 export const ARGON2ID_PARAMETERS = { m: 65536, t: 3, p: 1, dkLen: 32 } as const;
 
-export type PinLeafLabel = 'device-wrap' | 'device-confirm' | 'account-proof';
+export type PinLeafLabel = "device-wrap" | "device-confirm" | "account-proof";
 
 export class MalformedElementError extends Error {
   constructor() {
-    super('the server returned an element that is not a valid ristretto255 encoding');
-    this.name = 'MalformedElementError';
+    super(
+      "the server returned an element that is not a valid ristretto255 encoding",
+    );
+    this.name = "MalformedElementError";
   }
 }
 
@@ -40,8 +54,13 @@ export function blindPinWithScalar(pin: string, blind: Uint8Array): BlindedPin {
   return blindInputWithScalar(pinInput(pin), blind);
 }
 
-export function blindInputWithScalar(input: Uint8Array, blind: Uint8Array): BlindedPin {
-  const point = ristretto255_hasher.hashToCurve(input, { DST: OPRF_HASH_TO_GROUP_DST });
+export function blindInputWithScalar(
+  input: Uint8Array,
+  blind: Uint8Array,
+): BlindedPin {
+  const point = ristretto255_hasher.hashToCurve(input, {
+    DST: OPRF_HASH_TO_GROUP_DST,
+  });
   const scalar = ristretto255.Point.Fn.fromBytes(blind);
   return {
     input: input.slice(),
@@ -50,7 +69,10 @@ export function blindInputWithScalar(input: Uint8Array, blind: Uint8Array): Blin
   };
 }
 
-export function finalizePin(blinded: BlindedPin, evaluatedElement: string): Uint8Array {
+export function finalizePin(
+  blinded: BlindedPin,
+  evaluatedElement: string,
+): Uint8Array {
   let evaluated: Uint8Array;
   try {
     evaluated = base64ToBytes(evaluatedElement);
@@ -61,7 +83,11 @@ export function finalizePin(blinded: BlindedPin, evaluatedElement: string): Uint
     throw new MalformedElementError();
   }
   try {
-    return ristretto255_oprf.oprf.finalize(blinded.input, blinded.blind, evaluated);
+    return ristretto255_oprf.oprf.finalize(
+      blinded.input,
+      blinded.blind,
+      evaluated,
+    );
   } catch {
     throw new MalformedElementError();
   } finally {
@@ -69,21 +95,39 @@ export function finalizePin(blinded: BlindedPin, evaluatedElement: string): Uint
   }
 }
 
-export async function stretchPin(pin: string, salt: Uint8Array): Promise<Uint8Array> {
+export async function stretchPin(
+  pin: string,
+  salt: Uint8Array,
+): Promise<Uint8Array> {
   return argon2idAsync(pinInput(pin), salt, { ...ARGON2ID_PARAMETERS });
 }
 
 export function pinIkm(oprfOutput: Uint8Array, argon: Uint8Array): Uint8Array {
-  if (oprfOutput.length !== OPRF_OUTPUT_BYTES || argon.length !== ARGON2ID_PARAMETERS.dkLen) {
-    throw new Error('the PIN key material is an OPRF output and an Argon2id output');
+  if (
+    oprfOutput.length !== OPRF_OUTPUT_BYTES ||
+    argon.length !== ARGON2ID_PARAMETERS.dkLen
+  ) {
+    throw new Error(
+      "the PIN key material is an OPRF output and an Argon2id output",
+    );
   }
   return concatBytes(oprfOutput, argon);
 }
 
-export async function pinLeaf(ikm: Uint8Array, label: PinLeafLabel): Promise<Uint8Array> {
-  const key = await crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits']);
+export async function pinLeaf(
+  ikm: Uint8Array,
+  label: PinLeafLabel,
+): Promise<Uint8Array> {
+  const key = await crypto.subtle.importKey("raw", ikm, "HKDF", false, [
+    "deriveBits",
+  ]);
   const bits = await crypto.subtle.deriveBits(
-    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: utf8ToBytes(PIN_LEAF_PREFIX + label) },
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: new Uint8Array(0),
+      info: utf8ToBytes(PIN_LEAF_PREFIX + label),
+    },
     key,
     256,
   );
@@ -112,9 +156,13 @@ export async function deriveDevicePinKeys(
   const argon = await stretchPin(pin, salt);
   const ikm = pinIkm(oprfOutput, argon);
   try {
-    const wrapKey = await pinLeaf(ikm, 'device-wrap');
-    const confirmSeed = await pinLeaf(ikm, 'device-confirm');
-    return { wrapKey, confirmSeed, confirmPublicKey: ed25519PublicKey(confirmSeed) };
+    const wrapKey = await pinLeaf(ikm, "device-wrap");
+    const confirmSeed = await pinLeaf(ikm, "device-confirm");
+    return {
+      wrapKey,
+      confirmSeed,
+      confirmPublicKey: ed25519PublicKey(confirmSeed),
+    };
   } finally {
     zeroBytes(argon, ikm, oprfOutput);
   }
@@ -126,7 +174,10 @@ export function zeroDevicePinKeys(keys: DevicePinKeys | undefined): void {
   }
 }
 
-export function deviceConfirmMessage(registrationId: string, attemptId: string): string {
+export function deviceConfirmMessage(
+  registrationId: string,
+  attemptId: string,
+): string {
   return `${DEVICE_CONFIRM_PREFIX}${registrationId}|${attemptId}`;
 }
 
@@ -136,7 +187,10 @@ export function signDeviceConfirmation(
   attemptId: string,
 ): string {
   return bytesToBase64(
-    ed25519Sign(confirmSeed, utf8ToBytes(deviceConfirmMessage(registrationId, attemptId))),
+    ed25519Sign(
+      confirmSeed,
+      utf8ToBytes(deviceConfirmMessage(registrationId, attemptId)),
+    ),
   );
 }
 
@@ -153,14 +207,16 @@ export async function deriveAccountProofKey(
   const argon = await stretchPin(pin, utf8ToBytes(userAddress));
   const ikm = pinIkm(oprfOutput, argon);
   try {
-    const seed = await pinLeaf(ikm, 'account-proof');
+    const seed = await pinLeaf(ikm, "account-proof");
     return { seed, publicKey: ed25519PublicKey(seed) };
   } finally {
     zeroBytes(argon, ikm, oprfOutput);
   }
 }
 
-export function proofSigner(key: AccountProofKey): (digest: Uint8Array) => Uint8Array {
+export function proofSigner(
+  key: AccountProofKey,
+): (digest: Uint8Array) => Uint8Array {
   return (digest) => ed25519Sign(key.seed, digest);
 }
 

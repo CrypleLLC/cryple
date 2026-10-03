@@ -22,7 +22,7 @@ import {
   type OpenedCredential,
   type PasswordRow,
 } from '@/lib/app';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
+import { useAuthedContext, useZekke } from '@/components/session/ZekkeProvider';
 import { useVaultReveal } from '@/components/vault/VaultReveal';
 import { HistoryIcon, PasswordsIcon, PencilIcon, TrashIcon } from '@/components/ui/icons';
 import { Button, CopyButton, FloatingAddButton, HintedIconButton } from '@/components/ui';
@@ -38,7 +38,7 @@ interface OpenForm {
 
 export default function PasswordsScreen() {
   const context = useAuthedContext();
-  const { reportError, fullDevice } = useCryple();
+  const { reportError, fullDevice } = useZekke();
   const { revealed } = useVaultReveal();
 
   const [rows, setRows] = useState<PasswordRow[]>();

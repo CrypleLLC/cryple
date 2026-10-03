@@ -28,6 +28,7 @@ import {
   acceptConnection,
   createConnection,
   createShare,
+  getConnectionFolders,
   getSharedDownload,
   getSharedItem,
   listConnectionShares,
@@ -37,6 +38,7 @@ import {
   type ConnectionRecord,
   type InboundShareRecord,
   type ItemType,
+  type ShareRecord,
 } from './api';
 import {
   ConnectionNotTrustedError,
@@ -80,6 +82,12 @@ export class NothingToCopyError extends Error {
     super('the shared document has no saved snapshot yet, so there is nothing to copy');
     this.name = 'NothingToCopyError';
   }
+}
+
+export const SHARED_FOLDERS_SUBKEY = 'sharing';
+
+export function sharedFoldersSubkey(connectionKey: Uint8Array): Promise<Uint8Array> {
+  return deriveShareSubkey(connectionKey, SHARED_FOLDERS_SUBKEY);
 }
 
 export interface InvitationDraft {
@@ -224,6 +232,31 @@ async function rewrapConnectionShares(
   return rewrapped;
 }
 
+async function rewrapSharedFolders(
+  context: AuthedContext,
+  connection: ConnectionRecord,
+  oldKey: Uint8Array,
+  newKey: Uint8Array,
+): Promise<{ wrapped_dek: string; expected_revision: number } | undefined> {
+  const record = await getConnectionFolders(context, connection.id);
+  if (record === undefined) {
+    return undefined;
+  }
+
+  const oldSubkey = await sharedFoldersSubkey(oldKey);
+  const newSubkey = await sharedFoldersSubkey(newKey);
+  try {
+    const dek = await unwrapUnderConnection(oldSubkey, record.wrapped_dek);
+    try {
+      return { wrapped_dek: await wrapUnderConnection(newSubkey, dek), expected_revision: record.revision };
+    } finally {
+      zeroBytes(dek);
+    }
+  } finally {
+    zeroBytes(oldSubkey, newSubkey);
+  }
+}
+
 export async function reestablishConnection(
   context: AuthedContext,
   connection: ConnectionRecord,
@@ -252,6 +285,7 @@ export async function reestablishConnection(
   const newKey = createConnectionKey();
   try {
     const shares = await rewrapConnectionShares(context, connection, oldKey, newKey);
+    const folders = await rewrapSharedFolders(context, connection, oldKey, newKey);
     const pqxdhBlob = await sealConnectionKey(
       newKey,
       publishedRecipientKeys(published.sharingKeys),
@@ -268,6 +302,7 @@ export async function reestablishConnection(
       recipientKeyGeneration: published.sharingKeys.generation,
       keys,
       shares,
+      folders,
     });
 
     connection.keys = keys;
@@ -427,19 +462,19 @@ export async function shareItem(
   context: AuthedContext,
   connection: ConnectionRecord,
   item: { type: ItemType; id: string; dek: Uint8Array },
-): Promise<void> {
+): Promise<ShareRecord> {
   await assertConnectionTrusted(context, connection);
-  await sendUnderConnection(context, connection, item);
+  return sendUnderConnection(context, connection, item);
 }
 
 async function sendUnderConnection(
   context: AuthedContext,
   connection: ConnectionRecord,
   item: { type: ItemType; id: string; dek: Uint8Array },
-): Promise<void> {
+): Promise<ShareRecord> {
   const subkey = await shareSubkey(context, connection, scopeForItemType(item.type));
   try {
-    await createShare(context, {
+    return await createShare(context, {
       connectionId: connection.id,
       itemType: item.type,
       itemId: item.id,
@@ -485,11 +520,11 @@ export async function shareItemById(
   connection: ConnectionRecord,
   itemType: ItemType,
   itemId: string,
-): Promise<void> {
+): Promise<ShareRecord> {
   await assertConnectionTrusted(context, connection);
   const dek = await itemDek(context, itemType, itemId);
   try {
-    await sendUnderConnection(context, connection, { type: itemType, id: itemId, dek });
+    return await sendUnderConnection(context, connection, { type: itemType, id: itemId, dek });
   } finally {
     dek.fill(0);
   }
@@ -543,16 +578,42 @@ export async function openSharedFile(
       item_type: 'file',
       wrapped_dek: download.wrapped_dek,
     });
-    const manifest = await openManifest(shared.ciphertext, dek);
-    const response = await fetchImpl(download.url);
-    if (!response.ok || response.body === null) {
-      throw new Error(`the object store answered ${response.status} for this file`);
-    }
-    const plaintext = decryptStream(response.body, manifest, dek);
-    return { manifest, bytes: await collectStream(plaintext, manifest.size) };
+    return await readFileObject(shared.ciphertext, download.url, dek, fetchImpl);
   } finally {
     dek?.fill(0);
   }
+}
+
+export async function openSentFile(
+  context: AuthedContext,
+  itemId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<SharedFile> {
+  const download = await getFileDownload(context, itemId);
+  if (!context.session.hasKek('files', download.key_generation)) {
+    await refreshKeyrings(context);
+  }
+  const dek = await openBlob(download.wrapped_dek, context.session.kek('files', download.key_generation));
+  try {
+    return await readFileObject(download.ciphertext, download.url, dek, fetchImpl);
+  } finally {
+    dek.fill(0);
+  }
+}
+
+async function readFileObject(
+  manifestCiphertext: string,
+  url: string,
+  dek: Uint8Array,
+  fetchImpl: typeof fetch,
+): Promise<SharedFile> {
+  const manifest = await openManifest(manifestCiphertext, dek);
+  const response = await fetchImpl(url);
+  if (!response.ok || response.body === null) {
+    throw new Error(`the object store answered ${response.status} for this file`);
+  }
+  const plaintext = decryptStream(response.body, manifest, dek);
+  return { manifest, bytes: await collectStream(plaintext, manifest.size) };
 }
 
 export async function openSharedText(

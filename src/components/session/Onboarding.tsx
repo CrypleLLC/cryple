@@ -21,7 +21,7 @@ import {
   type OnboardingState,
 } from '@/lib/app';
 import { parseScopeList } from '@/lib/scopes';
-import { useCryple } from './CrypleProvider';
+import { useZekke } from './ZekkeProvider';
 import {
   Button,
   Card,
@@ -34,7 +34,7 @@ import {
 import { PIN_LENGTH } from '@/lib/pin';
 
 export default function Onboarding() {
-  const { createAccount, enrolBrowser, enterVault, notice } = useCryple();
+  const { createAccount, enrolBrowser, enterVault, notice } = useZekke();
   const [state, dispatch] = useReducer(onboardingReducer, INITIAL_ONBOARDING);
   const [busy, setBusy] = useState(false);
   const [noAccount, setNoAccount] = useState(false);

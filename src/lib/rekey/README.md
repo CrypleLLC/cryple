@@ -26,7 +26,8 @@ is the stronger move and is not what this is.
 | Export | What |
 | --- | --- |
 | `rewrapScope(context, scope)` | Lists one scope, re-wraps everything below the current generation, returns `{scope, requested, rekeyed}` |
-| `rewrapAfterRotation(context, scopes)` | The scopes a batch rotated, filtered to `DEK_SCOPES` this device holds, in order |
+| `rewrapAfterRotation(context, scopes)` | The scopes a batch rotated, filtered to `DEK_SCOPES` this device holds, in order — items, then that scope's folders |
+| `rewrapFolderNames(context, scope)` | The `documents` or `files` tree: every folder name key below the current generation |
 | `staleItems(items, generation)` | The items below `generation`, sorted by id |
 | `batched(items, size)` | Splits into `REKEY_BATCH_SIZE` batches |
 
@@ -42,8 +43,9 @@ path is written once:
 | Scope | Listing | Route | Names |
 | --- | --- | --- | --- |
 | `secrets` | `?fields=meta` **and `GET /secrets/deleted`** | `PUT /secrets/keys` | `id` |
-| `notes`, `documents` | `?fields=meta` | `PUT /<scope>/keys` | `id` |
-| `files` | `GET /files` | `PUT /files/keys` | `id` |
+| `notes` | `?fields=meta` | `PUT /notes/keys` | `id` |
+| `documents` | `?fields=meta` **and `GET /documents/trash/keys`** | `PUT /documents/keys` | `id` |
+| `files` | `GET /files` **and `GET /files/trash/keys`** | `PUT /files/keys` | `id` |
 | `passwords` | `GET /credentials?fields=meta` | `PUT /credentials/keys` | **`revision_id`** |
 
 **The secrets walk lists Recently deleted too.** The meta listing no longer shows a deleted secret,
@@ -51,11 +53,30 @@ but the server re-wraps one like any other, and it has to: a secret left on the 
 generation is still open to the device the rotation removed, and restoring it would bring that wrap
 back into the vault. A test pins that a stale deleted secret is in the `PUT`.
 
+**The documents and Drive walks list the Trash the same way.** `GET /<scope>/trash/keys` returns the
+wrap of every row still within its retention — items and folders, including what went with a
+deleted folder, which the Trash's own listing folds into one entry — so a restore after a rotation
+brings no rotated-out wrap back. Past its retention a row is skipped: the worker may already hold
+it, and nothing will open it again.
+
 **`passwords` is in `DEK_SCOPES` but not in `ITEM_SCOPES`**, and that distinction exists for this
 module. `ITEM_SCOPES` means "a scope whose items this walks by item id"; credentials are walked by
 **revision** id, because [an edit is an append](../credentials/README.md) and every revision carries
 its own wrap. A credential edited weekly for five years is 260 wraps to move, not one — which is
 why the batching matters here more than anywhere else.
+
+## Folders go with their scope
+
+A rotation also leaves folder names behind, so `rewrapAfterRotation` follows each scope's items with
+its folders, and reports how many in the outcome's `folders`:
+
+- **`documents` and `files`** — `rewrapFolderNames` reads the tree's rows with their wraps
+  (`listTreeFolderRecords`) and the deleted folders still in the Trash, re-wraps each stale folder's name key and `PUT`s it to
+  `/<scope>/folders/keys`, signed `document-folder-rekey` or `file-folder-rekey` over the sorted ids,
+  in the same batches as items. The sealed name never moves.
+- **`secrets` and `notes`** — the tabs are one sealed manifest per scope; `resealFolders` re-seals it
+  under the current generation when the stored one is older ([`lib/folders`](../folders/README.md)).
+- **`passwords`** has no folders.
 
 ## Why the listings carry `wrapped_dek`
 
@@ -78,6 +99,7 @@ look, which for documents means every snapshot and for files every object. A wra
   [`reestablishConnection`](../sharing/README.md), not a re-wrap.
 
 ## What is still open
+
 
 - **Enrolment is not covered.** `buildEnrolment` can remove devices and rotate in the same batch
   ("I lost my devices"), and that path does not run a re-wrap yet — the session is still being

@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useState } from 'react';
-import { DocumentSync, apiTransport, type SyncState } from '@/lib/documents';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
+import { useEffect, useMemo, useState } from "react";
+import { DocumentSync, apiTransport, type SyncState } from "@/lib/documents";
+import { useAuthedContext, useZekke } from "@/components/session/ZekkeProvider";
 
 export interface DocumentSyncHandle {
   sync?: DocumentSync;
@@ -11,7 +11,7 @@ export interface DocumentSyncHandle {
 }
 
 const INITIAL_STATE: SyncState = {
-  status: 'loading',
+  status: "loading",
   cursor: 0,
   snapshotSeq: 0,
   revision: 0,
@@ -21,7 +21,7 @@ const INITIAL_STATE: SyncState = {
 
 export function useDocumentSync(id: string): DocumentSyncHandle {
   const context = useAuthedContext();
-  const { reportError } = useCryple();
+  const { reportError } = useZekke();
   const transport = useMemo(() => apiTransport(context), [context]);
 
   const [sync, setSync] = useState<DocumentSync>();
@@ -68,7 +68,7 @@ export function useDocumentSync(id: string): DocumentSyncHandle {
     }
 
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === "visible") {
         void sync.poll().catch(() => undefined);
       } else {
         void sync.flush().catch(() => undefined);
@@ -76,12 +76,12 @@ export function useDocumentSync(id: string): DocumentSyncHandle {
     };
     const onOnline = () => void sync.flush().catch(() => undefined);
 
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    window.addEventListener('online', onOnline);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("online", onOnline);
 
     return () => {
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-      window.removeEventListener('online', onOnline);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("online", onOnline);
     };
   }, [sync]);
 

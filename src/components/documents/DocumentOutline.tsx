@@ -17,7 +17,7 @@ export default function DocumentOutline({ editor }: { editor: Editor | null }) {
   const active = activeHeadingPos(entries, cursor ?? 0);
 
   return (
-    <div className="cryple-no-print lg:sticky lg:top-[calc(var(--staging-banner-h)+var(--doc-chrome-h,8rem)+1.5rem)] lg:w-60 lg:shrink-0">
+    <div className="zekke-no-print lg:sticky lg:top-[calc(var(--staging-banner-h)+var(--doc-chrome-h,8rem)+1.5rem)] lg:w-60 lg:shrink-0">
       <button
         type="button"
         aria-expanded={open}

@@ -1,6 +1,6 @@
-# Cryple API — Front-End Integration Guide
+# Zekke API — Front-End Integration Guide
 
-What a client needs to know before it can call the Cryple API: what the API is, how to reach it, how to authenticate, and the behaviours that will surprise you if you meet them at runtime instead of here.
+What a client needs to know before it can call the Zekke API: what the API is, how to reach it, how to authenticate, and the behaviours that will surprise you if you meet them at runtime instead of here.
 
 It describes the API **as implemented**, not as specified. Where the implementation and `docs/` disagree, this file follows the code.
 
@@ -36,7 +36,7 @@ Section numbers are **not contiguous** — they are the original numbering from 
 
 ## 1. What the API Is
 
-Cryple is an **encrypted personal drive**. Users store client-side-encrypted secrets, notes and long-form documents, authenticated by a BIP39 seed phrase rather than an email and a password.
+Zekke is an **encrypted personal drive**. Users store client-side-encrypted secrets, notes and long-form documents, authenticated by a BIP39 seed phrase rather than an email and a password.
 
 The backend is **zero-knowledge by construction**:
 
@@ -89,7 +89,7 @@ Access-Control-Max-Age: 3600
 
 `PUT` and `PATCH` are both in use — see the verb rules below. `Allow-Headers` is exactly what the API reads: `Authorization` for the JWT, `Content-Type` for JSON. **No custom request headers are supported** — every value the API needs travels in the URL or the JSON body, so do not send `User-Address`, `Token` or anything else custom; a preflight would fail. (Earlier deployments advertised `User-Address` and `Token`; no handler ever read them.)
 
-**Multiple origins are supported.** `CORS_ALLOW_ORIGINS` takes either `*` or a comma-separated list (`https://app.cryple.io,https://staging.cryple.io`). With a list, the server echoes back **your** origin when it matches and adds `Vary: Origin`; when it does not match, the response carries no `Access-Control-Allow-Origin` and the browser blocks it. There is no error body to read in that case — a CORS failure is a browser-side network error, so if requests fail before any status code arrives, check that your exact origin (scheme, host **and** port) is in the deployment's list. A malformed list is rejected at startup, so a running server always has a usable configuration.
+**Multiple origins are supported.** `CORS_ALLOW_ORIGINS` takes either `*` or a comma-separated list (`https://app.zekke.io,https://staging.zekke.io`). With a list, the server echoes back **your** origin when it matches and adds `Vary: Origin`; when it does not match, the response carries no `Access-Control-Allow-Origin` and the browser blocks it. There is no error body to read in that case — a CORS failure is a browser-side network error, so if requests fail before any status code arrives, check that your exact origin (scheme, host **and** port) is in the deployment's list. A malformed list is rejected at startup, so a running server always has a usable configuration.
 
 **Credentials are never used.** The API authenticates with a `Bearer` token, not cookies, so `Access-Control-Allow-Credentials` is not sent — do not set `credentials: "include"` on `fetch`; with `Access-Control-Allow-Origin: *` the browser would reject the response.
 

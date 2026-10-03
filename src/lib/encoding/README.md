@@ -8,7 +8,7 @@ Task 4 of [tasks.md](../../../tasks/tasks.md).
 ## Why this module exists
 
 The same P-256 public key travels in **three different encodings**, and mixing them is the
-most common Cryple integration bug ([crypto/ECDSA.md § Public Key Encodings](../../../../api-general/docs/crypto/ECDSA.md#public-key-encodings)):
+most common Zekke integration bug ([crypto/ECDSA.md § Public Key Encodings](../../../../api-general/docs/crypto/ECDSA.md#public-key-encodings)):
 
 | Encoding                      | Where it is used                                      | Size         |
 | ----------------------------- | ----------------------------------------------------- | ------------ |
@@ -68,7 +68,7 @@ Anything that is not a 91-byte uncompressed-P-256 SPKI blob is rejected.
 - `zeroBytes` only works on `Uint8Array`. **JavaScript strings cannot be zeroed**, which is
   why key material is held as bytes for as long as possible and converted to hex/base64
   only at the moment it is needed. See [`lib/session`](../session/README.md).
-- `bytesToBase64` builds an intermediate binary string. That is fine at Cryple's sizes (the
+- `bytesToBase64` builds an intermediate binary string. That is fine at Zekke's sizes (the
   largest value is a 1580-char ML-KEM key) but it is not the right tool for file-sized data.
 
 ## Tests

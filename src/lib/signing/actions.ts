@@ -30,6 +30,13 @@ export const ACTIONS = {
     variadic: true,
   },
   'file-delete': { args: ['file_id'], signer: 'device', pinProof: false, variadic: true },
+  'document-purge': {
+    args: ['document_or_folder_id'],
+    signer: 'device',
+    pinProof: false,
+    variadic: true,
+  },
+  'file-purge': { args: ['file_or_folder_id'], signer: 'device', pinProof: false, variadic: true },
   'secret-rekey': { args: ['secret_id'], signer: 'device', pinProof: false, variadic: true },
   'note-rekey': { args: ['note_id'], signer: 'device', pinProof: false, variadic: true },
   'document-rekey': {
@@ -39,6 +46,13 @@ export const ACTIONS = {
     variadic: true,
   },
   'file-rekey': { args: ['file_id'], signer: 'device', pinProof: false, variadic: true },
+  'document-folder-rekey': {
+    args: ['folder_id'],
+    signer: 'device',
+    pinProof: false,
+    variadic: true,
+  },
+  'file-folder-rekey': { args: ['folder_id'], signer: 'device', pinProof: false, variadic: true },
   'credential-delete': {
     args: ['credential_id'],
     signer: 'device',
@@ -77,6 +91,11 @@ export const ACTIONS = {
   'share-delete': { args: ['share_id'], signer: 'device', pinProof: false },
   'address-book-update': {
     args: ['expected_revision', 'ciphertext_digest'],
+    signer: 'device',
+    pinProof: false,
+  },
+  'connection-folders-update': {
+    args: ['connection_id', 'expected_revision', 'recipient_key_generation', 'ciphertext_digest'],
     signer: 'device',
     pinProof: false,
   },

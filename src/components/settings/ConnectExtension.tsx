@@ -21,12 +21,12 @@ import {
   secondsLeft,
   type ConnectStep,
 } from '@/lib/app';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
+import { useAuthedContext, useZekke } from '@/components/session/ZekkeProvider';
 import { Button, Card, Field, Notice } from '@/components/ui';
 
 export default function ConnectExtension({ onLinked }: { onLinked: () => void }) {
   const context = useAuthedContext();
-  const { reportError, holds } = useCryple();
+  const { reportError, holds } = useZekke();
   const [step, setStep] = useState<ConnectStep>({ kind: 'idle' });
   const [message, setMessage] = useState<string>();
   const [now, setNow] = useState(() => Date.now());

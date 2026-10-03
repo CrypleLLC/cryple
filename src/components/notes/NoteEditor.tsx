@@ -32,7 +32,7 @@ import {
   sizeAtCaret,
   surfaceBlockAt,
 } from './note-surface';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
+import { useAuthedContext, useZekke } from '@/components/session/ZekkeProvider';
 import NoteEditorToolbar from './NoteEditorToolbar';
 import { ArrowLeftIcon, TrashIcon } from '@/components/ui/icons';
 import { Button, Notice } from '@/components/ui';
@@ -47,7 +47,7 @@ export default function NoteEditor({
   onSaved: (record: NoteRecord, plaintext: string) => void;
 }) {
   const context = useAuthedContext();
-  const { reportError, fullDevice } = useCryple();
+  const { reportError, fullDevice } = useZekke();
 
   const [record, setRecord] = useState(opened?.record);
   const [saved, setSaved] = useState(opened?.plaintext);

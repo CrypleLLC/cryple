@@ -1,14 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
   connectionsToVerify,
+  friendshipFolders,
   groupConnections,
   sendableConnections,
   sendRefusal,
+  sharedFolderChoices,
+  sharedFolderDeleteConfirmation,
+  sharedItemSubtitle,
   sharedNoteView,
   sharedSecretView,
+  sharedTreeFolders,
+  sharesInFolder,
   SHARING_COPY,
   trustAlarm,
 } from './sharing';
+import { createFolder, deleteFolder, emptyFolderManifest, placeItem, type FolderEdit } from '@/lib/folders';
+import { SHARED_FOLDER_RULES } from '@/lib/sharing';
 import { encodeSecretPayload, UNREADABLE_SECRET_NAME } from './vault';
 import { connectionWith, type ConnectionRecord, type ConnectionTrust } from '@/lib/sharing';
 
@@ -173,5 +181,65 @@ describe('one connection works both ways', () => {
       connection({ id: 'i-invited', direction: 'outbound', status: 'accepted' }),
     ]);
     expect(sendable.map((c) => c.id)).toEqual(['invited-me', 'i-invited']);
+  });
+});
+
+function sharedTree(...edits: FolderEdit[]) {
+  return edits.reduce((manifest, edit) => edit(manifest, SHARED_FOLDER_RULES), emptyFolderManifest(SHARED_FOLDER_RULES));
+}
+
+describe('the Shared space', () => {
+  it('has one folder per accepted connection, named after the other person', () => {
+    const folders = friendshipFolders([
+      connection({ id: 'a', username: 'zecarlos', status: 'accepted', direction: 'inbound' }),
+      connection({ id: 'b', username: 'anacosta', status: 'accepted', direction: 'outbound' }),
+      connection({ id: 'c', username: 'pending', status: 'pending', direction: 'inbound' }),
+    ]);
+
+    expect(folders.map((folder) => folder.username)).toEqual(['anacosta', 'zecarlos']);
+  });
+
+  it('lists everything at the top when nothing is filed, or when the folders cannot be read', () => {
+    const items = [{ shareId: 'one' }, { shareId: 'two' }];
+
+    expect(sharesInFolder(items, sharedTree(), null)).toEqual(items);
+    expect(sharesInFolder(items, undefined, null)).toEqual(items);
+    expect(sharesInFolder(items, undefined, 'photos')).toEqual([]);
+  });
+
+  it('shows a share in the folder it was filed in, and back at the top once that folder goes', () => {
+    const items = [{ shareId: 'one' }, { shareId: 'two' }];
+    const filed = sharedTree(createFolder({ id: 'photos', name: 'Photos' }), placeItem('one', 'photos'));
+
+    expect(sharesInFolder(items, filed, 'photos')).toEqual([{ shareId: 'one' }]);
+    expect(sharesInFolder(items, filed, null)).toEqual([{ shareId: 'two' }]);
+
+    const removed = deleteFolder('photos')(filed, SHARED_FOLDER_RULES);
+    expect(sharesInFolder(items, removed, null)).toEqual(items);
+  });
+
+  it('offers every folder, nested, as somewhere to file a new share', () => {
+    const tree = sharedTree(
+      createFolder({ id: 'trips', name: 'Trips' }),
+      createFolder({ id: 'lisbon', name: 'Lisbon', parentId: 'trips' }),
+    );
+
+    expect(sharedFolderChoices(tree).map((choice) => choice.id)).toEqual(['trips', 'lisbon']);
+    expect(sharedFolderChoices(tree)[1].label).toBe('\u00a0\u00a0Lisbon');
+    expect(sharedTreeFolders(tree).find((folder) => folder.id === 'lisbon')?.parentId).toBe('trips');
+  });
+
+  it('says deleting a shared folder unshares nothing', () => {
+    expect(sharedFolderDeleteConfirmation('Photos', 0)).toMatch(/nothing is unshared/);
+    expect(sharedFolderDeleteConfirmation('Photos', 2)).toContain('2 folders inside it');
+  });
+
+  it('says which way an item went', () => {
+    expect(sharedItemSubtitle({ itemType: 'note', direction: 'inbound', counterparty: 'anacosta' })).toBe(
+      'Note from anacosta',
+    );
+    expect(sharedItemSubtitle({ itemType: 'file', direction: 'outbound', counterparty: 'anacosta' })).toBe(
+      'File you sent to anacosta',
+    );
   });
 });

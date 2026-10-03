@@ -31,13 +31,13 @@ import {
   type FolderNouns,
   type FolderTab,
 } from '@/lib/app';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
+import { useAuthedContext, useZekke } from '@/components/session/ZekkeProvider';
 import { FolderIcon, FolderPlusIcon, PencilIcon, TrashIcon } from '@/components/ui/icons';
 import { Button, HINTED_ICON_FRAME, HintFrame, Notice, type HintPlacement } from '@/components/ui';
 import { ConfirmDeleteModal } from '@/components/modal';
 import { ScreenStrip } from '@/components/shell/ScreenStrip';
 
-export const DRAGGED_ITEMS_TYPE = 'application/x-cryple-items';
+export const DRAGGED_ITEMS_TYPE = 'application/x-zekke-items';
 
 export function startItemDrag(event: ReactDragEvent, ids: readonly string[], badge?: string) {
   event.dataTransfer.setData(DRAGGED_ITEMS_TYPE, JSON.stringify(ids));
@@ -86,7 +86,7 @@ export interface FolderTabsState {
 
 export function useFolderTabs(scope: ManifestScope, itemIds: readonly string[] | undefined): FolderTabsState {
   const context = useAuthedContext();
-  const { reportError } = useCryple();
+  const { reportError } = useZekke();
   const rules = MANIFEST_SCOPE_RULES[scope];
 
   const [manifest, setManifest] = useState<FolderManifest>();
@@ -257,7 +257,7 @@ export default function FolderTabs({
   label: string;
   deleteItems: (ids: string[]) => Promise<void>;
 }) {
-  const { fullDevice } = useCryple();
+  const { fullDevice } = useZekke();
   const { tabs, active, busy } = state;
   const [naming, setNaming] = useState<{ id?: string; name: string }>();
   const [deleting, setDeleting] = useState<FolderTab>();

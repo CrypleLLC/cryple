@@ -2,11 +2,11 @@
 
 import { useState } from 'react';
 import { UNLOCK_COPY } from '@/lib/app';
-import { useCryple } from './CrypleProvider';
+import { useZekke } from './ZekkeProvider';
 import { Button, Card, Notice, Panel, PinField } from '@/components/ui';
 
 export default function Unlock() {
-  const { unlock, startOver } = useCryple();
+  const { unlock, startOver } = useZekke();
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: 'danger' | 'warning'; text: string }>();

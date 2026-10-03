@@ -1,102 +1,134 @@
-import type {
-  ConnectionRecord,
-  ConnectionTrust,
-  ItemType,
-  SharedTextView,
-} from '@/lib/sharing';
-import { decodeSecretPayload, UNREADABLE_SECRET_NAME } from './vault';
-import { noteTitle } from './notes';
+import {
+  folderOf,
+  liveFolders,
+  type FolderEditProblem,
+  type FolderManifest,
+  type TreeFolder,
+} from "@/lib/folders";
+import { folderMoveProblem } from "./folders";
+import {
+  SHARED_FOLDER_RULES,
+  type ConnectionRecord,
+  type ConnectionTrust,
+  type ItemType,
+  type ReceivedItem,
+  type SharedTextView,
+} from "@/lib/sharing";
+import { decodeSecretPayload, UNREADABLE_SECRET_NAME } from "./vault";
+import { noteTitle } from "./notes";
 
 export const SHARING_COPY = {
-  title: 'Sharing',
-  summary: 'Send an item to another Cryple account, without the server ever holding a key to it.',
+  title: "Sharing",
+  summary:
+    "Send an item to another Zekke account, without the server ever holding a key to it.",
 
-  inviteTitle: 'Invite someone',
+  inviteTitle: "Invite someone",
   inviteHint:
-    'Ask them for their username and type it here. Once they accept, you can both send each ' +
-    'other items: one invitation connects you both ways.',
-  inviteLabel: 'Their username',
-  inviteSubmit: 'Send invitation',
-  inviteSending: 'Sending…',
+    "Ask them for their username and type it here. Once they accept, you can both send each " +
+    "other items: one invitation connects you both ways.",
+  inviteLabel: "Their username",
+  inviteSubmit: "Send invitation",
+  inviteSending: "Sending…",
   inviteSent: (username: string) => `Invitation sent to ${username}.`,
-  inviteUnknown: 'No account currently uses that username.',
+  inviteUnknown: "No account currently uses that username.",
   inviteExists:
-    'You are already connected to that account, or have an invitation pending with it. One ' +
-    'connection works in both directions.',
+    "You are already connected to that account, or have an invitation pending with it. One " +
+    "connection works in both directions.",
 
-  pendingInbound: 'Waiting for you',
-  pendingOutbound: 'Waiting for them',
-  connected: 'Connected',
+  pendingInbound: "Waiting for you",
+  pendingOutbound: "Waiting for them",
+  connected: "Connected",
 
-  fingerprintTitle: 'Check their fingerprint before you accept',
+  fingerprintTitle: "Check their fingerprint before you accept",
   fingerprintWhy:
-    'Read this code to them out loud, on a call or in person, and check it matches what they ' +
-    'see. It is the fingerprint of their account key, which never changes. It is the one part ' +
-    'of sharing that maths cannot do for you: if the server ever substituted another account ' +
-    'for theirs, this is where it shows.',
-  fingerprintMine: 'Yours',
-  fingerprintTheirs: 'Theirs',
-  fingerprintConfirm: 'It matches — accept',
-  fingerprintDecline: 'Decline',
+    "Read this code to them out loud, on a call or in person, and check it matches what they " +
+    "see. It is the fingerprint of their account key, which never changes. It is the one part " +
+    "of sharing that maths cannot do for you: if the server ever substituted another account " +
+    "for theirs, this is where it shows.",
+  fingerprintMine: "Yours",
+  fingerprintTheirs: "Theirs",
+  fingerprintConfirm: "It matches — accept",
+  fingerprintDecline: "Decline",
   fingerprintChanged:
-    'This connection’s account key is not the one you first checked. An account key never ' +
-    'changes, so someone may be intercepting it, and nothing more can be sent through it. Tell ' +
-    'them through another channel, then disconnect and invite each other again.',
+    "This connection’s account key is not the one you first checked. An account key never " +
+    "changes, so someone may be intercepting it, and nothing more can be sent through it. Tell " +
+    "them through another channel, then disconnect and invite each other again.",
   fingerprintProofInvalid:
-    'Their sharing keys could not be traced back to their account key, so they may not be ' +
-    'theirs. Nothing can be sent through this connection until they can.',
+    "Their sharing keys could not be traced back to their account key, so they may not be " +
+    "theirs. Nothing can be sent through this connection until they can.",
   fingerprintAccountChanged:
-    'The username on this connection now leads to a different account from the one you ' +
-    'connected to, so nothing more can be sent through it.',
+    "The username on this connection now leads to a different account from the one you " +
+    "connected to, so nothing more can be sent through it.",
   fingerprintUncheckable:
-    'This connection’s keys could not be checked, so nothing can be sent through it right now.',
+    "This connection’s keys could not be checked, so nothing can be sent through it right now.",
   fingerprintUnaccepted:
-    'This connection has not been accepted yet, so nothing can be sent through it.',
-  fingerprintAlarmBadge: 'Do not send',
+    "This connection has not been accepted yet, so nothing can be sent through it.",
+  fingerprintAlarmBadge: "Do not send",
 
   reshareWarning:
-    'Anything you send can be copied by the person you send it to. Only share with people you ' +
-    'would trust with the contents.',
+    "Anything you send can be copied by the person you send it to. Only share with people you " +
+    "would trust with the contents.",
 
-  inboxTitle: 'Shared with you',
+  inboxTitle: "Shared with you",
   sharedEmptyHint:
-    'When someone you are connected to sends you an item, it appears here, decrypted on this ' +
-    'device.',
-  inboxEmpty: 'Nothing has been shared with you yet.',
-  open: 'Open',
-  download: 'Download',
-  opening: 'Opening…',
+    "When someone you are connected to sends you an item, it appears here, decrypted on this " +
+    "device.",
+  inboxEmpty: "Nothing has been shared with you yet.",
+  open: "Open",
+  download: "Download",
+  opening: "Opening…",
   lostConnection:
-    'This connection is gone. To share again, send a new invitation and compare fingerprints ' +
-    'again. A connection is never repaired by looking their username up again: the name may ' +
-    'belong to someone else now.',
-  nicknameLabel: 'Nickname',
-  nicknameHint: 'Only you see it. It is sealed in your address book, never sent in the clear.',
-  nicknameSave: 'Save nickname',
-  copying: 'Copying…',
+    "This connection is gone. To share again, send a new invitation and compare fingerprints " +
+    "again. A connection is never repaired by looking their username up again: the name may " +
+    "belong to someone else now.",
+  nicknameLabel: "Nickname",
+  nicknameHint:
+    "Only you see it. It is sealed in your address book, never sent in the clear.",
+  nicknameSave: "Save nickname",
+  copying: "Copying…",
   copyExplain:
-    'A copy is re-encrypted under a key of your own, so it survives the original being deleted ' +
-    'or unshared. Anything you can read can be copied like this, which is why sharing never ' +
-    'claims otherwise.',
-  nothingToCopy: 'There is nothing to copy yet: they have not saved this document since sharing it.',
+    "A copy is re-encrypted under a key of your own, so it survives the original being deleted " +
+    "or unshared. Anything you can read can be copied like this, which is why sharing never " +
+    "claims otherwise.",
+  nothingToCopy:
+    "There is nothing to copy yet: they have not saved this document since sharing it.",
   connectionGone:
-    'The connection this came through is gone, so this can no longer be opened. Ask them to ' +
-    'invite you again — do not reuse the old one.',
+    "The connection this came through is gone, so this can no longer be opened. Ask them to " +
+    "invite you again — do not reuse the old one.",
   documentNotReadable:
-    'Shared documents cannot be opened here yet. Everything needed to decrypt this one has ' +
-    'arrived; the reader has not been built.',
-  connectionsEmpty: 'You have no connections yet.',
-  copyToMyAccount: 'Copy to my own account',
-  copied: 'Copied to your account. Your copy is independent of theirs.',
-  disconnect: 'Disconnect',
-  disconnectWarning: 'Disconnecting deletes every share between you, in both directions.',
+    "Shared documents cannot be opened here yet. Everything needed to decrypt this one has " +
+    "arrived; the reader has not been built.",
+  connectionsEmpty: "You have no connections yet.",
+  copyToMyAccount: "Copy to my own account",
+  copied: "Copied to your account. Your copy is independent of theirs.",
+  disconnect: "Disconnect",
+  disconnectWarning:
+    "Disconnecting deletes every share between you, in both directions.",
+
+  sharedRoot: "Shared",
+  friendshipsEmpty:
+    "Nothing is shared yet. Once someone accepts your invitation, or you accept theirs, a " +
+    "folder for the two of you appears here.",
+  friendshipEmpty:
+    "Nothing here yet. Anything either of you shares with the other appears in this folder, and " +
+    "you can both organise it into folders.",
+  friendshipFlat:
+    "This device does not hold the sharing key, so the folders inside this space are not shown. " +
+    "Everything shared with you is listed here instead.",
+  sharedFoldersInvalid:
+    "The folders in this space could not be shown safely, so everything is listed at the top " +
+    "level. Resetting removes the folders for both of you; nothing is unshared.",
+  sharedFoldersReset: "Reset the folders",
+  fileInFolder: "Put it in",
+  fileInTop: "The top of this space",
+  sentByYou: "Sent by you",
 } as const;
 
 export const ITEM_LABELS: Record<ItemType, string> = {
-  secret: 'Secret',
-  note: 'Note',
-  document: 'Document',
-  file: 'File',
+  secret: "Secret",
+  note: "Note",
+  document: "Document",
+  file: "File",
 };
 
 export interface ConnectionGroups {
@@ -105,13 +137,19 @@ export interface ConnectionGroups {
   accepted: ConnectionRecord[];
 }
 
-export function groupConnections(connections: readonly ConnectionRecord[]): ConnectionGroups {
-  const groups: ConnectionGroups = { awaitingMe: [], awaitingThem: [], accepted: [] };
+export function groupConnections(
+  connections: readonly ConnectionRecord[],
+): ConnectionGroups {
+  const groups: ConnectionGroups = {
+    awaitingMe: [],
+    awaitingThem: [],
+    accepted: [],
+  };
 
   for (const connection of connections) {
-    if (connection.status === 'accepted') {
+    if (connection.status === "accepted") {
       groups.accepted.push(connection);
-    } else if (connection.direction === 'inbound') {
+    } else if (connection.direction === "inbound") {
       groups.awaitingMe.push(connection);
     } else {
       groups.awaitingThem.push(connection);
@@ -124,43 +162,52 @@ export function groupConnections(connections: readonly ConnectionRecord[]): Conn
 export function sendableConnections(
   connections: readonly ConnectionRecord[],
 ): ConnectionRecord[] {
-  return connections.filter((connection) => connection.status === 'accepted');
+  return connections.filter((connection) => connection.status === "accepted");
 }
 
 export function connectionsToVerify(
   connections: readonly ConnectionRecord[],
 ): ConnectionRecord[] {
   return connections.filter(
-    (connection) => connection.status === 'accepted' || connection.direction === 'outbound',
+    (connection) =>
+      connection.status === "accepted" || connection.direction === "outbound",
   );
 }
 
 export interface TrustAlarm {
-  tone: 'danger' | 'warning';
+  tone: "danger" | "warning";
   message: string;
   newInvitation: boolean;
 }
 
 export function trustAlarm(trust: ConnectionTrust): TrustAlarm | undefined {
   switch (trust.status) {
-    case 'root-changed':
-      return { tone: 'danger', message: SHARING_COPY.fingerprintChanged, newInvitation: true };
-    case 'proof-invalid':
-      return { tone: 'danger', message: SHARING_COPY.fingerprintProofInvalid, newInvitation: false };
-    case 'account-changed':
+    case "root-changed":
       return {
-        tone: 'danger',
+        tone: "danger",
+        message: SHARING_COPY.fingerprintChanged,
+        newInvitation: true,
+      };
+    case "proof-invalid":
+      return {
+        tone: "danger",
+        message: SHARING_COPY.fingerprintProofInvalid,
+        newInvitation: false,
+      };
+    case "account-changed":
+      return {
+        tone: "danger",
         message: `${SHARING_COPY.fingerprintAccountChanged} ${SHARING_COPY.lostConnection}`,
         newInvitation: true,
       };
-    case 'unresolvable':
+    case "unresolvable":
       return {
-        tone: 'warning',
+        tone: "warning",
         message: `${SHARING_COPY.fingerprintUncheckable} ${SHARING_COPY.lostConnection}`,
         newInvitation: true,
       };
-    case 'trusted':
-    case 'unpinned':
+    case "trusted":
+    case "unpinned":
       return undefined;
   }
 }
@@ -181,4 +228,94 @@ export function sharedSecretView(plaintext: string): SharedTextView {
 
 export function sharedNoteView(plaintext: string): SharedTextView {
   return { name: noteTitle(plaintext), body: plaintext };
+}
+
+export function friendshipFolders(
+  connections: readonly ConnectionRecord[],
+): ConnectionRecord[] {
+  return sendableConnections(connections).sort((a, b) =>
+    a.username.localeCompare(b.username),
+  );
+}
+
+export function sharedTreeFolders(manifest: FolderManifest): TreeFolder[] {
+  return liveFolders(manifest).map((folder) => ({
+    id: folder.id,
+    parentId: folder.parent_id,
+    name: folder.name,
+    position: folder.position,
+    createdAt: folder.updated_at,
+    updatedAt: folder.updated_at,
+  }));
+}
+
+export function sharesInFolder<T extends Pick<ReceivedItem, "shareId">>(
+  items: readonly T[],
+  manifest: FolderManifest | undefined,
+  folderId: string | null,
+): T[] {
+  if (manifest === undefined) {
+    return folderId === null ? [...items] : [];
+  }
+  return items.filter(
+    (item) =>
+      folderOf(manifest, item.shareId, SHARED_FOLDER_RULES) === folderId,
+  );
+}
+
+export function sharedFolderChoices(
+  manifest: FolderManifest,
+): { id: string; label: string }[] {
+  const folders = liveFolders(manifest);
+  const choices: { id: string; label: string }[] = [];
+  const walk = (parentId: string | null, depth: number) => {
+    for (const folder of folders.filter(
+      (candidate) => candidate.parent_id === parentId,
+    )) {
+      choices.push({
+        id: folder.id,
+        label: `${"\u00a0\u00a0".repeat(depth)}${folder.name}`,
+      });
+      walk(folder.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+  return choices;
+}
+
+export function sharedFolderDeleteConfirmation(
+  name: string,
+  subfolders: number,
+): string {
+  const inside =
+    subfolders === 0
+      ? ""
+      : ` and the ${subfolders === 1 ? "folder" : `${subfolders} folders`} inside it`;
+  return (
+    `Deleting “${name}”${inside} removes it for both of you. Everything filed in it moves to ` +
+    "the top of this shared space; nothing is unshared."
+  );
+}
+
+export function sharedItemSubtitle(
+  item: Pick<ReceivedItem, "itemType" | "direction" | "counterparty">,
+): string {
+  return item.direction === "outbound"
+    ? `${ITEM_LABELS[item.itemType]} you sent to ${item.counterparty}`
+    : `${ITEM_LABELS[item.itemType]} from ${item.counterparty}`;
+}
+
+export function sharedFolderEditProblem(problem: FolderEditProblem): string {
+  switch (problem) {
+    case "too-deep":
+      return folderMoveProblem("FOLDER_TOO_DEEP");
+    case "into-itself":
+      return folderMoveProblem("FOLDER_INTO_ITSELF");
+    case "unknown-folder":
+      return "That folder was removed in the meantime, probably by the other person.";
+    case "bad-name":
+    case "folder-exists":
+    case "home-is-fixed":
+      return "That folder name cannot be used here.";
+  }
 }

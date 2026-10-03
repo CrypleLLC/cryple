@@ -74,7 +74,11 @@ async function sealName(context: AuthedContext, scope: TreeScope, name: string) 
   }
 }
 
-async function openName(context: AuthedContext, scope: TreeScope, record: TreeFolderRecord): Promise<string | undefined> {
+export async function openTreeFolderName(
+  context: AuthedContext,
+  scope: TreeScope,
+  record: Pick<TreeFolderRecord, 'ciphertext' | 'wrapped_dek' | 'key_generation'>,
+): Promise<string | undefined> {
   try {
     const dek = await scopeDekWrapper(context, scope).unwrapDek(record);
     try {
@@ -100,19 +104,24 @@ export function treeManifest(folders: readonly TreeFolder[]): FolderManifest {
   return manifest;
 }
 
-export async function listTreeFolders(context: AuthedContext, scope: TreeScope): Promise<TreeFolder[]> {
+export async function listTreeFolderRecords(context: AuthedContext, scope: TreeScope): Promise<TreeFolderRecord[]> {
   const response = await request<TreeFolderRecord[]>({
     method: 'GET',
     path: `/${scope}/folders`,
     token: requireToken(context),
     timeoutMs: context.timeoutMs,
   });
+  return response.data ?? [];
+}
+
+export async function listTreeFolders(context: AuthedContext, scope: TreeScope): Promise<TreeFolder[]> {
+  const records = await listTreeFolderRecords(context, scope);
   const folders = await Promise.all(
-    (response.data ?? []).map(
+    records.map(
       async (record): Promise<TreeFolder> => ({
         id: record.id,
         parentId: record.parent_id ?? null,
-        name: await openName(context, scope, record),
+        name: await openTreeFolderName(context, scope, record),
         position: record.position,
         createdAt: record.created_at,
         updatedAt: record.updated_at,

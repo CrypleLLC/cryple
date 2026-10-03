@@ -1,19 +1,25 @@
-import { x25519 } from '@noble/curves/ed25519.js';
-import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
-import { base64ToBytes, bytesToBase64, concatBytes, utf8ToBytes, zeroBytes } from '@/lib/encoding';
+import { x25519 } from "@noble/curves/ed25519.js";
+import { ml_kem768 } from "@noble/post-quantum/ml-kem.js";
+import {
+  base64ToBytes,
+  bytesToBase64,
+  concatBytes,
+  utf8ToBytes,
+  zeroBytes,
+} from "@/lib/encoding";
 import {
   deviceRecipientSlot,
   pqxdhUnwrap,
   pqxdhWrap,
   type RecipientKeys,
   type X25519Secret,
-} from '@/lib/pqxdh';
-import { openBlob, openBytes, sealBlob, sealBytes } from '@/lib/sealed';
+} from "@/lib/pqxdh";
+import { openBlob, openBytes, sealBlob, sealBytes } from "@/lib/sealed";
 
 export const SCOPE_KEK_BYTES = 32;
 export const SHARE_SUBKEY_BYTES = 32;
-export const SHARE_SUBKEY_INFO_PREFIX = 'Cryple-Share-v1|';
-export const DEVICE_KEYRING_USAGE = 'device-keyring' as const;
+export const SHARE_SUBKEY_INFO_PREFIX = "Cryple-Share-v1|";
+export const DEVICE_KEYRING_USAGE = "device-keyring" as const;
 
 const X25519_PRIVATE_BYTES = 32;
 const MLKEM_SEED_BYTES = 64;
@@ -21,7 +27,7 @@ const MLKEM_SEED_BYTES = 64;
 export class KeyringError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'KeyringError';
+    this.name = "KeyringError";
   }
 }
 
@@ -37,7 +43,10 @@ export async function wrapKekForRoot(
   return bytesToBase64(await sealBytes(kek, rootWrapKey, iv));
 }
 
-export async function openRootWrap(rootWrapKey: Uint8Array, wrapped: string): Promise<Uint8Array> {
+export async function openRootWrap(
+  rootWrapKey: Uint8Array,
+  wrapped: string,
+): Promise<Uint8Array> {
   return assertKek(await openBlob(wrapped, rootWrapKey));
 }
 
@@ -109,8 +118,13 @@ export function sharingKeysFromMaterial(
   x25519PrivateKey: Uint8Array,
   mlkemSeed: Uint8Array,
 ): SharingKeyPair {
-  if (x25519PrivateKey.length !== X25519_PRIVATE_BYTES || mlkemSeed.length !== MLKEM_SEED_BYTES) {
-    throw new KeyringError('sharing material is an X25519 key and a 64-byte ML-KEM seed');
+  if (
+    x25519PrivateKey.length !== X25519_PRIVATE_BYTES ||
+    mlkemSeed.length !== MLKEM_SEED_BYTES
+  ) {
+    throw new KeyringError(
+      "sharing material is an X25519 key and a 64-byte ML-KEM seed",
+    );
   }
   const { secretKey, publicKey } = ml_kem768.keygen(mlkemSeed);
   return {
@@ -154,7 +168,7 @@ export async function openSharingMaterial(
   const material = await openBytes(base64ToBytes(sealed), sharingKek);
   try {
     if (material.length !== X25519_PRIVATE_BYTES + MLKEM_SEED_BYTES) {
-      throw new KeyringError('sharing material has the wrong length');
+      throw new KeyringError("sharing material has the wrong length");
     }
     return sharingKeysFromMaterial(
       material.slice(0, X25519_PRIVATE_BYTES),
@@ -169,11 +183,17 @@ export async function deriveShareSubkey(
   connectionKey: Uint8Array,
   scope: string,
 ): Promise<Uint8Array> {
-  const key = await crypto.subtle.importKey('raw', connectionKey, 'HKDF', false, ['deriveBits']);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    connectionKey,
+    "HKDF",
+    false,
+    ["deriveBits"],
+  );
   const bits = await crypto.subtle.deriveBits(
     {
-      name: 'HKDF',
-      hash: 'SHA-256',
+      name: "HKDF",
+      hash: "SHA-256",
       salt: new Uint8Array(0),
       info: utf8ToBytes(`${SHARE_SUBKEY_INFO_PREFIX}${scope}`),
     },
@@ -183,10 +203,16 @@ export async function deriveShareSubkey(
   return new Uint8Array(bits);
 }
 
-export async function sealUnderKek(kek: Uint8Array, payload: Uint8Array): Promise<string> {
+export async function sealUnderKek(
+  kek: Uint8Array,
+  payload: Uint8Array,
+): Promise<string> {
   return sealBlob(payload, kek);
 }
 
-export async function openUnderKek(kek: Uint8Array, sealed: string): Promise<Uint8Array> {
+export async function openUnderKek(
+  kek: Uint8Array,
+  sealed: string,
+): Promise<Uint8Array> {
   return openBlob(sealed, kek);
 }

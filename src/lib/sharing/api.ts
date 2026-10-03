@@ -44,6 +44,30 @@ export interface InboundShareRecord extends ShareRecord {
   sender_username: string;
 }
 
+export interface ConnectionShareRecord {
+  id: string;
+  wrapped_dek: string;
+  item_type: ItemType;
+  item_id: string;
+  direction: ConnectionDirection;
+  created_at: string;
+}
+
+export interface ConnectionFoldersRecord {
+  ciphertext: string;
+  wrapped_dek: string;
+  revision: number;
+  recipient_key_generation: number;
+  updated_at: string;
+}
+
+export interface PutConnectionFoldersInput {
+  ciphertext: string;
+  wrapped_dek: string;
+  recipient_key_generation: number;
+  expected_revision: number;
+}
+
 export interface ItemRecipientRecord {
   id: string;
   item_type: ItemType;
@@ -113,14 +137,59 @@ export async function createConnection(
 export async function listConnectionShares(
   context: AuthedContext,
   id: string,
-): Promise<{ id: string; wrapped_dek: string }[]> {
-  const response = await request<{ id: string; wrapped_dek: string }[]>({
+): Promise<ConnectionShareRecord[]> {
+  const response = await request<ConnectionShareRecord[]>({
     method: 'GET',
     path: `/connections/${assertCanonicalUuid(id)}/shares`,
     token: requireToken(context),
     timeoutMs: context.timeoutMs,
   });
   return response.data ?? [];
+}
+
+export async function getConnectionFolders(
+  context: AuthedContext,
+  id: string,
+): Promise<ConnectionFoldersRecord | undefined> {
+  try {
+    const response = await request<ConnectionFoldersRecord>({
+      method: 'GET',
+      path: `/connections/${assertCanonicalUuid(id)}/folders`,
+      token: requireToken(context),
+      timeoutMs: context.timeoutMs,
+    });
+    return response.data;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+export async function putConnectionFolders(
+  context: AuthedContext,
+  id: string,
+  input: PutConnectionFoldersInput,
+): Promise<ConnectionFoldersRecord> {
+  const connectionId = assertCanonicalUuid(id);
+  const digest = await sha256Hex(utf8ToBytes(input.ciphertext));
+  const response = await request<ConnectionFoldersRecord>({
+    method: 'PUT',
+    path: `/connections/${connectionId}/folders`,
+    token: requireToken(context),
+    timeoutMs: context.timeoutMs,
+    body: {
+      ...input,
+      ...(await sign(context, 'connection-folders-update', [
+        connectionId,
+        input.expected_revision,
+        input.recipient_key_generation,
+        digest,
+      ])),
+    },
+  });
+  return response.data;
 }
 
 export interface ReestablishRequest {
@@ -130,6 +199,7 @@ export interface ReestablishRequest {
   recipientKeyGeneration: number;
   keys: readonly ConnectionKeyRecord[];
   shares: readonly { id: string; wrapped_dek: string }[];
+  folders?: { wrapped_dek: string; expected_revision: number };
 }
 
 export async function putConnectionExchange(
@@ -149,6 +219,7 @@ export async function putConnectionExchange(
       recipient_key_generation: input.recipientKeyGeneration,
       keys: input.keys,
       shares: input.shares,
+      ...(input.folders === undefined ? {} : { folders: input.folders }),
       ...(await sign(context, 'connection-reestablish', [
         assertCanonicalUuid(id),
         input.pqxdhBlob,

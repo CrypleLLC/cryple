@@ -105,10 +105,10 @@ the failure paths.
 ## What this does and does not protect
 
 It protects the confidentiality of the wrapped payload against anyone lacking the recipient's
-private keys — including Cryple, and including a future quantum adversary, since breaking it
+private keys — including Zekke, and including a future quantum adversary, since breaking it
 requires breaking **both** X25519 and ML-KEM.
 
-It does **not** control _when_ the recipient obtains the blob. The blob sits on Cryple's
+It does **not** control _when_ the recipient obtains the blob. The blob sits on Zekke's
 servers from setup time; release timing is enforced elsewhere and is a documented trust
 limitation.
 
@@ -116,7 +116,7 @@ It deliberately provides **no forward secrecy** against compromise of the recipi
 keys — and must not, since a wrapped blob has to stay openable years later.
 
 **Recipient key authenticity is out of scope.** The wrap is only as trustworthy as the public
-keys used, and those come from Cryple's database. A malicious backend could substitute its own
+keys used, and those come from Zekke's database. A malicious backend could substitute its own
 keys at setup time. Mitigation is out-of-band fingerprint verification, tracked as a
 limitation and not solved here.
 

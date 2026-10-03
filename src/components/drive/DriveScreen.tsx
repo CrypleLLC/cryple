@@ -41,6 +41,7 @@ import {
   pauseTransfer,
   pausedUploadNote,
   discardConfirmation,
+  deleteActionLabel,
   fileBatchDeleteConfirmation,
   fileBatchDeleteSummary,
   fileCaption,
@@ -93,7 +94,7 @@ import {
   type Transfer,
   type ViewableMedia,
 } from '@/lib/app';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
+import { useAuthedContext, useZekke } from '@/components/session/ZekkeProvider';
 import {
   CloseIcon,
   DownloadIcon,
@@ -150,7 +151,8 @@ interface DriveTile {
 
 export default function DriveScreen() {
   const context = useAuthedContext();
-  const { reportError, fullDevice } = useCryple();
+  const { reportError, fullDevice, account } = useZekke();
+  const retentionDays = account?.retention_days ?? 0;
 
   const [tiles, setTiles] = useState<DriveTile[]>();
   const [message, setMessage] = useState<{ text: string; tone: 'info' | 'danger' }>();
@@ -805,7 +807,7 @@ export default function DriveScreen() {
 
       {confirmingBatch && selected.length > 0 && (
         <Notice tone="danger">
-          <p>{fileBatchDeleteConfirmation(selected.length)}</p>
+          <p>{fileBatchDeleteConfirmation(selected.length, retentionDays)}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button variant="danger" disabled={busy} onClick={() => void removeSelected()}>
               {busy ? 'Deleting…' : `Delete ${fileCountLabel(selected.length)}`}
@@ -822,11 +824,11 @@ export default function DriveScreen() {
           <p>
             {confirming.resume !== undefined
               ? discardConfirmation(confirming.name)
-              : fileDeleteConfirmation(confirming.name)}
+              : fileDeleteConfirmation(confirming.name, retentionDays)}
           </p>
           <div className="mt-3 flex gap-2">
             <Button variant="danger" disabled={busy} onClick={() => void remove()}>
-              {confirming.resume !== undefined ? 'Discard the upload' : 'Delete permanently'}
+              {confirming.resume !== undefined ? 'Discard the upload' : deleteActionLabel(retentionDays)}
             </Button>
             <Button variant="secondary" disabled={busy} onClick={() => setConfirming(undefined)}>
               {confirming.resume !== undefined ? 'Keep it for now' : 'Keep it'}

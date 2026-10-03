@@ -16,7 +16,7 @@ import {
   mnemonicSentence,
   SECOND_FACTOR_COPY,
 } from '@/lib/app';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
+import { useAuthedContext, useZekke } from '@/components/session/ZekkeProvider';
 import { Button, Card, Notice, PinField, TextArea, type PinFieldHandle } from '@/components/ui';
 
 function PinFields({
@@ -62,7 +62,7 @@ function PinFields({
 }
 
 function DevicePinCard() {
-  const { services, reportError } = useCryple();
+  const { services, reportError } = useZekke();
   const [pin, setPin] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [busy, setBusy] = useState(false);
@@ -137,7 +137,7 @@ async function withRoot<T>(
 
 function EnableParanoidCard() {
   const context = useAuthedContext();
-  const { refreshAccount, reportError } = useCryple();
+  const { refreshAccount, reportError } = useZekke();
   const [mnemonic, setMnemonic] = useState('');
   const [pin, setPin] = useState('');
   const [confirmation, setConfirmation] = useState('');
@@ -213,7 +213,7 @@ function EnableParanoidCard() {
 
 function RotateAccountPinCard() {
   const context = useAuthedContext();
-  const { reportError } = useCryple();
+  const { reportError } = useZekke();
   const [mnemonic, setMnemonic] = useState('');
   const [current, setCurrent] = useState('');
   const [pin, setPin] = useState('');
@@ -312,7 +312,7 @@ function RotateAccountPinCard() {
 }
 
 export default function PinScreen() {
-  const { paranoid, fullDevice } = useCryple();
+  const { paranoid, fullDevice } = useZekke();
 
   return (
     <div className="space-y-6">
