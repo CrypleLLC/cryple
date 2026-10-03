@@ -29,6 +29,7 @@ export interface AccountRecord {
   username: string;
   uuid: string;
   paranoid: boolean;
+  retention_days: number;
   created_at: string;
 }
 

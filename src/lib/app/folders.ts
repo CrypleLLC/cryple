@@ -6,7 +6,7 @@ import {
   type FolderManifest,
   type FolderManifestProblem,
   type FolderRules,
-} from '@/lib/folders';
+} from "@/lib/folders";
 
 export interface FolderTab {
   id: string;
@@ -20,8 +20,8 @@ export interface FolderNouns {
   many: string;
 }
 
-export const SECRET_NOUNS: FolderNouns = { one: 'secret', many: 'secrets' };
-export const NOTE_NOUNS: FolderNouns = { one: 'note', many: 'notes' };
+export const SECRET_NOUNS: FolderNouns = { one: "secret", many: "secrets" };
+export const NOTE_NOUNS: FolderNouns = { one: "note", many: "notes" };
 
 export function countOf(count: number, nouns: FolderNouns): string {
   return `${count} ${count === 1 ? nouns.one : nouns.many}`;
@@ -55,37 +55,60 @@ export function itemsInTab<T>(
   idOf: (item: T) => string,
   rules: FolderRules,
 ): T[] {
-  return items.filter((item) => (folderOf(manifest, idOf(item), rules) ?? HOME_FOLDER_ID) === tabId);
+  return items.filter(
+    (item) =>
+      (folderOf(manifest, idOf(item), rules) ?? HOME_FOLDER_ID) === tabId,
+  );
 }
 
-export function activeTabOf(tabs: readonly FolderTab[], wanted: string | undefined): string {
-  return tabs.find((tab) => tab.id === wanted)?.id ?? tabs[0]?.id ?? HOME_FOLDER_ID;
+export function activeTabOf(
+  tabs: readonly FolderTab[],
+  wanted: string | undefined,
+): string {
+  return (
+    tabs.find((tab) => tab.id === wanted)?.id ?? tabs[0]?.id ?? HOME_FOLDER_ID
+  );
 }
 
-export function tabNameProblem(name: string, tabs: readonly FolderTab[], renaming?: string): string | undefined {
+export function tabNameProblem(
+  name: string,
+  tabs: readonly FolderTab[],
+  renaming?: string,
+): string | undefined {
   const trimmed = name.trim();
-  if (trimmed === '') {
-    return 'Give the tab a name.';
+  if (trimmed === "") {
+    return "Give the tab a name.";
   }
   if (trimmed.length > MAX_FOLDER_NAME_LENGTH) {
     return `A tab name is at most ${MAX_FOLDER_NAME_LENGTH} characters.`;
   }
   const clash = tabs.find(
-    (tab) => tab.id !== renaming && tab.name.trim().toLocaleLowerCase() === trimmed.toLocaleLowerCase(),
+    (tab) =>
+      tab.id !== renaming &&
+      tab.name.trim().toLocaleLowerCase() === trimmed.toLocaleLowerCase(),
   );
-  return clash === undefined ? undefined : `There is already a tab called “${clash.name}”.`;
+  return clash === undefined
+    ? undefined
+    : `There is already a tab called “${clash.name}”.`;
 }
 
-export function tabDeleteConfirmation(tab: FolderTab, nouns: FolderNouns): string {
+export function tabDeleteConfirmation(
+  tab: FolderTab,
+  nouns: FolderNouns,
+): string {
   if (tab.count === 0) {
     return `Delete the tab “${tab.name}”? It is empty, so nothing else is removed.`;
   }
   return `Deleting “${tab.name}” also deletes the ${countOf(tab.count, nouns)} in it, permanently.`;
 }
 
-export function tabDeleteRefusal(tab: FolderTab, fullDevice: boolean, nouns: FolderNouns): string | undefined {
+export function tabDeleteRefusal(
+  tab: FolderTab,
+  fullDevice: boolean,
+  nouns: FolderNouns,
+): string | undefined {
   if (tab.home) {
-    return 'This tab is where everything without a tab lives, so it cannot be deleted. You can rename it.';
+    return "This tab is where everything without a tab lives, so it cannot be deleted. You can rename it.";
   }
   if (tab.count > 0 && !fullDevice) {
     return `Only a full device can delete ${nouns.many}. Move them out of “${tab.name}” first, or delete it from a full device.`;
@@ -94,23 +117,26 @@ export function tabDeleteRefusal(tab: FolderTab, fullDevice: boolean, nouns: Fol
 }
 
 const INVALID_TREE_COPY: Record<FolderManifestProblem, string> = {
-  cycle: 'the tabs refer to each other in a loop',
-  'too-deep': 'a tab is nested inside another',
-  'unknown-parent': 'a tab refers to one that does not exist',
-  'deleted-parent': 'a tab sits inside a deleted one',
-  'missing-home': 'the main tab is missing',
-  'unknown-folder': 'an item is filed in a tab that never existed',
-  malformed: 'the stored tabs do not decode',
-  'bad-name': 'a tab has no usable name',
-  'unknown-version': 'the stored tabs were written by a newer version of Cryple',
+  cycle: "the tabs refer to each other in a loop",
+  "too-deep": "a tab is nested inside another",
+  "unknown-parent": "a tab refers to one that does not exist",
+  "deleted-parent": "a tab sits inside a deleted one",
+  "missing-home": "the main tab is missing",
+  "unknown-folder": "an item is filed in a tab that never existed",
+  malformed: "the stored tabs do not decode",
+  "bad-name": "a tab has no usable name",
+  "unknown-version": "the stored tabs were written by a newer version of Zekke",
 };
 
 export function invalidTabsMessage(problem: FolderManifestProblem): string {
   return `Your tabs could not be shown safely: ${INVALID_TREE_COPY[problem]}. Everything is listed in one place until the tabs are reset. Resetting keeps every item and only forgets the tabs.`;
 }
 
-export const DOCUMENT_NOUNS: FolderNouns = { one: 'document', many: 'documents' };
-export const FILE_NOUNS: FolderNouns = { one: 'file', many: 'files' };
+export const DOCUMENT_NOUNS: FolderNouns = {
+  one: "document",
+  many: "documents",
+};
+export const FILE_NOUNS: FolderNouns = { one: "file", many: "files" };
 
 export function folderNameProblem(
   name: string,
@@ -118,38 +144,58 @@ export function folderNameProblem(
   renaming?: string,
 ): string | undefined {
   const trimmed = name.trim();
-  if (trimmed === '') {
-    return 'Give the folder a name.';
+  if (trimmed === "") {
+    return "Give the folder a name.";
   }
   if (trimmed.length > MAX_FOLDER_NAME_LENGTH) {
     return `A folder name is at most ${MAX_FOLDER_NAME_LENGTH} characters.`;
   }
   const clash = siblings.find(
     (folder) =>
-      folder.id !== renaming && folder.name?.trim().toLocaleLowerCase() === trimmed.toLocaleLowerCase(),
+      folder.id !== renaming &&
+      folder.name?.trim().toLocaleLowerCase() === trimmed.toLocaleLowerCase(),
   );
-  return clash === undefined ? undefined : `There is already a folder called “${clash.name}” here.`;
+  return clash === undefined
+    ? undefined
+    : `There is already a folder called “${clash.name}” here.`;
 }
 
-export function folderDeleteConfirmation(name: string, subfolders: number, nouns: FolderNouns): string {
+export function folderDeleteConfirmation(
+  name: string,
+  subfolders: number,
+  nouns: FolderNouns,
+  retentionDays = 0,
+): string {
   const inside =
     subfolders === 0
       ? `every ${nouns.one} in it`
-      : `the ${subfolders === 1 ? 'folder' : `${subfolders} folders`} inside it and every ${nouns.one} they hold`;
+      : `the ${subfolders === 1 ? "folder" : `${subfolders} folders`} inside it and every ${nouns.one} they hold`;
+  if (retentionDays > 0) {
+    return (
+      `“${name}” goes to the Trash with ${inside}. You can restore it, whole, for ` +
+      `${retentionDays === 1 ? "1 day" : `${retentionDays} days`}; after that it is deleted for good.`
+    );
+  }
   return `Deleting “${name}” also deletes ${inside}, permanently.`;
 }
 
-export function folderDeleteSummary(result: { folders: number; items: number }, nouns: FolderNouns): string {
-  const folders = result.folders === 1 ? '1 folder' : `${result.folders} folders`;
+export function folderDeleteSummary(
+  result: { folders: number; items: number },
+  nouns: FolderNouns,
+): string {
+  const folders =
+    result.folders === 1 ? "1 folder" : `${result.folders} folders`;
   return `Deleted ${folders} and ${countOf(result.items, nouns)}.`;
 }
 
-export function folderMoveProblem(code: 'FOLDER_TOO_DEEP' | 'FOLDER_INTO_ITSELF'): string {
-  return code === 'FOLDER_TOO_DEEP'
-    ? 'Folders go at most 8 levels deep, and that move would go deeper.'
-    : 'A folder cannot go inside itself or one of its own folders.';
+export function folderMoveProblem(
+  code: "FOLDER_TOO_DEEP" | "FOLDER_INTO_ITSELF",
+): string {
+  return code === "FOLDER_TOO_DEEP"
+    ? "Folders go at most 8 levels deep, and that move would go deeper."
+    : "A folder cannot go inside itself or one of its own folders.";
 }
 
-export const UNREADABLE_FOLDER = 'Unreadable folder';
+export const UNREADABLE_FOLDER = "Unreadable folder";
 export const INVALID_TREE_MESSAGE =
-  'Your folders could not be shown safely: the tree the server returned does not hold together. Everything is listed at the top level instead.';
+  "Your folders could not be shown safely: the tree the server returned does not hold together. Everything is listed at the top level instead.";

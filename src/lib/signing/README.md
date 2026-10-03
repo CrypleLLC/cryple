@@ -72,6 +72,9 @@ is batchable. The count is asserted.
 - **The four deletes** (`secret-delete`, `note-delete`, `document-delete`, `file-delete`) are
   batchable: ids are sorted and de-duplicated before signing, and the single delete is the
   one-element case. They need a full device.
+- **`document-purge` and `file-purge`** are the Trash's destruction, the same shape as
+  `secret-purge`: variadic over the Trash entries' ids, sorted and de-duplicated
+  ([`lib/trash`](../trash/README.md)).
 - **`secret-purge`** is `secret-delete`'s shape with a different label. Since a vault delete only
   moves a secret to Recently deleted, the purge is the destruction, and a separate label means a
   captured delete signature can never be replayed as one
@@ -81,6 +84,9 @@ is batchable. The count is asserted.
   of exactly what is stored.
 - **`folders-update` binds the scope** beside the revision and the digest, so a manifest signed for
   `secrets` cannot be stored as the `notes` one ([`lib/folders`](../folders/README.md)).
+- **`connection-folders-update` binds the connection and the key** beside the revision and the
+  digest: a friendship's folder manifest sealed under a connection key that a re-establishment
+  replaced cannot be stored as if it were current ([`lib/sharing`](../sharing/README.md#the-folders-of-a-friendship--foldersts)).
 - **`username-update` binds the normalised name**, which [`lib/users`](../users/README.md)
   applies before signing.
 

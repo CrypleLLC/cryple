@@ -19,13 +19,13 @@ import {
   mnemonicSentence,
   type DeviceRow,
 } from '@/lib/app';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
+import { useAuthedContext, useZekke } from '@/components/session/ZekkeProvider';
 import ConnectExtension from './ConnectExtension';
 import { Badge, Button, Card, Field, Notice, TextArea } from '@/components/ui';
 
 export default function DevicesScreen() {
   const context = useAuthedContext();
-  const { fullDevice, holds, reportError } = useCryple();
+  const { fullDevice, holds, reportError } = useZekke();
   const [rows, setRows] = useState<DeviceRow[]>([]);
   const [verified, setVerified] = useState<boolean>();
   const [verificationDismissed, setVerificationDismissed] = useState(false);
@@ -197,7 +197,7 @@ function RemoveDevice({
   onCancel: () => void;
 }) {
   const context = useAuthedContext();
-  const { reportError } = useCryple();
+  const { reportError } = useZekke();
   const [mnemonic, setMnemonic] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();

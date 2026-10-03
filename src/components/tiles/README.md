@@ -7,6 +7,7 @@ The parts every file grid shares — Notes, Documents and the Drive. Import from
 | `TileCheckbox.tsx` | The selection checkbox in a tile's corner, invisible until hover or selection mode | `PageTile`, the drive tile |
 | `TileAction.tsx` | The small square control in a tile's corner — share, download, rename, delete, dismiss | `PageTile`, the drive tile, folder tiles |
 | `ListingRow.tsx` | `Listing`, the list layout's header and rows, and `ListingRow`, one folder or file in it ([Grid or list](#grid-or-list)) | The drive, Documents, folder rows |
+| `useMarqueeSelection.tsx` | Selecting with the mouse: a box dragged over empty space, and Ctrl/⌘-click ([below](#selecting-with-the-mouse)) | The drive, Documents |
 | `PageTile.tsx` | A page miniature: paper frame, content or an unreadable glyph, bottom fade, title, and an optional caption | Notes, Documents |
 
 `TileCheckbox` takes its position as a class (`left-3 top-3` on a page, `left-1 top-1` on a drive
@@ -116,3 +117,42 @@ and the size control is hidden while the list is shown, because there is nothing
   hover; rows drag onto folders and path segments, and folder rows are drop targets. The drive's
   controls are one component, `DriveFileActions`, drawn by both the tile and the row, so the two
   layouts cannot offer different actions.
+
+## Selecting with the mouse
+
+The drive and Documents select the way a desktop file manager does, on top of the checkbox and the
+*Select* button:
+
+- **Drag a box over empty space** and every file or document it touches is selected, live, as it
+  grows. The box is drawn in the brand colour over the page and follows the pointer; the selection is
+  replaced by what it touches, or **added to with Ctrl, ⌘ or Shift** held when the drag began.
+  Selecting anything turns selection mode on, so the toolbar's readout, *Move to…* and *Delete*
+  appear exactly as if the checkboxes had been ticked.
+- **A click on empty space leaves selection mode**, exactly as *Cancel* does: nothing selected, the
+  checkboxes hidden again, the toolbar back to *Select*, and a delete confirmation that was showing
+  withdrawn (`onExit`). A drag of less than four pixels is a click (`MARQUEE_THRESHOLD_PIXELS`), so
+  a slightly shaky click does not become a one-pixel box. A click with Ctrl, ⌘ or Shift held does
+  not exit, since those mean *add to what is selected*.
+- **Ctrl/⌘-click toggles one item** without opening it, and without entering the item: the handler
+  runs in the capture phase and stops the click before the tile's own `onClick`.
+- **Dragging a selected item drags the whole selection** onto a folder, a path segment or a tab, as
+  it already did; `startItemDrag` now shows a badge — *3 files*, *5 documents* — as the drag image
+  when more than one thing is moving, because the default image was the one tile under the pointer
+  and said nothing about the other two.
+
+How it decides, in [`lib/app/marquee.ts`](../../lib/app/README.md) (tested): the box is the
+rectangle between the press and the pointer whichever way it was drawn (`boxBetween`), an item is
+hit when its rectangle overlaps the box at all (`boxesTouch`, an edge shared is not a touch), and
+`marqueeSelection` replaces or unions.
+
+How it finds the items: a selectable tile or row carries **`data-select-id`** — `PageTile` and
+`ListingRow` take it as `selectId`, the drive's tile sets it itself — and the hook measures those
+elements inside the container on each move. **Folders do not carry it**, because a folder is not
+selectable in these grids; an upload in progress or a placeholder does not either, because it cannot
+be acted on.
+
+**The box only starts on background.** A press on a tile, a row, any button, link, form field,
+checkbox or draggable element is left alone: pressing a tile has to stay a native drag, and a box
+starting there would fight it. It is mouse-only — on touch the same gesture scrolls the page, and a
+long press there is the checkbox's job. While a box is being drawn, text selection is turned off on
+the page and turned back on at the end.

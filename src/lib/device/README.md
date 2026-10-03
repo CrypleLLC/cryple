@@ -34,22 +34,22 @@ the X25519 key.
 
 ## `store.ts` — where the record lives
 
-**IndexedDB** (`cryple-device` → `device` → `current`), because only IndexedDB can store a
+**IndexedDB** (`zekke-device` → `device` → `current`), because only IndexedDB can store a
 non-extractable `CryptoKey`. It is one of the two exemptions to the IndexedDB lint rule, beside
 unfinished upload handles. `memoryDeviceStore` is the same interface in memory, for tests and for
 Node.
 
 ### `discardAbandonedLocalStorage`
 
-Runs once when the app boots (`CrypleProvider`) and removes what earlier deployments left in
+Runs once when the app boots (`ZekkeProvider`) and removes what earlier deployments left in
 `localStorage`. **Nothing in this repository writes any of it**, and `localStorage` outlives the
 deployment that filled it, so a browser that ran an older build still holds it.
 
-| What                           | Why it must go                                                                                                                                                                                              |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `encrypted_seed`               | The seed, wrapped under the device PIN. A 6-digit PIN in front of an offline blob is a few minutes of guessing. [Task 128](../../../../tasks-closed.md#task-128) ended the shape; this removes what it left |
-| `cryple_mode_hint`             | Names the account's mode to anything that can read the origin                                                                                                                                               |
-| `cryple.sharing.fingerprint.*` | The plaintext root-key pins 40.11 replaced with the sealed address book. A stale pin is also a stale answer to "has this contact's key changed?"                                                            |
+| What                          | Why it must go                                                                                                                                                                                              |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `encrypted_seed`              | The seed, wrapped under the device PIN. A 6-digit PIN in front of an offline blob is a few minutes of guessing. [Task 128](../../../../tasks-closed.md#task-128) ended the shape; this removes what it left |
+| `zekke_mode_hint`             | Names the account's mode to anything that can read the origin                                                                                                                                               |
+| `zekke.sharing.fingerprint.*` | The plaintext root-key pins 40.11 replaced with the sealed address book. A stale pin is also a stale answer to "has this contact's key changed?"                                                            |
 
 The prefixed pins are swept by prefix, not by name: there is one per contact, and how many a given
 browser holds is unknowable from here. Removing them is the whole fix, so the function takes no

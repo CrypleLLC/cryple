@@ -105,7 +105,7 @@ export async function uploadFile(
     const ciphertext = await sealManifest(manifest, dek);
     const id = options.id ?? crypto.randomUUID();
 
-    const { file: created } = await withCurrentGeneration(context, async () =>
+    const { file: created, created: isNew } = await withCurrentGeneration(context, async () =>
       createFile(context, {
         id,
         ciphertext,
@@ -114,6 +114,10 @@ export async function uploadFile(
         chunk_count: layout.chunkCount,
       }),
     );
+
+    if (!isNew) {
+      return await continueStored(context, created, file, options);
+    }
 
     if (created.upload === undefined) {
       throw new MissingUploadTicketError(created.id);
@@ -149,6 +153,27 @@ export async function uploadThumbnail(
     return stored.id;
   } catch {
     return undefined;
+  }
+}
+
+async function continueStored(
+  context: FilesContext,
+  stored: FileRecord,
+  file: UploadFile,
+  options: UploadOptions,
+): Promise<FileRecord> {
+  if (stored.r2_state !== 'ok') {
+    return resumeUpload(context, stored, file, options);
+  }
+
+  const dek = await wrapper(context).unwrapDek(stored);
+  try {
+    const manifest = await openManifest(stored.ciphertext, dek);
+    assertManifestMatchesRow(manifest, stored.size_bytes);
+    await assertSameSource(file, manifest, dek, layoutFor(manifest.size));
+    return stored;
+  } finally {
+    zeroBytes(dek);
   }
 }
 

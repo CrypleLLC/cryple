@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { ACCOUNT_MENU_COPY, SETTINGS_TABS, type SettingsTabId } from '@/lib/app';
-import { useCryple } from '@/components/session/CrypleProvider';
+import { useZekke } from '@/components/session/ZekkeProvider';
 import AccountScreen from './AccountScreen';
 import DevicesScreen from './DevicesScreen';
 import PinScreen from './PinScreen';
@@ -19,7 +19,7 @@ const PANELS: Record<SettingsTabId, () => React.JSX.Element> = {
 };
 
 export default function SettingsModal({ onClose }: { onClose: () => void }) {
-  const { holds } = useCryple();
+  const { holds } = useZekke();
   const tabs = SETTINGS_TABS.filter((entry) => entry.id !== 'sharing' || holds('sharing'));
   const [tab, setTab] = useState<SettingsTabId>(tabs[0].id);
   const Panel = PANELS[tab];

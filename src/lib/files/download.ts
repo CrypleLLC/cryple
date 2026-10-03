@@ -175,6 +175,8 @@ export interface DownloadOptions {
   maxBytes?: number;
   verifyDigest?: boolean;
   fetchImpl?: typeof fetch;
+  onProgress?: (doneBytes: number, totalBytes: number) => void;
+  signal?: AbortSignal;
 }
 
 export interface DownloadedFile {
@@ -196,7 +198,7 @@ export async function downloadFile(
     }
 
     const fetchImpl = options.fetchImpl ?? fetch;
-    const response = await fetchImpl(record.url);
+    const response = await fetchImpl(record.url, options.signal === undefined ? undefined : { signal: options.signal });
     if (!response.ok || response.body === null) {
       throw new Error(`the object store answered ${response.status} for this file`);
     }
@@ -205,7 +207,7 @@ export async function downloadFile(
       expectedSha256: options.verifyDigest === false ? undefined : record.ciphertext_sha256,
     });
 
-    return { manifest, bytes: await collect(plaintext, manifest.size) };
+    return { manifest, bytes: await collect(plaintext, manifest.size, options.onProgress) };
   } finally {
     zeroBytes(dek);
   }
@@ -264,11 +266,16 @@ function sealedLengthOf(manifest: FileManifest, index: number): number {
   return payloadBytesFor(layoutFor(manifest.size).paddedBytes, index) + CHUNK_OVERHEAD_BYTES;
 }
 
-async function collect(stream: ReadableStream<Uint8Array>, size: number): Promise<Uint8Array> {
+async function collect(
+  stream: ReadableStream<Uint8Array>,
+  size: number,
+  onProgress?: (doneBytes: number, totalBytes: number) => void,
+): Promise<Uint8Array> {
   const out = new Uint8Array(size);
   const reader = stream.getReader();
   let at = 0;
 
+  onProgress?.(0, size);
   for (;;) {
     const { done, value } = await reader.read();
     if (done) {
@@ -276,6 +283,7 @@ async function collect(stream: ReadableStream<Uint8Array>, size: number): Promis
     }
     out.set(value, at);
     at += value.length;
+    onProgress?.(at, size);
   }
 
   return at === size ? out : out.subarray(0, at);

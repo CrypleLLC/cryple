@@ -6,7 +6,7 @@ A **verbatim copy** of
 [`../api-general/docs/crypto/test-vectors.json`](../../../../api-general/docs/crypto/test-vectors.json).
 
 This client only ever _reads_ this file. Regenerating it is a backend operation
-(`go run ./tools/cryplevectors` in `../api-general`) and is idempotent — **if its output
+(`go run ./tools/zekkevectors` in `../api-general`) and is idempotent — **if its output
 differs from the committed file, a protocol constant changed.** That is a breaking change to
 every user's keys, not a fix.
 

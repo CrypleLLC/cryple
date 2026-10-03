@@ -1,24 +1,24 @@
-import { Extension } from '@tiptap/core';
-import type { Editor } from '@tiptap/core';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
-import type { EditorState } from '@tiptap/pm/state';
-import type { Node as PMNode } from '@tiptap/pm/model';
-import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import type { EditorView } from '@tiptap/pm/view';
+import { Extension } from "@tiptap/core";
+import type { Editor } from "@tiptap/core";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
+import type { EditorState } from "@tiptap/pm/state";
+import type { Node as PMNode } from "@tiptap/pm/model";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import type { EditorView } from "@tiptap/pm/view";
 import {
   pageCount,
   paginate,
   samePagination,
   type PageStart,
   type PaginationBlock,
-} from '@/lib/documents';
-import { PAGE_BREAK_NAME } from './pageBreak';
+} from "@/lib/documents";
+import { PAGE_BREAK_NAME } from "./pageBreak";
 
-const GAP_CLASS = 'cryple-page-gap';
-const GAP_CURSOR_CLASS = 'ProseMirror-gapcursor';
+const GAP_CLASS = "zekke-page-gap";
+const GAP_CURSOR_CLASS = "ProseMirror-gapcursor";
 const MAX_PASSES = 4;
 
-export const paginationKey = new PluginKey<PaginationState>('cryple-pagination');
+export const paginationKey = new PluginKey<PaginationState>("zekke-pagination");
 
 interface PaginationState {
   pages: number;
@@ -26,7 +26,11 @@ interface PaginationState {
   decorations: DecorationSet;
 }
 
-const EMPTY: PaginationState = { pages: 1, starts: [], decorations: DecorationSet.empty };
+const EMPTY: PaginationState = {
+  pages: 1,
+  starts: [],
+  decorations: DecorationSet.empty,
+};
 
 export function documentPageCount(state: EditorState): number {
   return paginationKey.getState(state)?.pages ?? 1;
@@ -37,7 +41,7 @@ export function pageCountOf(editor: Editor | null): number {
 }
 
 export const Pagination = Extension.create({
-  name: 'cryplePagination',
+  name: "ZekkePagination",
 
   addProseMirrorPlugins() {
     return [
@@ -46,14 +50,19 @@ export const Pagination = Extension.create({
         state: {
           init: () => EMPTY,
           apply(transaction, value) {
-            const next = transaction.getMeta(paginationKey) as PaginationState | undefined;
+            const next = transaction.getMeta(paginationKey) as
+              | PaginationState
+              | undefined;
             if (next !== undefined) {
               return next;
             }
             if (transaction.docChanged) {
               return {
                 ...value,
-                decorations: value.decorations.map(transaction.mapping, transaction.doc),
+                decorations: value.decorations.map(
+                  transaction.mapping,
+                  transaction.doc,
+                ),
               };
             }
             return value;
@@ -150,7 +159,10 @@ class PaginationView {
     this.measuredDoc = view.state.doc;
 
     const anchors = starts.map((start) => blocks.positions[start.index]);
-    if (samePagination(current.starts, starts) && sameAnchors(current.decorations, anchors)) {
+    if (
+      samePagination(current.starts, starts) &&
+      sameAnchors(current.decorations, anchors)
+    ) {
       this.passes = 0;
       return;
     }
@@ -174,25 +186,33 @@ class PaginationView {
 
     view.dispatch(
       view.state.tr
-        .setMeta(paginationKey, { pages: pageCount(starts), starts, decorations })
-        .setMeta('addToHistory', false),
+        .setMeta(paginationKey, {
+          pages: pageCount(starts),
+          starts,
+          decorations,
+        })
+        .setMeta("addToHistory", false),
     );
   }
 }
 
-function sameAnchors(decorations: DecorationSet, anchors: readonly number[]): boolean {
+function sameAnchors(
+  decorations: DecorationSet,
+  anchors: readonly number[],
+): boolean {
   const live = decorations.find();
   return (
-    live.length === anchors.length && live.every((decoration, index) => decoration.from === anchors[index])
+    live.length === anchors.length &&
+    live.every((decoration, index) => decoration.from === anchors[index])
   );
 }
 
 function gapElement(height: number): HTMLElement {
-  const element = document.createElement('div');
+  const element = document.createElement("div");
   element.className = GAP_CLASS;
   element.style.height = `${height}px`;
-  element.contentEditable = 'false';
-  element.setAttribute('aria-hidden', 'true');
+  element.contentEditable = "false";
+  element.setAttribute("aria-hidden", "true");
   return element;
 }
 
@@ -228,8 +248,11 @@ function readBlocks(
     const dom = elements[index];
     const block: PaginationBlock = {
       height: dom.getBoundingClientRect().height,
-      spacing: index === 0 ? 0 : Number.parseFloat(window.getComputedStyle(dom).marginTop) || 0,
-      keepWithNext: node.type.name === 'heading',
+      spacing:
+        index === 0
+          ? 0
+          : Number.parseFloat(window.getComputedStyle(dom).marginTop) || 0,
+      keepWithNext: node.type.name === "heading",
       breaksAfter: node.type.name === PAGE_BREAK_NAME,
     };
 
@@ -286,21 +309,22 @@ interface PageGeometry {
 }
 
 function pageGeometry(dom: HTMLElement): PageGeometry | undefined {
-  const page = dom.closest<HTMLElement>('.cryple-page');
+  const page = dom.closest<HTMLElement>(".zekke-page");
   if (page === null) {
     return undefined;
   }
 
-  const margin = Number.parseFloat(window.getComputedStyle(page).paddingTop) || 0;
-  const content = probe(page, 'var(--page-height)') - margin * 2;
+  const margin =
+    Number.parseFloat(window.getComputedStyle(page).paddingTop) || 0;
+  const content = probe(page, "var(--page-height)") - margin * 2;
 
   return content > 0
-    ? { content, gutter: margin * 2 + probe(page, 'var(--page-gap)') }
+    ? { content, gutter: margin * 2 + probe(page, "var(--page-gap)") }
     : undefined;
 }
 
 function probe(page: HTMLElement, value: string): number {
-  const element = document.createElement('div');
+  const element = document.createElement("div");
   element.style.cssText = `position:absolute;visibility:hidden;width:0;height:${value}`;
   page.appendChild(element);
   const height = element.getBoundingClientRect().height;

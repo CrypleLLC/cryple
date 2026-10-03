@@ -1,16 +1,20 @@
-const DATABASE_NAME = 'cryple-drive';
+const DATABASE_NAME = "zekke-drive";
 const DATABASE_VERSION = 1;
-const SOURCE_STORE = 'upload-sources';
+const SOURCE_STORE = "upload-sources";
 
-export type SourcePermission = 'granted' | 'denied' | 'prompt';
+export type SourcePermission = "granted" | "denied" | "prompt";
 
 interface PermissionDescriptor {
-  mode: 'read' | 'readwrite';
+  mode: "read" | "readwrite";
 }
 
 interface HandleWithPermission extends FileSystemFileHandle {
-  queryPermission?: (descriptor: PermissionDescriptor) => Promise<SourcePermission>;
-  requestPermission?: (descriptor: PermissionDescriptor) => Promise<SourcePermission>;
+  queryPermission?: (
+    descriptor: PermissionDescriptor,
+  ) => Promise<SourcePermission>;
+  requestPermission?: (
+    descriptor: PermissionDescriptor,
+  ) => Promise<SourcePermission>;
 }
 
 interface FilePickerWindow {
@@ -35,7 +39,9 @@ export interface UploadSource {
   handle?: FileSystemFileHandle;
 }
 
-export async function chooseSources(multiple: boolean): Promise<UploadSource[] | undefined> {
+export async function chooseSources(
+  multiple: boolean,
+): Promise<UploadSource[] | undefined> {
   const picker = (window as FilePickerWindow).showOpenFilePicker;
   if (picker === undefined) {
     return undefined;
@@ -48,11 +54,15 @@ export async function chooseSources(multiple: boolean): Promise<UploadSource[] |
     return [];
   }
 
-  return Promise.all(handles.map(async (handle) => ({ file: await handle.getFile(), handle })));
+  return Promise.all(
+    handles.map(async (handle) => ({ file: await handle.getFile(), handle })),
+  );
 }
 
-export async function droppedSources(transfer: DataTransfer): Promise<UploadSource[]> {
-  const items = [...transfer.items].filter((item) => item.kind === 'file');
+export async function droppedSources(
+  transfer: DataTransfer,
+): Promise<UploadSource[]> {
+  const items = [...transfer.items].filter((item) => item.kind === "file");
   const sources = await Promise.all(
     items.map(async (item): Promise<UploadSource | undefined> => {
       const file = item.getAsFile();
@@ -65,26 +75,36 @@ export async function droppedSources(transfer: DataTransfer): Promise<UploadSour
     }),
   );
 
-  const kept = sources.filter((source): source is UploadSource => source !== undefined);
+  const kept = sources.filter(
+    (source): source is UploadSource => source !== undefined,
+  );
 
   return kept.length > 0 ? kept : [...transfer.files].map((file) => ({ file }));
 }
 
-async function asFileHandle(item: DataTransferItem): Promise<FileSystemFileHandle | undefined> {
-  const getHandle = (item as DataTransferItem & HandleTransfer).getAsFileSystemHandle;
+async function asFileHandle(
+  item: DataTransferItem,
+): Promise<FileSystemFileHandle | undefined> {
+  const getHandle = (item as DataTransferItem & HandleTransfer)
+    .getAsFileSystemHandle;
   if (getHandle === undefined) {
     return undefined;
   }
 
   try {
     const handle = await getHandle.call(item);
-    return handle !== null && handle.kind === 'file' ? (handle as FileSystemFileHandle) : undefined;
+    return handle !== null && handle.kind === "file"
+      ? (handle as FileSystemFileHandle)
+      : undefined;
   } catch {
     return undefined;
   }
 }
 
-export async function rememberSource(id: string, handle: FileSystemFileHandle): Promise<void> {
+export async function rememberSource(
+  id: string,
+  handle: FileSystemFileHandle,
+): Promise<void> {
   const remembered: RememberedSource = {
     id,
     handle,
@@ -95,8 +115,12 @@ export async function rememberSource(id: string, handle: FileSystemFileHandle): 
   await write((store) => store.put(remembered, id));
 }
 
-export async function recallSource(id: string): Promise<FileSystemFileHandle | undefined> {
-  const remembered = await read<RememberedSource | undefined>((store) => store.get(id));
+export async function recallSource(
+  id: string,
+): Promise<FileSystemFileHandle | undefined> {
+  const remembered = await read<RememberedSource | undefined>((store) =>
+    store.get(id),
+  );
 
   return remembered?.handle;
 }
@@ -111,7 +135,9 @@ export async function forgetSource(id: string): Promise<void> {
   await write((store) => store.delete(id));
 }
 
-export async function forgetSourcesExcept(keep: readonly string[]): Promise<void> {
+export async function forgetSourcesExcept(
+  keep: readonly string[],
+): Promise<void> {
   const kept = new Set(keep);
   const stale = (await rememberedSourceIds()).filter((id) => !kept.has(id));
 
@@ -122,7 +148,7 @@ export async function openRememberedSource(
   handle: FileSystemFileHandle,
 ): Promise<File | undefined> {
   const permission = await grantRead(handle);
-  if (permission !== 'granted') {
+  if (permission !== "granted") {
     return undefined;
   }
 
@@ -133,26 +159,31 @@ export async function openRememberedSource(
   }
 }
 
-async function grantRead(handle: FileSystemFileHandle): Promise<SourcePermission> {
+async function grantRead(
+  handle: FileSystemFileHandle,
+): Promise<SourcePermission> {
   const candidate = handle as HandleWithPermission;
-  if (candidate.queryPermission === undefined || candidate.requestPermission === undefined) {
-    return 'granted';
+  if (
+    candidate.queryPermission === undefined ||
+    candidate.requestPermission === undefined
+  ) {
+    return "granted";
   }
 
   try {
-    const current = await candidate.queryPermission({ mode: 'read' });
-    if (current === 'granted') {
+    const current = await candidate.queryPermission({ mode: "read" });
+    if (current === "granted") {
       return current;
     }
 
-    return await candidate.requestPermission({ mode: 'read' });
+    return await candidate.requestPermission({ mode: "read" });
   } catch {
-    return 'denied';
+    return "denied";
   }
 }
 
 async function open(): Promise<IDBDatabase | undefined> {
-  if (typeof indexedDB === 'undefined') {
+  if (typeof indexedDB === "undefined") {
     return undefined;
   }
 
@@ -170,14 +201,18 @@ async function open(): Promise<IDBDatabase | undefined> {
   });
 }
 
-async function read<T>(run: (store: IDBObjectStore) => IDBRequest): Promise<T | undefined> {
+async function read<T>(
+  run: (store: IDBObjectStore) => IDBRequest,
+): Promise<T | undefined> {
   const database = await open();
   if (database === undefined) {
     return undefined;
   }
 
   return new Promise((resolve) => {
-    const request = run(database.transaction(SOURCE_STORE, 'readonly').objectStore(SOURCE_STORE));
+    const request = run(
+      database.transaction(SOURCE_STORE, "readonly").objectStore(SOURCE_STORE),
+    );
     request.onsuccess = () => {
       resolve(request.result as T);
       database.close();
@@ -189,14 +224,16 @@ async function read<T>(run: (store: IDBObjectStore) => IDBRequest): Promise<T | 
   });
 }
 
-async function write(run: (store: IDBObjectStore) => IDBRequest): Promise<void> {
+async function write(
+  run: (store: IDBObjectStore) => IDBRequest,
+): Promise<void> {
   const database = await open();
   if (database === undefined) {
     return;
   }
 
   return new Promise((resolve) => {
-    const transaction = database.transaction(SOURCE_STORE, 'readwrite');
+    const transaction = database.transaction(SOURCE_STORE, "readwrite");
     run(transaction.objectStore(SOURCE_STORE));
     transaction.oncomplete = () => {
       resolve();

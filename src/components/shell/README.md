@@ -27,7 +27,8 @@ on the page under the top bar, not in the drawer: they belong to the screen, not
 Navigation is one registry, `NAV_ITEMS` in `AppShell.tsx`. Each entry is
 `{ id, label, description, icon, appIcon?, screen, actions? }`; adding a section means adding one entry and
 its screen component — the sidebar, the mobile nav and the top-bar heading all render from the
-same array. Notes was added exactly that way, as one entry; Guardians was **removed** exactly that
+same array. Notes was added exactly that way, as one entry, and so was **Trash**, the last entry,
+which has no `scope` because it serves two; Guardians was **removed** exactly that
 way on 2026-09-04, by deleting one. `actions` is the optional slot for a component rendered in the
 top bar beside Lock and the account menu, for controls that belong to the whole screen rather than to one
 panel; the Vault's global reveal toggle is the first of them. State shared between such a control
@@ -83,6 +84,15 @@ while focus is in one, belong to that dialog: without this, confirming would clo
 under it, and Escape would close both at once.
 
 `PanelFacts` is the label-over-value list the details use, so every panel's facts look the same.
+
+## A screen can fill the page
+
+`main` is a flex column, `flex-1` under the sticky header, with the notices and the screen spaced by
+`gap-8`. A screen that is also a **surface you act on**, not only a list you read, makes its root
+`flex-1` and so reaches the bottom of the window however little it holds. The drive and Documents do:
+dropping files and drawing a selection box both work anywhere the user can see the screen, including
+the empty space under the last row, because to a user the whole screen *is* the drive. Nothing is
+drawn to show that area; it is the screen. Every other screen is as tall as its content, as before.
 
 ## Reading widths are capped; miniature grids are not
 

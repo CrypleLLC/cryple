@@ -1,6 +1,6 @@
-# Cryple Web App — Agent Guide
+# Zekke Web App — Agent Guide
 
-Next.js 15 (App Router) client for the Cryple API. TypeScript, React 19, Tailwind v4.
+Next.js 15 (App Router) client for the Zekke API. TypeScript, React 19, Tailwind v4.
 
 ## Read before writing code
 
@@ -76,7 +76,7 @@ but **not in `ITEM_SCOPES`**: `lib/rekey` does walk it, by revision id rather th
 
 **Reproduce `test-vectors.json` before this client touches real data.** The fixture copy is in
 `src/test/fixtures/`. No Go test consumes the file, so this client's tests are the cross-client
-check. Regenerating it is a backend operation (`go run ./tools/cryplevectors` in
+check. Regenerating it is a backend operation (`go run ./tools/zekkevectors` in
 `../api-general`); this client only reads it.
 
 ## Signed requests
@@ -154,7 +154,7 @@ action  = <challenge> ":" <timestamp> ":" <action> [":" <arg> …]     SHA-256, 
 npm run dev       # next dev --turbopack
 npm run build     # a production build needs CSP_OBJECT_STORE_ORIGINS
 npm test          # vitest run, src/**/*.test.ts
-npm run test:e2e  # vitest against a running API (CRYPLE_E2E_API, default http://localhost:8081)
+npm run test:e2e  # vitest against a running API (ZEKKE_E2E_API, default http://localhost:8081)
 npm run lint      # eslint, flat config
 ```
 

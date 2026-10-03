@@ -9,3 +9,4 @@ export * from './handles';
 export * from './upload';
 export * from './download';
 export * from './count';
+export * from './rename';

@@ -1,16 +1,16 @@
 # `components/documents`
 
-| File | Role |
-| --- | --- |
-| `DocumentsScreen.tsx` | The documents grid of page miniatures — opens each document in its own tab |
-| `DocumentWorkspace.tsx` | The `/docs/[id]` page: title, toolbar, A4 sheet, counts, save status |
-| `DocumentToolbar.tsx` | The TipTap formatting toolbar |
-| `DocumentOutline.tsx` | The heading navigation panel beside the sheet |
-| `pageBreak.ts` | The `pageBreak` node — the one page decision that is content |
-| `pagination.ts` | Measures the sheet and decorates where each page starts |
-| `useOutline.ts` | Debounced heading reads off the editor, and `goToHeading` |
-| `useDocumentSync.ts` | Binds `DocumentSync` to a component's lifetime |
-| `extensions.ts` | The TipTap extension set, bound to the document's `Y.Doc` |
+| File                    | Role                                                                       |
+| ----------------------- | -------------------------------------------------------------------------- |
+| `DocumentsScreen.tsx`   | The documents grid of page miniatures — opens each document in its own tab |
+| `DocumentWorkspace.tsx` | The `/docs/[id]` page: title, toolbar, A4 sheet, counts, save status       |
+| `DocumentToolbar.tsx`   | The TipTap formatting toolbar                                              |
+| `DocumentOutline.tsx`   | The heading navigation panel beside the sheet                              |
+| `pageBreak.ts`          | The `pageBreak` node — the one page decision that is content               |
+| `pagination.ts`         | Measures the sheet and decorates where each page starts                    |
+| `useOutline.ts`         | Debounced heading reads off the editor, and `goToHeading`                  |
+| `useDocumentSync.ts`    | Binds `DocumentSync` to a component's lifetime                             |
+| `extensions.ts`         | The TipTap extension set, bound to the document's `Y.Doc`                  |
 
 A document's tile is a [`PageTile`](../tiles/README.md); why it looks the way it does is under
 [Document and note tiles](../tiles/README.md#document-and-note-tiles).
@@ -60,7 +60,8 @@ invalidation signal:
 ```ts
 const state = useEditorState({
   editor,
-  selector: () => (editor === null ? undefined : { bold: editor.isActive('bold') }),
+  selector: () =>
+    editor === null ? undefined : { bold: editor.isActive("bold") },
 });
 ```
 
@@ -70,19 +71,19 @@ being null; a transaction bumps `transactionNumber` and recomputes it again. Equ
 
 ### The sheet
 
-`.cryple-page-stack` in [`globals.css`](../../app/globals.css) is A4 written in millimetres —
+`.zekke-page-stack` in [`globals.css`](../../app/globals.css) is A4 written in millimetres —
 `--page-width: 210mm`, `--page-height: 297mm`, `--page-margin: 25.4mm` — because CSS defines
 `1in = 96px = 25.4mm` exactly, so physical units are deterministic here and a pixel width is only a
 paper size in disguise. The previous `max-w-[816px]` was US Letter. The margin collapses below `30rem` so the text column survives on a phone.
 
 The document renders as **discrete sheets, not one continuous page**. That is two layers: an
-`aria-hidden` absolute layer painting one `.cryple-sheet` per page, and the text flowing above it
-in a single `.cryple-page` whose `min-height` is `--page-count` pages plus the gaps between them.
+`aria-hidden` absolute layer painting one `.zekke-sheet` per page, and the text flowing above it
+in a single `.zekke-page` whose `min-height` is `--page-count` pages plus the gaps between them.
 The text never moves between containers — splitting it into per-page containers is what would
 force a document mutation — so the flow stays one uninterrupted ProseMirror document and only the
 background knows about pages.
 
-`.cryple-page` → `.cryple-page-body` → `.ProseMirror` is a three-link flex chain so the editable
+`.zekke-page` → `.zekke-page-body` → `.ProseMirror` is a three-link flex chain so the editable
 element fills the sheet. Without it the lower two-thirds of the page belongs to the sheet rather
 than to ProseMirror, and clicking there does nothing. With it, ProseMirror's own hit-testing places
 the caret — do not add a click handler calling `focus('end')`, which puts the caret in the wrong
@@ -93,7 +94,7 @@ the measured height to `--doc-chrome-h` and headings carry a matching `scroll-ma
 what keeps an outline click from landing its target underneath the chrome, and it is one
 declaration rather than offset arithmetic at each call site.
 
-Printing is the export path: `@media print` hides everything marked `cryple-no-print` (header,
+Printing is the export path: `@media print` hides everything marked `zekke-no-print` (header,
 toolbar, outline), drops the sheet's border, shadow and radius, and sets `@page { size: A4;
 margin: 0 }` so the printed margins are the sheet's own padding — the same declaration as on
 screen. Browser-added headers and footers are the user's print-dialog setting and cannot be
@@ -120,20 +121,20 @@ Four details are load-bearing:
   sheets. A widget is a single position, which maps through a split intact. It also keeps the
   measurement honest: block heights are read straight off the element, with no injected padding to
   subtract back out.
-- **`.cryple-prose` spacing is `margin-top` only**, and `:first-child` gets none. Blocks with a
+- **`.zekke-prose` spacing is `margin-top` only**, and `:first-child` gets none. Blocks with a
   `margin-bottom` would collapse against the next block's `margin-top` and the measured heights
   would no longer sum to the rendered flow. The first-child rule matters because `.ProseMirror` is
-  a flex item and therefore a BFC root: the first block's margin does *not* escape it, so without
+  a flex item and therefore a BFC root: the first block's margin does _not_ escape it, so without
   the rule page one starts lower than every other page and the arithmetic drifts by that margin.
 - **Measure in a microtask, never on a timer or `requestAnimationFrame`.** This is what decides
-  whether the feature reads as *"the next line is on the next page"* or as *"the next line is in
-  the gutter and something will move it shortly"*. Microtasks drain before the browser paints, so
+  whether the feature reads as _"the next line is on the next page"_ or as _"the next line is in
+  the gutter and something will move it shortly"_. Microtasks drain before the browser paints, so
   the corrected geometry is in place for the first frame that shows the edit and the intermediate
   state is never rendered. A timer defers past the paint — the text visibly lands in the gutter and
   jumps. rAF is worse still: it runs after layout, and it does not fire at all in a background tab,
   so a document opened in a tab that is not in front would never paginate until you looked at it.
   The layout reads force their own reflow, which is all the frame callback was ever wanted for.
-- **The skip check compares block indices *and* the decorations' live anchor positions.** Skipping
+- **The skip check compares block indices _and_ the decorations' live anchor positions.** Skipping
   a rebuild is what keeps typing cheap, but it is only safe when the spacers already on screen are
   where this pass would have put them. Indices alone are not enough: a decoration is anchored to a
   document position, so after an edit that inserts or removes a block, "the break is at index 202"
@@ -152,10 +153,10 @@ Measuring on every transaction is what buys the pre-paint correctness, so the me
 has to be cheap. Three things make it so, and all three were found by profiling a 2 000-block,
 116-page document rather than by guessing:
 
-| | before | after |
-| --- | --- | --- |
-| Measurement pass | 70.7 ms | 0.9 ms |
-| Whole keystroke | 44.3 ms | 21.7 ms |
+|                  | before  | after   |
+| ---------------- | ------- | ------- |
+| Measurement pass | 70.7 ms | 0.9 ms  |
+| Whole keystroke  | 44.3 ms | 21.7 ms |
 
 - **Never call `view.nodeDOM` per block.** It resolves a position by walking siblings, so calling
   it once per top-level node is quadratic — 33.6 ms of the original 70.7 on its own. The elements
@@ -186,8 +187,8 @@ spacer height is what makes it accumulate, because the sheets sit at exact multi
 height while the spacers stack up rounding error; the height is therefore left fractional.
 
 Print agrees with the screen **by construction** rather than by luck: the spacer is hidden and
-`.cryple-page-gap + *` becomes `break-before: page`, so the browser breaks at exactly the blocks
-the plugin chose. `@page { margin: 25.4mm }` with `.cryple-page` padding removed is what gives
+`.zekke-page-gap + *` becomes `break-before: page`, so the browser breaks at exactly the blocks
+the plugin chose. `@page { margin: 25.4mm }` with `.zekke-page` padding removed is what gives
 pages two and onward their margins — box padding only applies at the start of the box, so the
 sheet's own padding cannot serve a multi-page print.
 

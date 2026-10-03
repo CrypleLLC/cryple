@@ -3,7 +3,7 @@ import { openTestSession } from '@/test/session';
 import { spkiBase64ToUncompressedPoint } from '@/lib/encoding';
 import { openBlob, sealBlob } from '@/lib/sealed';
 import { buildActionPayload, verifyPayload } from '@/lib/signing';
-import { REKEY_BATCH_SIZE, batched, rewrapAfterRotation, rewrapScope, staleItems } from './index';
+import { REKEY_BATCH_SIZE, batched, rewrapAfterRotation, rewrapFolderNames, rewrapScope, staleItems } from './index';
 
 interface FakeResponse {
   status: number;
@@ -11,6 +11,10 @@ interface FakeResponse {
 }
 
 function mockFetch(...responses: FakeResponse[]) {
+  return mockRoutes(() => undefined, ...responses);
+}
+
+function mockRoutes(route: (url: string) => FakeResponse | undefined, ...responses: FakeResponse[]) {
   const calls: { url: string; init: RequestInit }[] = [];
   let index = 0;
 
@@ -18,7 +22,7 @@ function mockFetch(...responses: FakeResponse[]) {
     'fetch',
     vi.fn(async (url: string, init: RequestInit) => {
       calls.push({ url, init });
-      const spec = responses[Math.min(index++, responses.length - 1)];
+      const spec = route(url) ?? responses[Math.min(index++, responses.length - 1)];
       return {
         status: spec.status,
         ok: spec.status >= 200 && spec.status < 300,
@@ -198,7 +202,8 @@ describe('rewrapScope', () => {
     const old = keks.get('files:1')!;
     const wrapped = await sealBlob(crypto.getRandomValues(new Uint8Array(32)), old);
 
-    const calls = mockFetch(
+    const calls = mockRoutes(
+      emptyTrash,
       {
         status: 200,
         body: {
@@ -214,14 +219,21 @@ describe('rewrapScope', () => {
     const outcome = await rewrapScope(context, 'files');
 
     expect(outcome.requested).toBe(1);
-    expect((bodyOf(calls[1].init).items as unknown[])).toHaveLength(1);
+    const put = calls.find((call) => call.init.method === 'PUT')!;
+    expect((bodyOf(put.init).items as unknown[])).toHaveLength(1);
   });
 });
+
+const emptyTrash = (url: string): FakeResponse | undefined =>
+  /\/trash\/keys$/.test(new URL(url).pathname) ? { status: 200, body: { data: { folders: [], items: [] } } } : undefined;
+
+const noManifest = (url: string): FakeResponse | undefined =>
+  /\/(secrets|notes)\/folders$/.test(new URL(url).pathname) ? { status: 404, body: { code: 'NOT_FOUND' } } : undefined;
 
 describe('rewrapAfterRotation', () => {
   it('visits every scope that wraps DEKs, passwords included, and skips sharing', async () => {
     const { context } = await openTestSession({ generations: { secrets: 2, notes: 2 } });
-    const calls = mockFetch({ status: 200, body: { data: [] } });
+    const calls = mockRoutes(noManifest, { status: 200, body: { data: [] } });
 
     const outcomes = await rewrapAfterRotation(context, ['secrets', 'sharing', 'passwords']);
 
@@ -239,12 +251,16 @@ describe('rewrapAfterRotation', () => {
 
   it('leaves a scope this device does not hold to a device that does', async () => {
     const { context } = await openTestSession({ scopes: ['secrets', 'admin'] });
-    const calls = mockFetch({ status: 200, body: { data: [] } });
+    const calls = mockRoutes(noManifest, { status: 200, body: { data: [] } });
 
     const outcomes = await rewrapAfterRotation(context, ['secrets', 'notes', 'files']);
 
     expect(outcomes.map((outcome) => outcome.scope)).toEqual(['secrets']);
-    expect(calls).toHaveLength(2);
+    expect(calls.map((call) => new URL(call.url).pathname)).toEqual([
+      '/secrets',
+      '/secrets/deleted',
+      '/secrets/folders',
+    ]);
   });
 });
 
@@ -362,5 +378,124 @@ describe('the passwords pass', () => {
     expect(calls).toHaveLength(3);
     expect((bodyOf(calls[1].init).items as unknown[]).length).toBe(REKEY_BATCH_SIZE);
     expect((bodyOf(calls[2].init).items as unknown[]).length).toBe(1);
+  });
+});
+
+describe('the folders a rotation leaves behind', () => {
+  const stale = 'aaaaaaaa-0000-4000-8000-0000000000f1';
+  const fresh = 'aaaaaaaa-0000-4000-8000-0000000000f2';
+
+  it('re-wraps the stale folder names of a tree, signed under its own label, and never touches the name', async () => {
+    const { context, device, keks } = await openTestSession({ generations: { documents: 2 } });
+    const dek = crypto.getRandomValues(new Uint8Array(32));
+    const folder = (id: string, wrapped: string, generation: number) => ({
+      id,
+      ciphertext: 'sealed-name',
+      wrapped_dek: wrapped,
+      key_generation: generation,
+      position: 0,
+      created_at: 't',
+      updated_at: 't',
+    });
+    const calls = mockRoutes(
+      emptyTrash,
+      { status: 200, body: { data: [folder(fresh, 'current', 2), folder(stale, await sealBlob(dek, keks.get('documents:1')!), 1)] } },
+      { status: 200, body: { data: { requested: 1, rekeyed: 1 } } },
+    );
+
+    expect(await rewrapFolderNames(context, 'documents')).toEqual({ requested: 1, rekeyed: 1 });
+
+    const put = calls.find((call) => call.init.method === 'PUT')!;
+    expect(new URL(put.url).pathname).toBe('/documents/folders/keys');
+    const body = bodyOf(put.init);
+    expect(body.key_generation).toBe(2);
+    const items = body.items as { id: string; wrapped_dek: string }[];
+    expect(items.map((item) => item.id)).toEqual([stale]);
+    expect(items[0]).not.toHaveProperty('ciphertext');
+    expect([...(await openBlob(items[0].wrapped_dek, keks.get('documents:2')!))]).toEqual([...dek]);
+
+    const payload = buildActionPayload(String(body.challenge), Number(body.timestamp), 'document-folder-rekey', [stale]);
+    expect(
+      await verifyPayload(payload, String(body.signature), spkiBase64ToUncompressedPoint(device.signingPublicKey)),
+    ).toBe(true);
+  });
+
+  it('re-seals the vault tabs under the current generation after the items, and counts them', async () => {
+    const { context, keks } = await openTestSession({ generations: { notes: 2 } });
+    const dek = crypto.getRandomValues(new Uint8Array(32));
+    const manifest = { v: 1, folders: { home: { name: 'home', parent_id: null, position: 0, updated_at: '2026-10-01T00:00:00Z' } }, items: {} };
+    const record = {
+      scope: 'notes',
+      ciphertext: await sealBlob(new TextEncoder().encode(JSON.stringify(manifest)), dek),
+      wrapped_dek: await sealBlob(dek, keks.get('notes:1')!),
+      key_generation: 1,
+      revision: 5,
+      updated_at: 't',
+    };
+    const calls = mockRoutes(
+      (url) =>
+        new URL(url).pathname === '/notes/folders'
+          ? undefined
+          : { status: 200, body: { data: [] } },
+      { status: 200, body: { data: record } },
+      { status: 200, body: { data: { ...record, revision: 6, key_generation: 2 } } },
+    );
+
+    const [outcome] = await rewrapAfterRotation(context, ['notes']);
+
+    expect(outcome).toEqual({ scope: 'notes', requested: 0, rekeyed: 0, folders: 1 });
+    const put = calls.find((call) => call.init.method === 'PUT')!;
+    const body = bodyOf(put.init);
+    expect(body.key_generation).toBe(2);
+    expect(body.expected_revision).toBe(5);
+  });
+
+  it('leaves a manifest that is already current alone', async () => {
+    const { context } = await openTestSession({ generations: { notes: 2 } });
+    const calls = mockRoutes(
+      (url) =>
+        new URL(url).pathname === '/notes/folders'
+          ? { status: 200, body: { data: { scope: 'notes', ciphertext: 'c', wrapped_dek: 'w', key_generation: 2, revision: 1, updated_at: 't' } } }
+          : { status: 200, body: { data: [] } },
+    );
+
+    const [outcome] = await rewrapAfterRotation(context, ['notes']);
+
+    expect(outcome.folders).toBe(0);
+    expect(calls.some((call) => call.init.method === 'PUT')).toBe(false);
+  });
+});
+
+describe('what waits in the Trash', () => {
+  it('is re-wrapped with the live items and folders, so a restore brings no retired key back', async () => {
+    const { context, keks } = await openTestSession({ generations: { documents: 2 } });
+    const old = keks.get('documents:1')!;
+    const trashedDocument = 'dddddddd-0000-4000-8000-0000000000d1';
+    const trashedFolder = 'dddddddd-0000-4000-8000-0000000000f1';
+    const key = async () => sealBlob(crypto.getRandomValues(new Uint8Array(32)), old);
+
+    const trash = {
+      folders: [{ id: trashedFolder, wrapped_dek: await key(), key_generation: 1 }],
+      items: [{ id: trashedDocument, wrapped_dek: await key(), key_generation: 1 }],
+    };
+    const calls = mockRoutes((url) => {
+      const path = new URL(url).pathname;
+      if (path === '/documents/trash/keys') {
+        return { status: 200, body: { data: trash } };
+      }
+      if (path === '/documents' || path === '/documents/folders') {
+        return { status: 200, body: { data: [] } };
+      }
+      return { status: 200, body: { data: { requested: 1, rekeyed: 1 } } };
+    });
+
+    const [outcome] = await rewrapAfterRotation(context, ['documents']);
+
+    expect(outcome).toEqual({ scope: 'documents', requested: 1, rekeyed: 1, folders: 1 });
+    const puts = calls.filter((call) => call.init.method === 'PUT');
+    expect(puts.map((call) => [new URL(call.url).pathname, (bodyOf(call.init).items as { id: string }[]).map((item) => item.id)])).toEqual([
+      ['/documents/keys', [trashedDocument]],
+      ['/documents/folders/keys', [trashedFolder]],
+    ]);
   });
 });

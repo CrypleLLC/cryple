@@ -1,11 +1,11 @@
-# Cryple
+# Zekke
 
-[cryple.io](https://cryple.io)
+[zekke.io](https://zekke.io)
 
-Cryple is an encrypted personal drive: passwords, account details, private notes, long-form
+Zekke is an encrypted personal drive: passwords, account details, private notes, long-form
 documents. You keep them encrypted. If you lose access, people you chose can help you back in.
 
-Nobody at Cryple can read any of it. Not because of a policy, but because the servers never
+Nobody at Zekke can read any of it. Not because of a policy, but because the servers never
 receive anything readable. This repository is the web client — the part that runs in your browser
 and does all the encryption and decryption. Everything else is storage.
 
@@ -17,8 +17,8 @@ things.
 **Losing access.** Forget the master password on a properly encrypted vault and it is gone. The
 provider cannot help without holding a key, and if they hold a key they can read your data.
 
-Cryple treats that as an encryption problem rather than a customer support problem. Nobody at
-Cryple holds a key that could help — or that could be compelled. The trade is stated plainly
+Zekke treats that as an encryption problem rather than a customer support problem. Nobody at
+Zekke holds a key that could help — or that could be compelled. The trade is stated plainly
 rather than hidden: **what you hold is what you have**, and the app's job is to make sure you
 know that before you need it, not after.
 
@@ -27,7 +27,7 @@ know that before you need it, not after.
 ### Your recovery phrase is the account
 
 When you start, the app generates a phrase of 12 or 24 ordinary English words. That phrase is not
-a password you can reset. It _is_ the account. Every key Cryple uses is calculated from it, the
+a password you can reset. It _is_ the account. Every key Zekke uses is calculated from it, the
 same way every time, on any device.
 
 That has a good consequence and a hard one. The good one: type the phrase into a new browser and
@@ -84,14 +84,14 @@ be able to switch protection off.
 
 ### There is no account recovery, and that is the design
 
-An earlier version of Cryple let people you nominated hold pieces of a key that could rebuild your
+An earlier version of Zekke let people you nominated hold pieces of a key that could rebuild your
 phrase. It was removed on 2026-09-04, and the reasoning is worth stating rather than hiding:
 
-- A guardian had to already have a Cryple account, so the feature only worked for people whose
+- A guardian had to already have a Zekke account, so the feature only worked for people whose
   friends had already installed an unfamiliar app and written down a seed phrase of their own.
 - "Your friends can restore your access" is the sentence that makes a privacy-minded reader ask
   who else can get in. For a product whose whole claim is that nobody can, the answer has to stay
-  *nobody*.
+  _nobody_.
 
 So: **your phrase and your PIN are yours to keep.** In exchange, the answer to "who else could get
 into my vault" is nothing, with no asterisk. The app's obligation is to be honest about that
@@ -107,7 +107,7 @@ use now.
 Your vault at rest does not depend on those algorithms: it is sealed with symmetric encryption,
 which a quantum computer weakens but does not break. The hybrid construction matters for the other
 case — **encrypting something for another person**, where the classical algorithms are what a
-future attacker would target. So when Cryple wraps a key for someone else, it uses two independent
+future attacker would target. So when Zekke wraps a key for someone else, it uses two independent
 algorithms at once and combines them: one well-understood classical choice, one post-quantum
 standard. An attacker has to break **both**.
 
@@ -116,7 +116,7 @@ private sharing, where you send one item to another person, is what will use it 
 
 ## Running it locally
 
-Requires Node and a running instance of the [Cryple API](../api-general).
+Requires Node and a running instance of the [Zekke API](../api-general).
 
 ```bash
 npm install
@@ -160,33 +160,33 @@ precedence order when documents disagree: the frozen specifications win on byte 
 constants, [front-end-guide.md](./front-end-guide.md) and
 [front-end-endpoints.md](./front-end-endpoints.md) win on the wire contract.
 
-| Module                                             | What it owns                                        |
-| -------------------------------------------------- | --------------------------------------------------- |
-| [`lib/keys`](./src/lib/keys/README.md)             | Recovery phrase to the full key tree                |
-| [`lib/encoding`](./src/lib/encoding/README.md)     | hex, base64 and key-format conversions              |
-| [`lib/pin`](./src/lib/pin/README.md)               | The second factor, the local vault, the wipe policy |
-| [`lib/session`](./src/lib/session/README.md)       | In-memory key custody                               |
-| [`lib/api`](./src/lib/api/README.md)               | Transport, error codes, pagination, tokens          |
-| [`lib/signing`](./src/lib/signing/README.md)       | Request signatures and the action table             |
-| [`lib/auth`](./src/lib/auth/README.md)             | Sign-up, sign-in, restoring on a new device         |
-| [`lib/users`](./src/lib/users/README.md)           | Account, mode, public keys                          |
-| [`lib/pqxdh`](./src/lib/pqxdh/README.md)           | Hybrid post-quantum encryption for another person   |
-| [`lib/sealed`](./src/lib/sealed/README.md)         | The versioned encrypted-blob format                 |
-| [`lib/secrets`](./src/lib/secrets/README.md)       | Vault items                                         |
-| [`lib/app`](./src/lib/app/README.md)               | Product logic behind the interface                  |
-| [`lib/security-headers`](./src/lib/security-headers/README.md) | The Content Security Policy and response headers |
-| [`components`](./src/components/README.md)         | The React screens                                   |
+| Module                                                         | What it owns                                        |
+| -------------------------------------------------------------- | --------------------------------------------------- |
+| [`lib/keys`](./src/lib/keys/README.md)                         | Recovery phrase to the full key tree                |
+| [`lib/encoding`](./src/lib/encoding/README.md)                 | hex, base64 and key-format conversions              |
+| [`lib/pin`](./src/lib/pin/README.md)                           | The second factor, the local vault, the wipe policy |
+| [`lib/session`](./src/lib/session/README.md)                   | In-memory key custody                               |
+| [`lib/api`](./src/lib/api/README.md)                           | Transport, error codes, pagination, tokens          |
+| [`lib/signing`](./src/lib/signing/README.md)                   | Request signatures and the action table             |
+| [`lib/auth`](./src/lib/auth/README.md)                         | Sign-up, sign-in, restoring on a new device         |
+| [`lib/users`](./src/lib/users/README.md)                       | Account, mode, public keys                          |
+| [`lib/pqxdh`](./src/lib/pqxdh/README.md)                       | Hybrid post-quantum encryption for another person   |
+| [`lib/sealed`](./src/lib/sealed/README.md)                     | The versioned encrypted-blob format                 |
+| [`lib/secrets`](./src/lib/secrets/README.md)                   | Vault items                                         |
+| [`lib/app`](./src/lib/app/README.md)                           | Product logic behind the interface                  |
+| [`lib/security-headers`](./src/lib/security-headers/README.md) | The Content Security Policy and response headers    |
+| [`components`](./src/components/README.md)                     | The React screens                                   |
 
 ### Dependency overrides
 
 `package.json` carries three `overrides`, added on 2026-09-13 so that `npm audit --omit=dev`
 reports nothing:
 
-| Override | Why |
-| --- | --- |
+| Override                    | Why                                                                                                                                                                                             |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `next` → `postcss: ^8.5.25` | `next@15.5.25` pins `postcss` at exactly `8.4.31`, which has four advisories (XSS in stringify, source-map file reads). Only a minor version separates them, and the build is verified under it |
-| `nanoid: ^3.3.18` | `3.3.17`, pulled in by `postcss`, can loop forever on a zero size |
-| `sharp: ^0.35.4` | `0.34.5` inherits libvips and libheif CVEs. `0.35.4` is inside the range `next` itself declares |
+| `nanoid: ^3.3.18`           | `3.3.17`, pulled in by `postcss`, can loop forever on a zero size                                                                                                                               |
+| `sharp: ^0.35.4`            | `0.34.5` inherits libvips and libheif CVEs. `0.35.4` is inside the range `next` itself declares                                                                                                 |
 
 **Delete an override when its parent stops needing it**: when `next` no longer pins an old
 `postcss`, which Next 16 already does not, or when `npm ls` shows the natural resolution is at or
@@ -200,5 +200,5 @@ The test suite includes a fixture that reproduces every key derivation against v
 the backend. No backend test reads that file, so this suite is the only cross-client check that
 these derivations are correct anywhere in the project. Keep it green.
 
-One note for anyone auditing: Cryple has no secp256k1 key and no Ethereum account. The key
+One note for anyone auditing: Zekke has no secp256k1 key and no Ethereum account. The key
 derivation path reserves that branch and never derives from it.

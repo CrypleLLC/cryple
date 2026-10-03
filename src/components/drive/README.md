@@ -165,6 +165,24 @@ the grid read as a table.
 - **Icons bottom-align within their box.** A landscape thumbnail is shorter than a portrait one, and
   aligning them on their tops would leave a ragged row of names.
 
+### The drive is the whole screen
+
+The screen's root is `flex-1` in the shell's full-height `main`
+([A screen can fill the page](../shell/README.md#a-screen-can-fill-the-page)), so it spans the width
+and the full height of the page whatever it holds. A file dropped anywhere on the page — under a
+short list, beside two tiles — uploads, and a selection box can start anywhere empty. The area has
+no border or background of its own: it is the screen the user is already looking at.
+
+### Images and videos open in the viewer
+
+**Clicking an image or a video opens it**, in the [media viewer](../modal/README.md#the-media-viewer),
+over the dashboard; every other file still downloads on click. The viewer walks the images and
+videos of the open folder in the order they are drawn — the grid's, or the list's newest-first — so
+the arrows go to the neighbour the user sees. The tile's Download corner control is now its own
+handler, `onDownload`, so it downloads an image rather than opening it, and the tile's accessible
+name says *Open* or *Download* according to what a click does. A tile being selected still toggles
+on click; an unfinished upload, a placeholder and an unreadable file never open.
+
 ### The list layout
 
 The drive can also be shown as a list with name, type, size, modified and status columns. It is
@@ -200,6 +218,14 @@ Every file and folder tile carries an *i* control among its corner actions, whic
   the extension, and *Unknown type* for a file that could not be decrypted rather than a guess), its
   size as the rounded figure and the exact byte count (`exactBytesLabel`), when it last changed, and
   its replication status.
+- **A file is renamed there**, exactly as a folder is: *Rename* beside the name turns it into a
+  field, Enter or *Save* stores it, Escape or *Cancel* leaves it. The rules are `fileNameProblem`
+  in `lib/app/files.ts` — not empty, at most 255 characters, no `/`, `\` or control characters,
+  because the name is what a download is saved under. Changing the extension is allowed, with a
+  note under the field that the file keeps its type, since the MIME type in the manifest does not
+  change and the icon and viewer go by it. It is offered only for a stored file this browser could
+  open: a placeholder, an unfinished upload and an unreadable file have no manifest to re-seal. A
+  failure stays in the panel with the field still open.
 - **A folder** is [`FolderDetailsPanel`](../folders/README.md) — its name, and the only place to
   rename it — with how many files and subfolders it holds, and the total size of those
   files. **The counts include every subfolder**, because a folder's size is what deleting it would

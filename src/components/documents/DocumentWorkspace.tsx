@@ -22,7 +22,7 @@ import DocumentToolbar from './DocumentToolbar';
 import DocumentOutline from './DocumentOutline';
 import { useDocumentSync } from './useDocumentSync';
 
-const TITLE_ORIGIN = Symbol('cryple/documents/title-input');
+const TITLE_ORIGIN = Symbol('Zekke/documents/title-input');
 
 export default function DocumentWorkspace({ id }: { id: string }) {
   const { sync, state, error } = useDocumentSync(id);
@@ -59,7 +59,7 @@ function DocumentSurface({ doc, state }: { doc: YDoc; state: SyncState }) {
     immediatelyRender: false,
     editorProps: {
       attributes: {
-        class: 'cryple-prose focus:outline-none',
+        class: 'zekke-prose focus:outline-none',
         ...PRIVATE_TEXT_ATTRIBUTES,
       },
     },
@@ -71,11 +71,11 @@ function DocumentSurface({ doc, state }: { doc: YDoc; state: SyncState }) {
     <main className="min-h-screen bg-ground">
       <header
         ref={chrome}
-        className="cryple-no-print sticky top-[var(--staging-banner-h)] z-10 border-b border-line bg-surface/90 backdrop-blur"
+        className="zekke-no-print sticky top-[var(--staging-banner-h)] z-10 border-b border-line bg-surface/90 backdrop-blur"
       >
         <div className="flex items-center gap-3 px-3 pt-2.5">
           <Link href="/" aria-label="Back to your vault" className="shrink-0">
-            <Image src="/cryple-logo.png" alt="Cryple" width={28} height={28} priority />
+            <Image src="/zekke-logo.png" alt="Zekke" width={28} height={28} priority />
           </Link>
           <div className="min-w-0 flex-1">
             <TitleInput doc={doc} />
@@ -89,20 +89,20 @@ function DocumentSurface({ doc, state }: { doc: YDoc; state: SyncState }) {
         <DocumentToolbar editor={editor} />
       </header>
 
-      <div className="cryple-page-frame mx-auto flex max-w-[1180px] items-start gap-6 px-4 py-8">
+      <div className="zekke-page-frame mx-auto flex max-w-[1180px] items-start gap-6 px-4 py-8">
         <DocumentOutline editor={editor} />
         <div className="min-w-0 flex-1 lg:flex lg:justify-center">
           <div
-            className="cryple-page-stack"
+            className="zekke-page-stack"
             style={{ '--page-count': pages } as CSSProperties}
           >
-            <div aria-hidden="true" className="cryple-page-sheets">
+            <div aria-hidden="true" className="zekke-page-sheets">
               {Array.from({ length: pages }, (_, page) => (
-                <div key={page} className="cryple-sheet" />
+                <div key={page} className="zekke-sheet" />
               ))}
             </div>
-            <div className="cryple-page">
-              <EditorContent editor={editor} className="cryple-page-body" />
+            <div className="zekke-page">
+              <EditorContent editor={editor} className="zekke-page-body" />
             </div>
           </div>
         </div>

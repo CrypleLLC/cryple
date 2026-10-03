@@ -1,6 +1,6 @@
 # `lib/api` — the HTTP layer
 
-The one place that knows how to talk to the Cryple API: base URL, envelopes, status rules,
+The one place that knows how to talk to the Zekke API: base URL, envelopes, status rules,
 error codes, pagination and the JWT. Nothing above this layer builds a URL or reads a raw
 `Response`.
 
@@ -40,14 +40,14 @@ const { status, message, data, page } = await request<T>({
 
 ### Status handling is by response, never by verb
 
-| Code | Meaning |
-| --- | --- |
-| `201` | Something was created **by this call** |
+| Code  | Meaning                                                   |
+| ----- | --------------------------------------------------------- |
+| `201` | Something was created **by this call**                    |
 | `200` | A read, a transition, or a create-or-return that returned |
-| `204` | Succeeded, nothing to say — **no body at all** |
+| `204` | Succeeded, nothing to say — **no body at all**            |
 
 `DELETE /secrets` (batch) answers `200` **with a body you
-must read**. The rule is *"`204` or a body"*, never *"`DELETE` means `204`"*.
+must read**. The rule is _"`204` or a body"_, never _"`DELETE` means `204`"_.
 
 ### Errors
 
@@ -57,12 +57,12 @@ so all user-facing copy is built here from `code` + endpoint by `userMessageFor(
 
 Three predicates matter more than the raw code:
 
-| Predicate | Means |
-| --- | --- |
-| `isSessionOver` | `401 UNAUTHORIZED` — token missing/expired. **Sign in again from scratch.** |
-| `isCredentialFailure` | `401 INVALID_CREDENTIALS` — token is fine, the account or second factor is not. Reachable on a plain `GET`. **Not an expiry signal.** |
-| `isAuthEndpointRejection` | `404` from `/sign-up`, `/sign-in`, `/auth/verify` — deliberately ambiguous |
-| `isUsernameUnavailable` | `422 USERNAME_UNAVAILABLE` from `PUT /users/username` — somebody holds the string, and **which somebody is not disclosed** |
+| Predicate                 | Means                                                                                                                                 |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `isSessionOver`           | `401 UNAUTHORIZED` — token missing/expired. **Sign in again from scratch.**                                                           |
+| `isCredentialFailure`     | `401 INVALID_CREDENTIALS` — token is fine, the account or second factor is not. Reachable on a plain `GET`. **Not an expiry signal.** |
+| `isAuthEndpointRejection` | `404` from `/sign-up`, `/sign-in`, `/auth/verify` — deliberately ambiguous                                                            |
+| `isUsernameUnavailable`   | `422 USERNAME_UNAVAILABLE` from `PUT /users/username` — somebody holds the string, and **which somebody is not disclosed**            |
 
 A URL matching no route at all returns `404` as `text/plain`; that is parsed into a
 `NOT_FOUND` `ApiError` rather than crashing the JSON reader.
@@ -73,11 +73,11 @@ wrong PIN are all the same code, by design — see [`lib/auth`](../auth/README.m
 Three codes are mapped by **endpoint as well as code**, because the same code means something
 different on a username route than it does anywhere else:
 
-| Where | Renders |
-| --- | --- |
-| `422 USERNAME_UNAVAILABLE`, any route | `USERNAME_UNAVAILABLE` — one string, identical whether the name is another account's current one or one it reserved. **Never narrate a difference the server refused to report** |
-| `400 INVALID_PARAM` from `PUT /users/username` | `USERNAME_MALFORMED` — the format rule, which is a property of the string the user just typed, not the generic failure |
-| `404` from `GET /users/resolve` | `USERNAME_NOT_IN_USE` — *no account is using that name right now*, and nothing more. It is the same answer for a name nobody ever held and one somebody renamed away from, so it must never read as "this user does not exist" |
+| Where                                          | Renders                                                                                                                                                                                                                        |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `422 USERNAME_UNAVAILABLE`, any route          | `USERNAME_UNAVAILABLE` — one string, identical whether the name is another account's current one or one it reserved. **Never narrate a difference the server refused to report**                                               |
+| `400 INVALID_PARAM` from `PUT /users/username` | `USERNAME_MALFORMED` — the format rule, which is a property of the string the user just typed, not the generic failure                                                                                                         |
+| `404` from `GET /users/resolve`                | `USERNAME_NOT_IN_USE` — _no account is using that name right now_, and nothing more. It is the same answer for a name nobody ever held and one somebody renamed away from, so it must never read as "this user does not exist" |
 
 `422` is the only status in the API that carries it, and `USERNAME_UNAVAILABLE` is the only code
 that comes back with it; `fallbackCode` is deliberately not taught about `422`, since a body
@@ -85,14 +85,14 @@ without the code would be a server that stopped answering the way this route is 
 
 ### The device-model codes and rate limits
 
-| Code | Predicate | Renders |
-| --- | --- | --- |
-| `429 TOO_MANY_REQUESTS`, any route | `isRateLimited`, `retryAfterSeconds` from `Retry-After` | `rateLimitMessage`: when to try again, and that it says nothing about the account or the PIN. **Checked before the auth mapping**, so a `429` on `/sign-in` is never shown as a sign-in failure |
-| `409 STALE_KEY_GENERATION` | `isStaleKeyGeneration` | `STALE_KEYS`. A write retries once first (`lib/keyrings` → `withCurrentGeneration`); this is only what a second refusal says |
-| `409 TOO_MANY_DEVICES` | `isTooManyDevices` | `TOO_MANY_DEVICES`. Enrolment turns it into a list of devices to remove |
-| `400 INVALID_BATCH` | `isInvalidBatch` | `DEVICE_CHANGE_REFUSED` |
-| `404` on a scoped route (`/secrets`, `/notes`, `/documents`, `/files`, `/connections`, `/sharing`) | `scopeForPath` | `SCOPE_MISSING` when `userMessageFor(error, { deviceScopes })` shows the device lacks the scope; the ordinary *no longer exists* otherwise |
-| `401 UNAUTHORIZED` | `isSessionOver` | `SESSION_ENDED`. The provider signs in again silently; `DEVICE_REMOVED` if that is refused |
+| Code                                                                                               | Predicate                                               | Renders                                                                                                                                                                                         |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `429 TOO_MANY_REQUESTS`, any route                                                                 | `isRateLimited`, `retryAfterSeconds` from `Retry-After` | `rateLimitMessage`: when to try again, and that it says nothing about the account or the PIN. **Checked before the auth mapping**, so a `429` on `/sign-in` is never shown as a sign-in failure |
+| `409 STALE_KEY_GENERATION`                                                                         | `isStaleKeyGeneration`                                  | `STALE_KEYS`. A write retries once first (`lib/keyrings` → `withCurrentGeneration`); this is only what a second refusal says                                                                    |
+| `409 TOO_MANY_DEVICES`                                                                             | `isTooManyDevices`                                      | `TOO_MANY_DEVICES`. Enrolment turns it into a list of devices to remove                                                                                                                         |
+| `400 INVALID_BATCH`                                                                                | `isInvalidBatch`                                        | `DEVICE_CHANGE_REFUSED`                                                                                                                                                                         |
+| `404` on a scoped route (`/secrets`, `/notes`, `/documents`, `/files`, `/connections`, `/sharing`) | `scopeForPath`                                          | `SCOPE_MISSING` when `userMessageFor(error, { deviceScopes })` shows the device lacks the scope; the ordinary _no longer exists_ otherwise                                                      |
+| `401 UNAUTHORIZED`                                                                                 | `isSessionOver`                                         | `SESSION_ENDED`. The provider signs in again silently; `DEVICE_REMOVED` if that is refused                                                                                                      |
 
 `/devices/enrol` and `/devices/enrol/chain` join the auth routes whose `404` is the one generic
 sign-in message.
@@ -131,7 +131,7 @@ read the `exp` claim without verifying it (the client cannot — it has no HMAC 
 - **There is no refresh endpoint.** An unlocked device signs in again with its own key, silently
   (`lib/account` → `renewSignIn`), shortly before the token expires and after a `401 UNAUTHORIZED`.
 - **The token names the device, and a removed device's token fails at once** with `401
-  UNAUTHORIZED`. When signing in again is refused too, the device was removed, and the phrase is
+UNAUTHORIZED`. When signing in again is refused too, the device was removed, and the phrase is
   needed.
 - **Never tell the user that changing their PIN signed out their other devices.** It did not.
   Do not build a session or device list — nothing server-side backs one.
@@ -144,7 +144,7 @@ script and stays valid until `exp` no matter what the owner does afterwards.
 
 **This layer never retries anything.** Retry policy lives with the signer, because every
 retry needs a fresh `{challenge, timestamp, signature}` triple — the challenge is consumed
-*before* the signature is verified, so replaying a triple always fails. See
+_before_ the signature is verified, so replaying a triple always fails. See
 [front-end-guide.md § Retry safety](../../../front-end-guide.md) for which calls tolerate a
 retry at all: `POST /secrets` without a client-generated `id`
 each create a second row, and `POST /users/second-factor` returns a `401` you cannot

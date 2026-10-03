@@ -18,6 +18,8 @@ import {
   defaultIconSize,
   documentCountLabel,
   DOCUMENT_NOUNS,
+  countOf,
+  deleteActionLabel,
   documentDeleteConfirmation,
   documentHref,
   documentMiniatureTitlePixels,
@@ -25,6 +27,7 @@ import {
   folderItemsLabel,
   formatBytes,
   gridTemplate,
+  iconScale,
   listingDateLabel,
   newestCreatedFirst,
   pagePixels,
@@ -41,7 +44,7 @@ import {
   type ItemLayout,
 } from '@/lib/app';
 import { openWithSessionHandoff } from '@/lib/session/handoff';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
+import { useAuthedContext, useZekke } from '@/components/session/ZekkeProvider';
 import { DocumentsIcon, FileTypeIcon, SharingIcon, TrashIcon } from '@/components/ui/icons';
 import {
   Button,
@@ -53,7 +56,7 @@ import {
   SizeStepper,
   Spinner,
 } from '@/components/ui';
-import { Listing, ListingRow, PageTile, TileAction } from '@/components/tiles';
+import { Listing, ListingRow, PageTile, TileAction, useMarqueeSelection } from '@/components/tiles';
 import ShareItemDialog from '@/components/sharing/ShareItemDialog';
 import { startItemDrag } from '@/components/folders/FolderTabs';
 import {
@@ -68,7 +71,8 @@ import { PanelFacts } from '@/components/shell/SidePanel';
 
 export default function DocumentsScreen() {
   const context = useAuthedContext();
-  const { reportError, fullDevice } = useCryple();
+  const { reportError, fullDevice, account } = useZekke();
+  const retentionDays = account?.retention_days ?? 0;
 
   const [summaries, setSummaries] = useState<DocumentSummary[]>();
   const [message, setMessage] = useState<string>();
@@ -167,6 +171,31 @@ export default function DocumentsScreen() {
 
   const sameIds = useCallback((ids: string[]) => ids, []);
 
+  const selectBox = useCallback((ids: string[]) => {
+    setSelected(ids);
+    if (ids.length > 0) {
+      setSelecting(true);
+    }
+  }, []);
+
+  const toggleOne = useCallback((id: string) => {
+    setSelecting(true);
+    setSelected((current) => toggleNoteSelection(current, id));
+  }, []);
+
+  const exitSelection = useCallback(() => {
+    setSelecting(false);
+    setSelected([]);
+    setConfirming(false);
+  }, []);
+
+  const marquee = useMarqueeSelection({ selected, onSelect: selectBox, onToggle: toggleOne, onExit: exitSelection });
+
+  const dragDocuments = (event: DragEvent, id: string) => {
+    const moving = selected.includes(id) ? selected : [id];
+    startItemDrag(event, moving, moving.length > 1 ? countOf(moving.length, DOCUMENT_NOUNS) : undefined);
+  };
+
   const tiles = useMemo(
     () => (summaries === undefined ? undefined : buildDocumentTiles(summaries)),
     [summaries],
@@ -242,7 +271,7 @@ export default function DocumentsScreen() {
     detailedFolderRecord === undefined ? 0 : descendantsOf(treeFolders ?? [], detailedFolderRecord.id).size - 1;
 
   return (
-    <div className="space-y-5">
+    <div className="flex-1 space-y-5" {...marquee.containerProps}>
       {path}
 
       {message !== undefined && (
@@ -306,10 +335,10 @@ export default function DocumentsScreen() {
 
       {confirming && (
         <Notice tone="warning">
-          <p>{documentDeleteConfirmation(selected.length)}</p>
+          <p>{documentDeleteConfirmation(selected.length, retentionDays)}</p>
           <div className="mt-3 flex gap-2">
             <Button variant="danger" disabled={busy} onClick={() => void removeSelected()}>
-              Delete permanently
+              {deleteActionLabel(retentionDays)}
             </Button>
             <Button variant="secondary" disabled={busy} onClick={() => setConfirming(false)}>
               Keep them
@@ -346,9 +375,7 @@ export default function DocumentsScreen() {
               selected={selected.includes(tile.id)}
               busy={busy}
               onOpen={() => activate(tile.id)}
-              onDragStart={(event) =>
-                startItemDrag(event, selected.includes(tile.id) ? selected : [tile.id])
-              }
+              onDragStart={(event) => dragDocuments(event, tile.id)}
               onShare={() => setSharing(tile.id)}
               onToggle={() => {
                 setSelecting(true);
@@ -369,6 +396,7 @@ export default function DocumentsScreen() {
               folder={folder}
               nouns={DOCUMENT_NOUNS}
               glyphPixels={pagePixels('documents', pageSize)}
+              labelClass={iconScale(pageSize).labelClass}
               itemIdsFor={sameIds}
               onDetails={() => setDetailedFolder((current) => (current === folder.id ? undefined : folder.id))}
             />
@@ -380,13 +408,12 @@ export default function DocumentsScreen() {
               textPixels={miniatureTextPixels('documents', pageSize, DOCUMENT_MINIATURE_TEXT_SHARE)}
               titlePixels={documentMiniatureTitlePixels(pageSize)}
               pageWidth={pagePixels('documents', pageSize)}
+              labelClass={iconScale(pageSize).labelClass}
               selecting={selecting}
               selected={selected.includes(tile.id)}
               busy={busy}
               onOpen={() => activate(tile.id)}
-              onDragStart={(event) =>
-                startItemDrag(event, selected.includes(tile.id) ? selected : [tile.id])
-              }
+              onDragStart={(event) => dragDocuments(event, tile.id)}
               onShare={() => setSharing(tile.id)}
               onToggle={() => {
                 setSelecting(true);
@@ -396,6 +423,8 @@ export default function DocumentsScreen() {
           ))}
         </ul>
       )}
+
+      {marquee.overlay}
 
       {detailedFolderRecord !== undefined ? (
         <FolderDetailsPanel state={tree} folder={detailedFolderRecord} onClose={closeDetails}>
@@ -440,11 +469,13 @@ function DocumentFile({
   onToggle,
   onDragStart,
   pageWidth,
+  labelClass,
 }: {
   tile: DocumentTile;
   textPixels: number;
   titlePixels: number;
   pageWidth: number;
+  labelClass: string;
   selecting: boolean;
   selected: boolean;
   busy: boolean;
@@ -468,6 +499,8 @@ function DocumentFile({
       onToggle={onToggle}
       onDragStart={onDragStart}
       pageWidth={pageWidth}
+      selectId={tile.id}
+      labelClass={labelClass}
     >
       <span className="block px-[12%] py-[8.5%]">
         {tile.title !== UNTITLED_DOCUMENT && (
@@ -523,6 +556,7 @@ function DocumentRow({
       disabled={busy}
       onOpen={onOpen}
       selection={{ selecting, selected, disabled: busy, onToggle }}
+      selectId={tile.id}
       highlighted={selected}
       draggable={!busy}
       onDragStart={onDragStart}

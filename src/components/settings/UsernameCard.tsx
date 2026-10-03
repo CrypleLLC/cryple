@@ -3,12 +3,12 @@
 import { useState } from 'react';
 import { updateUsername } from '@/lib/users';
 import { checkUsername, USERNAME_COPY } from '@/lib/app';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
+import { useAuthedContext, useZekke } from '@/components/session/ZekkeProvider';
 import { Button, Card, Field, Notice } from '@/components/ui';
 
 export default function UsernameCard() {
   const context = useAuthedContext();
-  const { account, refreshAccount, reportError } = useCryple();
+  const { account, refreshAccount, reportError } = useZekke();
 
   const [claim, setClaim] = useState('');
   const [busy, setBusy] = useState(false);

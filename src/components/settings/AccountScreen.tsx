@@ -10,12 +10,12 @@ import {
   checkMnemonic,
   mnemonicSentence,
 } from '@/lib/app';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
+import { useAuthedContext, useZekke } from '@/components/session/ZekkeProvider';
 import { Button, Card, Notice, PinField, TextArea } from '@/components/ui';
 
 export default function AccountScreen() {
   const context = useAuthedContext();
-  const { paranoid, fullDevice, services, reportError, enterVault } = useCryple();
+  const { paranoid, fullDevice, services, reportError, enterVault } = useZekke();
   const [mnemonic, setMnemonic] = useState('');
   const [pin, setPin] = useState('');
   const [confirmed, setConfirmed] = useState(false);

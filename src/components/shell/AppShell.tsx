@@ -12,7 +12,7 @@ import {
   lockExit,
   removeBrowserExit,
 } from '@/lib/app';
-import { useCryple } from '@/components/session/CrypleProvider';
+import { useZekke } from '@/components/session/ZekkeProvider';
 import NotesScreen from '@/components/notes/NotesScreen';
 import PasswordsScreen from '@/components/passwords/PasswordsScreen';
 import AccountMenu from './AccountMenu';
@@ -42,6 +42,7 @@ import {
   VaultIcon,
   type IconProps,
   SharingIcon,
+  TrashIcon,
 } from '@/components/ui/icons';
 import StorageMeter from './StorageMeter';
 import { ScreenStripSlotProvider } from './ScreenStrip';
@@ -54,6 +55,10 @@ const DocumentsScreen = dynamic(() => import('@/components/documents/DocumentsSc
 });
 
 const DriveScreen = dynamic(() => import('@/components/drive/DriveScreen'), {
+  loading: () => <Spinner />,
+});
+
+const TrashScreen = dynamic(() => import('@/components/trash/TrashScreen'), {
   loading: () => <Spinner />,
 });
 
@@ -73,7 +78,7 @@ const NAV_ITEMS = [
   {
     id: 'home',
     label: 'Home',
-    description: 'Everything Cryple keeps for you, one tap away.',
+    description: 'Everything Zekke keeps for you, one tap away.',
     icon: HomeIcon,
     screen: HomeScreen,
   },
@@ -136,6 +141,13 @@ const NAV_ITEMS = [
     screen: SharedScreen,
     miniatures: true,
   },
+  {
+    id: 'trash',
+    label: 'Trash',
+    description: 'Deleted documents and Drive files, until they are deleted for good.',
+    icon: TrashIcon,
+    screen: TrashScreen,
+  },
 ] as const satisfies readonly NavItem[];
 
 type TabId = (typeof NAV_ITEMS)[number]['id'];
@@ -146,7 +158,7 @@ const EXIT_ICONS: Record<SessionExitId, ComponentType<IconProps>> = {
 };
 
 export default function AppShell() {
-  const { account, lock, removeBrowser, holds, chainProblem, notice, dismissNotice, reportError } = useCryple();
+  const { account, lock, removeBrowser, holds, chainProblem, notice, dismissNotice, reportError } = useZekke();
   const navItems: readonly NavItem[] = NAV_ITEMS.filter(
     (item: NavItem) => item.scope === undefined || holds(item.scope),
   );
@@ -254,7 +266,7 @@ export default function AppShell() {
             <div ref={setStripSlot} className="empty:hidden" />
           </div>
 
-          <main className={`mx-auto w-full ${measure} flex-1 space-y-8 p-4 md:p-6`}>
+          <main className={`mx-auto w-full ${measure} flex flex-1 flex-col gap-8 p-4 md:p-6`}>
             {chainProblem && !chainProblemDismissed ? (
               <Notice tone="danger" onDismiss={() => setChainProblemDismissed(true)}>
                 {chainProblem}
@@ -378,9 +390,9 @@ function MobileMenu({ onClose, children }: { onClose: () => void; children: Reac
 function BrandMark() {
   return (
     <div className="flex items-center gap-2.5 px-2">
-      <Image src="/cryple-logo.png" alt="Cryple" width={30} height={30} priority />
+      <Image src="/zekke-logo.png" alt="Zekke" width={30} height={30} priority />
       <span className="flex flex-col leading-none">
-        <span className="text-headline text-ink">Cryple</span>
+        <span className="text-headline text-ink">Zekke</span>
         <span className="mt-1 text-caption text-ink-faint uppercase">Zero-knowledge</span>
       </span>
     </div>

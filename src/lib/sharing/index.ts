@@ -4,3 +4,4 @@ export * from './address-book';
 export * from './verify';
 export * from './flows';
 export * from './received';
+export * from './folders';

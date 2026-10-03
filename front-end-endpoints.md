@@ -1,4 +1,4 @@
-# Cryple API — Endpoint Reference
+# Zekke API — Endpoint Reference
 
 Every HTTP endpoint the server exposes: the exact request payload it accepts, the success response it returns, and every error response it can produce.
 
@@ -175,8 +175,8 @@ path** is not in that category — see `405` below — and does return the envel
 | 405  | `METHOD_NOT_ALLOWED`   | The path exists but does not accept this verb.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 409  | `CONFLICT`             | The resource is not in a state that accepts the request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | 409  | `STALE_KEY_GENERATION` | A `wrapped_dek` (or a sharing sub-key or address book) sealed under a generation that is not the scope's current one. Re-read `GET /keyrings`, re-wrap under the current generation, and retry.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| 422  | `FOLDER_TOO_DEEP` | A folder create or move would make the tree deeper than 8 levels. |
-| 422  | `FOLDER_INTO_ITSELF` | A folder move would put it inside itself or its own subtree. |
+| 422  | `FOLDER_TOO_DEEP`      | A folder create or move would make the tree deeper than 8 levels.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| 422  | `FOLDER_INTO_ITSELF`   | A folder move would put it inside itself or its own subtree.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | 409  | `TOO_MANY_DEVICES`     | §19 only: the account already has `DEVICES_MAX_PER_ACCOUNT` active devices.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | 413  | `BAD_REQUEST`          | `POST /files` only ([§17](#17-files-endpoints)): the declared object exceeds `FILES_MAX_OBJECT_BYTES`. **Note the code is `BAD_REQUEST`, not a code of its own** — branch on the status, not the code, to tell this from an ordinary field rejection.                                                                                                                                                                                                                                                                                                                                                                                                |
 | 429  | `TOO_MANY_REQUESTS`    | Four budgets. Per client address: one shared by the public routes (`/sign-up`, `/sign-in`, `/auth/verify`, `/users/lookup`, `/devices/enrol`, `/devices/enrol/chain`, `/oprf/account/evaluate`), one on the device PIN routes (`/oprf/devices/{id}/evaluate`, `/confirm`), and one shared by `PUT /users/username` and `GET /users/resolve`. Per account: one on `POST /files`. The address or account sent more requests than that budget allows in the current window. `Retry-After` is the number of seconds to wait. **It says nothing about the account** — do not show it as an authentication failure, and do not retry before `Retry-After`. |
@@ -377,18 +377,20 @@ Your own account, as the API sees it. Takes no parameters: the account is the on
     "username": "3f1c8a2b9d4e",
     "uuid": "0c892e57-93cf-423a-a9e9-fee5a9f87681",
     "paranoid": false,
+    "retention_days": 30,
     "created_at": "2026-07-26T12:00:00Z"
   }
 }
 ```
 
-| Field          | Notes                                                                                                                                                                                     |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `user_address` | The `SHA-256` of the seed you authenticated with. Useful to confirm the client derived the account you expected.                                                                          |
-| `username`     | The account's **current** username ([§8](#8-users-endpoints)); this is how one account addresses another. Assigned automatically at sign-up and changeable through `PUT /users/username`. |
-| `uuid`         | Your public identifier — what a contact feeds to `GET /users/{uuid}/public-keys` (§19).                                                                                                   |
-| `paranoid`     | **`true` = Paranoid Mode**, `false` = Standard Mode. Always present, never omitted.                                                                                                       |
-| `created_at`   | Account creation.                                                                                                                                                                         |
+| Field            | Notes                                                                                                                                                                                     |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `user_address`   | The `SHA-256` of the seed you authenticated with. Useful to confirm the client derived the account you expected.                                                                          |
+| `username`       | The account's **current** username ([§8](#8-users-endpoints)); this is how one account addresses another. Assigned automatically at sign-up and changeable through `PUT /users/username`. |
+| `uuid`           | Your public identifier — what a contact feeds to `GET /users/{uuid}/public-keys` (§19).                                                                                                   |
+| `paranoid`       | **`true` = Paranoid Mode**, `false` = Standard Mode. Always present, never omitted.                                                                                                       |
+| `retention_days` | How many days deleted documents and Drive files wait in the Trash before they are destroyed. `0` keeps nothing: say so before a delete, and show an empty Trash.                          |
+| `created_at`     | Account creation.                                                                                                                                                                         |
 
 **Call this on first launch after a restore.** `paranoid` is the one fact a client cannot derive and cannot safely cache: it decides whether to prompt for a PIN, and a reinstall wipes local state. The alternative — probing `/sign-in` and reading the `404` — burns a challenge, costs the 350 ms floor, and returns the same `404` for a wrong PIN, a wrong seed and a nonexistent account. See [§5.4](./front-end-guide.md#54-standard-mode-vs-paranoid-mode).
 
@@ -1232,7 +1234,7 @@ Replaces the wrapped DEK of one or more documents under a newer `documents` gene
 
 ### `DELETE /documents/{id}`
 
-Deletes a document and its entire update log. **Requires a `document-delete` signed action**, unlike create, edit and compact.
+Moves a document to the Trash (below); it is destroyed, with its update log, once the account's `retention_days` has passed. **Requires a `document-delete` signed action**, unlike create, edit and compact.
 
 **Request:** `{ "challenge": "…", "timestamp": 1737676800, "signature": "…" }`
 
@@ -1246,6 +1248,60 @@ One `document-delete` signature covering a whole set. **Sort the ids ascending a
 
 `deleted` can be lower without being an error. An empty id set is `404 NOT_FOUND`, returned before the signature is checked so it cannot burn a challenge.
 
+### The Trash — `GET /documents/trash`, `GET /documents/trash/{id}`, `POST /documents/trash/restore`, `DELETE /documents/trash`
+
+A deleted document or folder waits here for the account's `retention_days` (`GET /users/me`), then is destroyed by the storage worker. **With `retention_days: 0` the Trash is always empty**: a delete is final as soon as the worker passes. Nothing past its retention is listed or restorable, even before it is destroyed.
+
+**`GET /documents/trash`** → `200`:
+
+```json
+{
+  "data": {
+    "folders": [
+      {
+        "id": "…",
+        "parent_id": "…",
+        "ciphertext": "sealed name",
+        "wrapped_dek": "…",
+        "key_generation": 2,
+        "position": 0,
+        "created_at": "…",
+        "updated_at": "…",
+        "deleted_at": "…",
+        "item_count": 3
+      }
+    ],
+    "documents": [
+      {
+        "id": "…",
+        "folder_id": "…",
+        "wrapped_dek": "…",
+        "key_generation": 2,
+        "snapshot_seq": 4,
+        "latest_seq": 6,
+        "revision": 3,
+        "version": "v1",
+        "created_at": "…",
+        "updated_at": "…",
+        "deleted_at": "…"
+      }
+    ]
+  }
+}
+```
+
+**A deleted folder is one entry**, the root of what was deleted together, with `item_count` documents inside it; those documents and subfolders are not listed beside it. `documents` holds only what was deleted on its own.
+
+**`GET /documents/trash/{id}`** → `200` with the document record (`snapshot_ciphertext`, `wrapped_dek`, …), `deleted_at`, and **every update after the snapshot** in `updates` — enough to rebuild the Yjs state and read its title, since a trashed document is otherwise unreadable. `404` once it is gone or past its retention.
+
+**`POST /documents/trash/restore`** `{ "ids": ["…"] }` — document ids and folder ids, up to 1000. No signature: nothing is destroyed. → `200 { "requested", "folders", "items" }`. A folder id restores everything deleted with it. **Restored things go back where they were**, or to the top level when their folder is still in the Trash; a restored folder that would pass 8 levels is moved to the top.
+
+**`GET /documents/trash/keys`** → `200 { "folders": [{ "id", "wrapped_dek", "key_generation" }], "items": [ … ] }`: every trashed row still within its retention, **including what went with a deleted folder**. Read it after a rotation and re-wrap what is stale through `PUT /documents/keys` and `PUT /documents/folders/keys`, which accept those rows, so a restore brings no rotated-out key back. `GET /files/trash/keys` is the same for the drive (stored files only).
+
+**`DELETE /documents/trash`** `{ "ids": ["…"], "challenge", "timestamp", "signature" }` — **a `document-purge` action from a full device**, signed over the ids sorted ascending and de-duplicated. Destroys exactly those entries now, with their update logs. → `200 { "requested", "folders", "items" }`.
+
+**Errors:** `400 BAD_REQUEST` (no ids, more than 1000, or one that is not a canonical UUID) · `401 INVALID_CREDENTIALS` (purge signature) · `404 NOT_FOUND` (`GET /documents/trash/{id}` only).
+
 ---
 
 ### Folders — `GET` · `POST /documents/folders`, `PATCH` · `DELETE /documents/folders/{id}`, `PUT /documents/folders/items`
@@ -1258,7 +1314,20 @@ exactly like an item. Every route needs the scope; the delete needs a **full** d
 **`GET`** → `200`, every live folder:
 
 ```json
-{ "data": [ { "id": "…", "parent_id": "…", "ciphertext": "sealed(DEK, name)", "wrapped_dek": "…", "key_generation": 2, "position": 0, "created_at": "…", "updated_at": "…" } ] }
+{
+  "data": [
+    {
+      "id": "…",
+      "parent_id": "…",
+      "ciphertext": "sealed(DEK, name)",
+      "wrapped_dek": "…",
+      "key_generation": 2,
+      "position": 0,
+      "created_at": "…",
+      "updated_at": "…"
+    }
+  ]
+}
 ```
 
 `parent_id` is absent at the top level.
@@ -1266,6 +1335,8 @@ exactly like an item. Every route needs the scope; the delete needs a **full** d
 **`POST`** `{ "id": "client uuid", "parent_id": "…"?, "ciphertext", "wrapped_dek", "key_generation" }` →
 `201`, or `200` with the stored row when that `id` already exists — send a client `id` so a retry is
 safe. The folder goes after its siblings.
+
+**`PUT /…/folders/keys`** `{ "key_generation": 3, "items": [{ "id": "…", "wrapped_dek": "…" }], "challenge", "timestamp", "signature" }` — after a rotation, re-wraps the name keys of up to 1000 folders under the scope's **current** generation, without touching the sealed name. **A full device and a `document-folder-rekey` / `file-folder-rekey` action** over the ids sorted ascending. → `200 { "requested", "rekeyed" }`. A folder in the Trash is re-wrapped too while it can still be restored, and skipped once past its retention. Errors: `400 BAD_REQUEST` (no items, an id twice, a wrap that is not base64) · `401 INVALID_CREDENTIALS` · `409 STALE_KEY_GENERATION`.
 
 **`PATCH /…/folders/{id}`** changes any of:
 
@@ -1460,6 +1531,18 @@ Completes the upload. **JWT only.**
 
 **Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` · `400 BAD_REQUEST` (`ciphertext_sha256` missing or not 64 hex characters) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `409 CONFLICT` (the stored object does not match the declared size) · `500 INTERNAL_ERROR`.
 
+### `PUT /files/{id}/manifest` — rename
+
+Replaces a stored file's sealed manifest — how a file is renamed, since the name lives only inside it. **JWT only**, like editing a note: a rename destroys nothing.
+
+**Request:** `{ "ciphertext": "base64 manifest re-sealed client-side" }` → **`200 OK`** with the file row, `ciphertext` the new manifest, `updated_at` advanced, `created_at` unchanged.
+
+> **⚠️ Re-seal under the file's own DEK, and change only what you mean to.** Open the manifest, change `name`, seal it again with the DEK you unwrapped. There is no `wrapped_dek` in the body on purpose — the wrap cannot change here, so a rename can never re-key the file by mistake. `size`, `chunk_size`, `chunk_count`, `first_chunk_sha256`, `thumbnail_id` and `created_at` must come back exactly as they were: the layout fields are checked against the row on every download, and the server cannot see a mistake in them.
+
+**A strict update.** The row must exist, be yours, be stored (`r2_state` is not `pending`) and not be deleted; anything else is `404` and nothing is written. The object, `size_bytes`, `ciphertext_sha256`, the wrap and the replication state are untouched.
+
+**Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (path id is not a canonical UUID) · `400 BAD_REQUEST` (`ciphertext is required`) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
+
 ### `GET /files`
 
 The listing. Returns the sealed manifests — **a directory listing is your render of data this API cannot read.**
@@ -1517,7 +1600,7 @@ The URL is scoped to one object and one method and lives **five minutes** by def
 
 **This is the one-element case of `DELETE /files`**, below — same action label, same signature shape. Use whichever matches the gesture.
 
-**The row is marked, not removed.** `deleted_at` is set and the objects leave R2 and GCS when the mirror worker gets to them. Until then the bytes still count against the quota, and `GET /files/{id}` is already `404`.
+**The row is marked, not removed.** `deleted_at` is set, the file leaves the quota at once and `GET /files/{id}` is already `404`. It waits in the Trash (below) for the account's `retention_days`, and the objects leave R2 and GCS when the mirror worker gets to it after that.
 
 **Errors:** `400 INVALID_BODY` (a `DELETE` with no body is `400`, not `204`) · `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` (bad signature **or** wrong PIN — indistinguishable, by design) · `404 NOT_FOUND` · `500 INTERNAL_ERROR`.
 
@@ -1536,6 +1619,20 @@ The ids in the signed payload are **sorted ascending and de-duplicated**, exactl
 **`deleted` counts rows, never objects.** Each marked row is removed from R2 and GCS afterwards, one at a time, exactly as a single delete already was; the bytes leave the quota when the mirror worker gets to them.
 
 **Errors:** `400 INVALID_BODY` · `400 INVALID_PARAM` (any id that is not a canonical lowercase UUID, checked before anything is deleted) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (an empty id list) · `500 INTERNAL_ERROR`.
+
+### The Trash — `GET /files/trash`, `POST /files/trash/restore`, `DELETE /files/trash`
+
+The drive's Trash, with the same rules as the documents' Trash (§16): the account's `retention_days`, one entry per deleted folder, nothing past its retention listed or restorable, and `retention_days: 0` meaning it is always empty.
+
+**`GET /files/trash`** → `200 { "data": { "folders": [ …folder rows with deleted_at and item_count… ], "files": [ …file rows as GET /files returns them, plus deleted_at… ] } }`. Only stored files appear: **an upload that never finished is not in the Trash**, its parts were discarded at delete.
+
+**`POST /files/trash/restore`** `{ "ids": ["…"] }` → `200 { "requested", "folders", "items" }`. **It re-checks the quota**: a deleted file stopped counting the moment it was deleted, so restoring has to fit again, and a restore that would not is refused whole with `507 QUOTA_EXCEEDED`.
+
+**`DELETE /files/trash`** `{ "ids": ["…"], "challenge", "timestamp", "signature" }` — **a `file-purge` action from a full device**, over the sorted, de-duplicated ids. The entries leave the Trash at once and the storage worker destroys both copies on its next pass.
+
+**A thumbnail is a file of its own** (see the manifest's `thumbnail_id`): hide it from the Trash as the drive does, and send its id with its file's when restoring or purging.
+
+**Errors:** `400 BAD_REQUEST` · `401 INVALID_CREDENTIALS` · `507 QUOTA_EXCEEDED` (restore).
 
 ### `PUT /files/keys` — re-wrap after a rotation
 
@@ -1611,15 +1708,16 @@ Every mutation carries one, and the counterparty or the item is **inside the sig
 that rewrites a body cannot redirect a share. See
 [signed-actions.md](../api-general/docs/auth/signed-actions.md).
 
-| Route                           | `action`              | Signed arguments, in order                                                                                    |
-| ------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `POST /connections`             | `connection-invite`   | `recipient_username` (normalised), `pqxdh_blob`, `sender_key_generation`, `recipient_key_generation`          |
-| `POST /connections/{id}/accept` | `connection-accept`   | `connection_id`                                                                                               |
-| `DELETE /connections/{id}`      | `connection-delete`   | `connection_id`                                                                                               |
-| `PUT /connections/{id}/keys`    | `connection-keys`     | `connection_id`, hex SHA-256 of the lines `scope:key_generation:wrapped_key` joined by `\n`, in request order |
-| `POST /shares`                  | `share-create`        | `connection_id`, `item_type`, `item_id`                                                                       |
-| `DELETE /shares/{id}`           | `share-delete`        | `share_id`                                                                                                    |
-| `PUT /sharing/address-book`     | `address-book-update` | `expected_revision`, hex SHA-256 of `ciphertext`                                                              |
+| Route                           | `action`                    | Signed arguments, in order                                                                                    |
+| ------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `POST /connections`             | `connection-invite`         | `recipient_username` (normalised), `pqxdh_blob`, `sender_key_generation`, `recipient_key_generation`          |
+| `POST /connections/{id}/accept` | `connection-accept`         | `connection_id`                                                                                               |
+| `DELETE /connections/{id}`      | `connection-delete`         | `connection_id`                                                                                               |
+| `PUT /connections/{id}/keys`    | `connection-keys`           | `connection_id`, hex SHA-256 of the lines `scope:key_generation:wrapped_key` joined by `\n`, in request order |
+| `POST /shares`                  | `share-create`              | `connection_id`, `item_type`, `item_id`                                                                       |
+| `DELETE /shares/{id}`           | `share-delete`              | `share_id`                                                                                                    |
+| `PUT /sharing/address-book`     | `address-book-update`       | `expected_revision`, hex SHA-256 of `ciphertext`                                                              |
+| `PUT /connections/{id}/folders` | `connection-folders-update` | `connection_id`, `expected_revision`, `recipient_key_generation`, hex SHA-256 of `ciphertext`                 |
 
 Every one is signed by **the calling device's key**, with no PIN.
 
@@ -1802,7 +1900,22 @@ be that scope's current one.
 
 ### `GET /connections/{id}/shares`
 
-Every share on the connection, **in both directions**, with the wrap it carries today: `[{ "id", "wrapped_dek" }]`, ordered by id. Either party may read it — both derive the same connection key, so both can already open every share on it. It exists so a re-establishment knows what it has to re-wrap.
+Every share on the connection, **in both directions**, with the wrap it carries today, ordered by id:
+
+```json
+[
+  {
+    "id": "...",
+    "wrapped_dek": "...",
+    "item_type": "secret | note | document | file",
+    "item_id": "...",
+    "direction": "outbound | inbound",
+    "created_at": "..."
+  }
+]
+```
+
+`direction` is from the caller's side: `outbound` is what the caller sent, `inbound` what arrived. Either party may read it — both derive the same connection key, so both can already open every share on it. It is what the Shared space lists for one friendship, and what a re-establishment re-wraps. For an `outbound` share the caller reads its own item through its own routes; `GET /shares/{id}` stays the recipient's read.
 
 **Errors:** `400 INVALID_PARAM` · `401 UNAUTHORIZED` · `404 NOT_FOUND`.
 
@@ -1822,6 +1935,7 @@ Replaces the connection's key exchange when either party's sharing keys have rot
   "recipient_key_generation": 2,
   "keys": [{ "scope": "notes", "key_generation": 2, "wrapped_key": "base64" }],
   "shares": [{ "id": "3f6b…-uuid", "wrapped_dek": "base64" }],
+  "folders": { "wrapped_dek": "base64", "expected_revision": 4 },
   "challenge": "…",
   "timestamp": 1737676800,
   "signature": "…"
@@ -1834,9 +1948,35 @@ Replaces the connection's key exchange when either party's sharing keys have rot
 
 **The counterparty's stored sub-keys are deleted** as part of it. They were derived from the old connection key, and a client prefers a stored sub-key over deriving one — leaving them would have the other side silently wrap under a key nothing else uses. They re-derive from the new `pqxdh_blob` and store them again.
 
+**`folders` carries the friendship's folder manifest** (`GET /connections/{id}/folders`, below): its DEK re-wrapped under the new connection key's `sharing` sub-key, and the revision it re-wraps. The ciphertext does not move; the revision does. Omit `folders` only when `GET /connections/{id}/folders` answers `404`. Leaving it out while a manifest exists, or naming a stale revision, is `409 CONFLICT` and nothing lands: re-read and try again.
+
 `key_generation` on every entry in `keys` must be that scope's current one, and `sender_key_generation` the current `sharing` one, or `409 STALE_KEY_GENERATION`. A share id may appear only once.
 
-**Errors:** `400 INVALID_BODY` · `400 BAD_REQUEST` (no `keys`, a missing blob, a share named twice) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (not the sender, not accepted, or a scope the device lacks) · `409 STALE_KEY_GENERATION`.
+**Errors:** `400 INVALID_BODY` · `400 BAD_REQUEST` (no `keys`, a missing blob, a share named twice, `folders` without a revision) · `401 UNAUTHORIZED` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (not the sender, not accepted, or a scope the device lacks) · `409 CONFLICT` (the folders were left behind or changed meanwhile) · `409 STALE_KEY_GENERATION`.
+
+### `GET /connections/{id}/folders` · `PUT /connections/{id}/folders`
+
+The folders inside one friendship's space in Shared (Task 133.4): **one sealed manifest per accepted connection, written by both sides**. The friendship folder itself is the connection, named after the counterparty's current username; nothing about it is stored. Inside it either side creates folders and files any share on the connection, whoever created the folder and whoever sent the share. Both routes need `sharing`.
+
+`GET` → `200 { ciphertext, wrapped_dek, revision, recipient_key_generation, updated_at }`, or `404` before the first `PUT`, for a pending connection, or for anyone outside the connection. `recipient_key_generation` is the connection's current one: when it differs from the connection row you hold, re-read `GET /connections` before opening, because the key was re-established.
+
+```json
+{
+  "ciphertext": "sealed(DEK, manifest)",
+  "wrapped_dek": "AES-256-GCM(HKDF(connection_key, \"Cryple-Share-v1|sharing\"), DEK)",
+  "recipient_key_generation": 2,
+  "expected_revision": 0,
+  "challenge": "...",
+  "timestamp": 1785000000,
+  "signature": "..."
+}
+```
+
+The manifest's layout is the client's, the same shape as the vault's tabs, with placements keyed by **share id** and up to 8 levels with no `home`. `wrapped_dek` is one wrap with a fresh random IV under the connection's `sharing` sub-key, the derivation the item scopes use with `sharing` as the scope; it is never stored in `connection_keys`. `recipient_key_generation` names the connection key it was sealed under and must equal the connection's current one.
+
+`expected_revision: 0` creates the manifest; `n` replaces revision `n` with `n+1`. Answers `200` with the stored manifest. **Errors:** `400 BAD_REQUEST` · `401 INVALID_CREDENTIALS` · `404 NOT_FOUND` (not a party, or not accepted) · `409 CONFLICT` (stale revision: read, merge by folder id, retry) · `409 STALE_KEY_GENERATION` (sealed under a connection key a re-establishment replaced: re-read the connection, re-seal, retry).
+
+⚠️ **Deleting a folder here is a manifest write, not a delete.** What was filed in it falls to the top of the friendship's space and stays shared; removing a share is still `DELETE /shares/{id}`, by its sender.
 
 ### `GET /sharing/address-book` · `PUT /sharing/address-book`
 
@@ -2097,7 +2237,13 @@ Every non-tombstone revision's wrap, **without its ciphertext**, so a client can
 {
   "message": "Credentials metadata retrieved successfully",
   "data": [
-    { "credential_id": "…", "revision_id": "…", "wrapped_dek": "…", "key_generation": 2, "created_at": "…" }
+    {
+      "credential_id": "…",
+      "revision_id": "…",
+      "wrapped_dek": "…",
+      "key_generation": 2,
+      "created_at": "…"
+    }
   ]
 }
 ```
@@ -2155,7 +2301,7 @@ The current revision of one credential: its highest `seq` that is not a tombston
 
 ### `GET /credentials/{id}/revisions` — history
 
-Every revision of one credential, **newest first, tombstones included**, each with its own `wrapped_dek` and `key_generation` (a tombstone's are empty). `404` when the caller has none. It serves *Previous passwords* and *Restore*.
+Every revision of one credential, **newest first, tombstones included**, each with its own `wrapped_dek` and `key_generation` (a tombstone's are empty). `404` when the caller has none. It serves _Previous passwords_ and _Restore_.
 
 ### `DELETE /credentials/{id}` · `DELETE /credentials` — batch
 
@@ -2185,7 +2331,7 @@ The same shape as the other stores' rekey routes, with one difference: it names 
 
 ## 22. Pairing Endpoints — linking the browser extension
 
-The Cryple password extension is linked to an account with a **temporary code**: the web app opens
+The Zekke password extension is linked to an account with a **temporary code**: the web app opens
 a pairing and shows the code, the user types it into the extension, both show a six-digit
 fingerprint, and the user confirms they match in the web app. Design:
 [software-design-document.md § 5](../password-manager/software-design-document.md#5-linking-the-extension-with-a-temporary-code).
@@ -2217,7 +2363,13 @@ Linking is an ordinary `POST /devices/batch`: a `device-add` with scopes **`pass
 Rate limited per address (**fails closed**), behind the response floor.
 
 ```json
-{ "code": "K7QM-9XP2", "device_id": "uuid", "signing_public_key": "SPKI base64", "x25519_public_key": "base64", "mlkem_public_key": "base64" }
+{
+  "code": "K7QM-9XP2",
+  "device_id": "uuid",
+  "signing_public_key": "SPKI base64",
+  "x25519_public_key": "base64",
+  "mlkem_public_key": "base64"
+}
 ```
 
 **`200 OK`:** `{ "claim_id": "uuid", "user_address", "root_public_key", "username"?, "expires_at" }`. The code is read case-insensitively, dashes and spaces ignored, `I`/`L` as `1` and `O` as `0`. **Every failure is `404 NOT_FOUND`** — wrong, used, expired or cancelled code, or a malformed key.
