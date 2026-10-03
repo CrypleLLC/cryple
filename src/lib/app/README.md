@@ -329,6 +329,39 @@ is the same seam for a note, where the plaintext *is* the body and the title com
 `noteTitle`. A malformed envelope falls back to `UNREADABLE_SECRET_NAME` and the raw text — all
 there is to show — rather than throwing, because `describeReceived` must never throw.
 
+### The Shared space — one folder per friendship
+
+What the Shared screen decides is pure and in `sharing.ts`, so it is tested without a DOM:
+
+- `friendshipFolders` — the accepted connections, one folder each, ordered by the other person's
+  username. A pending invitation has no folder.
+- `sharedTreeFolders` — the friendship's manifest as the `TreeFolder` list the folder components
+  already draw, so the Shared space reuses the Drive's path bar, tiles and *Move to…*.
+- `sharesInFolder` — which shares sit in the open folder. Unfiled shares, shares filed in a folder
+  that was deleted since, and every share when the folders cannot be read, are at the top.
+- `sharedFolderChoices` — every folder, indented, for the *Put it in* choice when sending.
+- `sharedFolderDeleteConfirmation` — says what deleting a folder here does: it goes for both
+  people, and nothing in it is unshared.
+- `sharedItemSubtitle` — *Note from anacosta* or *File you sent to anacosta*: a friendship's space
+  holds both directions.
+- `sharedFolderEditProblem` — the sentence for a folder edit the manifest refused.
+
+## The Trash
+
+`trash.ts` holds what the Trash screen and every delete confirmation say, all of it driven by the
+account's `retention_days` and never by a plan name.
+
+- **A delete says where things go.** `documentDeleteConfirmation`, `fileDeleteConfirmation`,
+  `fileBatchDeleteConfirmation` and `folderDeleteConfirmation` take `retentionDays`: with `0` they say
+  the delete is permanent, as they always did; above it they say the item goes to the Trash and for
+  how long, and the Drive's adds that the space is freed at once. `deleteActionLabel` is the button:
+  *Move to Trash* or *Delete permanently*.
+- **The Trash screen's copy** is `TRASH_COPY`, and `trashRetentionNotice` the line on top — an
+  account that keeps nothing is told so plainly rather than shown an unexplained empty list.
+- `daysLeft` and `trashExpiryLabel` count from the deletion, never below zero; `trashEntryName`
+  names what could not be opened by its kind (*Untitled document*, *Unreadable folder*), and
+  `trashEntryDetail` says where an entry came from and how much a folder holds.
+
 ## The notes file grid
 
 `buildNoteTiles` is the notes counterpart of `buildVaultRows`: full `NoteRecord`s paired with

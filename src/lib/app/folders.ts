@@ -131,11 +131,22 @@ export function folderNameProblem(
   return clash === undefined ? undefined : `There is already a folder called “${clash.name}” here.`;
 }
 
-export function folderDeleteConfirmation(name: string, subfolders: number, nouns: FolderNouns): string {
+export function folderDeleteConfirmation(
+  name: string,
+  subfolders: number,
+  nouns: FolderNouns,
+  retentionDays = 0,
+): string {
   const inside =
     subfolders === 0
       ? `every ${nouns.one} in it`
       : `the ${subfolders === 1 ? 'folder' : `${subfolders} folders`} inside it and every ${nouns.one} they hold`;
+  if (retentionDays > 0) {
+    return (
+      `“${name}” goes to the Trash with ${inside}. You can restore it, whole, for ` +
+      `${retentionDays === 1 ? '1 day' : `${retentionDays} days`}; after that it is deleted for good.`
+    );
+  }
   return `Deleting “${name}” also deletes ${inside}, permanently.`;
 }
 

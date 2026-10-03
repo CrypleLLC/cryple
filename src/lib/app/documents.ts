@@ -1,5 +1,6 @@
 import type { DocumentSummary } from '@/lib/documents';
 import type { SyncStatus } from '@/lib/documents';
+import { daysLabel } from './trash';
 
 export const UNTITLED_DOCUMENT = 'Untitled document';
 export const UNREADABLE_DOCUMENT_TITLE = 'Unreadable document';
@@ -120,11 +121,19 @@ export function documentCountLabel(count: number): string {
   return count === 1 ? '1 document' : `${count} documents`;
 }
 
-export function documentDeleteConfirmation(count: number): string {
+export function documentDeleteConfirmation(count: number, retentionDays = 0): string {
   const documents = count === 1 ? 'this document' : `these ${count} documents`;
   const them = count === 1 ? 'it' : 'them';
+  if (retentionDays > 0) {
+    return `${capitalise(documents)} ${count === 1 ? 'goes' : 'go'} to the Trash, where you can restore ${them} for ${daysLabel(retentionDays)}. After that ${count === 1 ? 'it is' : 'they are'} deleted for good.`;
+  }
   return `Deleting ${documents} is permanent. Only this account holds the keys, so nobody — including Cryple — can restore ${them}.`;
 }
+
+function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 
 export function documentHref(id: string): string {
   return `/docs/${id}`;

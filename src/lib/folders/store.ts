@@ -177,3 +177,31 @@ export async function resetFolders(context: AuthedContext, scope: ManifestScope)
 
   throw new Error('the folders kept changing on another device; try again');
 }
+
+export async function resealFolders(context: AuthedContext, scope: ManifestScope): Promise<boolean> {
+  for (let attempt = 0; attempt < MAX_FOLDER_MANIFEST_ATTEMPTS; attempt += 1) {
+    const record = await getFolderManifest(context, scope);
+    if (record === undefined || record.key_generation >= context.session.currentKek(scope).generation) {
+      return false;
+    }
+    const manifest = await openRecord(context, scope, record);
+    try {
+      const stored = await putFolderManifest(context, scope, {
+        ...(await sealManifest(context, scope, manifest)),
+        expected_revision: record.revision,
+      });
+      sessionCache(context.session)[scope] = { manifest, revision: stored.revision };
+      return true;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        if (error.isStaleKeyGeneration) {
+          await refreshKeyrings(context);
+        }
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error('the folders kept changing on another device; try again');
+}

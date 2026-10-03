@@ -26,3 +26,4 @@ export * from './pin-entry';
 export * from './secret-field';
 export * from './folders';
 export * from './pairing';
+export * from './trash';

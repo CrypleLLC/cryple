@@ -205,8 +205,8 @@ describe('the four batchable delete actions', () => {
 });
 
 describe('the action table matches signed-actions.md', () => {
-  it('covers all 30 actions', () => {
-    expect(Object.keys(ACTIONS)).toHaveLength(30);
+  it('covers all 35 actions', () => {
+    expect(Object.keys(ACTIONS)).toHaveLength(35);
   });
 
   it('keeps destroying a deleted secret a different action from deleting one', () => {
@@ -267,6 +267,12 @@ describe('the action table matches signed-actions.md', () => {
     expect(ACTIONS['address-book-update'].args).toEqual(['expected_revision', 'ciphertext_digest']);
     expect(ACTIONS['folder-delete'].args).toEqual(['scope', 'folder_id']);
     expect(ACTIONS['folders-update'].args).toEqual(['scope', 'expected_revision', 'ciphertext_digest']);
+    expect(ACTIONS['connection-folders-update'].args).toEqual([
+      'connection_id',
+      'expected_revision',
+      'recipient_key_generation',
+      'ciphertext_digest',
+    ]);
   });
 
   it('makes the four deletes batchable and signed by the device', () => {

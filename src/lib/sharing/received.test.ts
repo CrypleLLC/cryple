@@ -77,7 +77,7 @@ describe('describing a received item that cannot be opened', () => {
   it('keeps the sender and the type even when it cannot read the payload', async () => {
     const item = await describeReceived(context, share(), connection, view, view);
 
-    expect(item.from).toBe('pedrosilva');
+    expect(item.counterparty).toBe('pedrosilva');
     expect(item.itemType).toBe('file');
     expect(item.connectionId).toBe(connection.id);
   });

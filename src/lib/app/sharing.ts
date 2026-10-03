@@ -1,8 +1,18 @@
-import type {
-  ConnectionRecord,
-  ConnectionTrust,
-  ItemType,
-  SharedTextView,
+import {
+  folderOf,
+  liveFolders,
+  type FolderEditProblem,
+  type FolderManifest,
+  type TreeFolder,
+} from '@/lib/folders';
+import { folderMoveProblem } from './folders';
+import {
+  SHARED_FOLDER_RULES,
+  type ConnectionRecord,
+  type ConnectionTrust,
+  type ItemType,
+  type ReceivedItem,
+  type SharedTextView,
 } from '@/lib/sharing';
 import { decodeSecretPayload, UNREADABLE_SECRET_NAME } from './vault';
 import { noteTitle } from './notes';
@@ -90,6 +100,24 @@ export const SHARING_COPY = {
   copied: 'Copied to your account. Your copy is independent of theirs.',
   disconnect: 'Disconnect',
   disconnectWarning: 'Disconnecting deletes every share between you, in both directions.',
+
+  sharedRoot: 'Shared',
+  friendshipsEmpty:
+    'Nothing is shared yet. Once someone accepts your invitation, or you accept theirs, a ' +
+    'folder for the two of you appears here.',
+  friendshipEmpty:
+    'Nothing here yet. Anything either of you shares with the other appears in this folder, and ' +
+    'you can both organise it into folders.',
+  friendshipFlat:
+    'This device does not hold the sharing key, so the folders inside this space are not shown. ' +
+    'Everything shared with you is listed here instead.',
+  sharedFoldersInvalid:
+    'The folders in this space could not be shown safely, so everything is listed at the top ' +
+    'level. Resetting removes the folders for both of you; nothing is unshared.',
+  sharedFoldersReset: 'Reset the folders',
+  fileInFolder: 'Put it in',
+  fileInTop: 'The top of this space',
+  sentByYou: 'Sent by you',
 } as const;
 
 export const ITEM_LABELS: Record<ItemType, string> = {
@@ -181,4 +209,75 @@ export function sharedSecretView(plaintext: string): SharedTextView {
 
 export function sharedNoteView(plaintext: string): SharedTextView {
   return { name: noteTitle(plaintext), body: plaintext };
+}
+
+export function friendshipFolders(connections: readonly ConnectionRecord[]): ConnectionRecord[] {
+  return sendableConnections(connections).sort((a, b) => a.username.localeCompare(b.username));
+}
+
+export function sharedTreeFolders(manifest: FolderManifest): TreeFolder[] {
+  return liveFolders(manifest).map((folder) => ({
+    id: folder.id,
+    parentId: folder.parent_id,
+    name: folder.name,
+    position: folder.position,
+    createdAt: folder.updated_at,
+    updatedAt: folder.updated_at,
+  }));
+}
+
+export function sharesInFolder<T extends Pick<ReceivedItem, 'shareId'>>(
+  items: readonly T[],
+  manifest: FolderManifest | undefined,
+  folderId: string | null,
+): T[] {
+  if (manifest === undefined) {
+    return folderId === null ? [...items] : [];
+  }
+  return items.filter((item) => folderOf(manifest, item.shareId, SHARED_FOLDER_RULES) === folderId);
+}
+
+export function sharedFolderChoices(manifest: FolderManifest): { id: string; label: string }[] {
+  const folders = liveFolders(manifest);
+  const choices: { id: string; label: string }[] = [];
+  const walk = (parentId: string | null, depth: number) => {
+    for (const folder of folders.filter((candidate) => candidate.parent_id === parentId)) {
+      choices.push({ id: folder.id, label: `${'\u00a0\u00a0'.repeat(depth)}${folder.name}` });
+      walk(folder.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+  return choices;
+}
+
+export function sharedFolderDeleteConfirmation(name: string, subfolders: number): string {
+  const inside =
+    subfolders === 0
+      ? ''
+      : ` and the ${subfolders === 1 ? 'folder' : `${subfolders} folders`} inside it`;
+  return (
+    `Deleting “${name}”${inside} removes it for both of you. Everything filed in it moves to ` +
+    'the top of this shared space; nothing is unshared.'
+  );
+}
+
+export function sharedItemSubtitle(item: Pick<ReceivedItem, 'itemType' | 'direction' | 'counterparty'>): string {
+  return item.direction === 'outbound'
+    ? `${ITEM_LABELS[item.itemType]} you sent to ${item.counterparty}`
+    : `${ITEM_LABELS[item.itemType]} from ${item.counterparty}`;
+}
+
+export function sharedFolderEditProblem(problem: FolderEditProblem): string {
+  switch (problem) {
+    case 'too-deep':
+      return folderMoveProblem('FOLDER_TOO_DEEP');
+    case 'into-itself':
+      return folderMoveProblem('FOLDER_INTO_ITSELF');
+    case 'unknown-folder':
+      return 'That folder was removed in the meantime, probably by the other person.';
+    case 'bad-name':
+    case 'folder-exists':
+    case 'home-is-fixed':
+      return 'That folder name cannot be used here.';
+  }
 }

@@ -13,10 +13,10 @@ folders there are, or which item sits in which. It is modelled on
 [`lib/sharing/address-book`](../sharing/README.md): one blob per scope, sealed under a fresh DEK
 wrapped by the scope's KEK, written optimistically on a revision.
 
-This is 133.1 of [Task 133](../../../../tasks.md#task-133). Today it serves the vault's tabs
-(`secrets`) and the spaces in notes (`notes`). `documents` and `files` keep their tree in a table
-instead (133.3), and the Shared space will reuse the pure half of this module under a per-connection
-key (133.4).
+This is 133.1 of [Task 133](../../../../tasks.md#task-133). It serves the vault's tabs (`secrets`)
+and the spaces in notes (`notes`). `documents` and `files` keep their tree in a table instead
+(133.3), and the Shared space reuses the pure half of this module under a per-connection key
+(133.4, [`lib/sharing/folders.ts`](../sharing/README.md#the-folders-of-a-friendship--foldersts)).
 
 ## Files
 
@@ -53,6 +53,7 @@ key (133.4).
 | Scope              | `maxDepth` | `home` | Why                                                 |
 | ------------------ | ---------- | ------ | --------------------------------------------------- |
 | `secrets`, `notes` | 1          | yes    | A tab is flat (D2), and a tab has to be _some_ tab (D5) |
+| a friendship in Shared | 8      | no     | Level 1 is the friendship itself (D2); an unfiled share is at its top (D5). `SHARED_FOLDER_RULES` in `lib/sharing` |
 
 **`home` is a real entry, not a rendered default** (D5). It is renameable, cannot be deleted and
 cannot be moved off the root, and an item with no placement — or placed in a deleted folder —
@@ -107,6 +108,10 @@ The honest cost of last-writer-wins: **a simultaneous rename can lose one side's
 
 ### Sealing
 
+- **`resealFolders`** re-seals a scope's manifest under the current generation when the stored one is
+  older, unchanged in content, on the revision it read; it is what [`lib/rekey`](../rekey/README.md)
+  calls after a rotation, so the tabs never wait for the next edit to leave a rotated-out key.
+
 - A fresh 32-byte DEK per write seals the JSON; the DEK is wrapped under **the scope's current
   KEK**, and the `PUT` carries that generation. `409 STALE_KEY_GENERATION` refreshes the keyrings
   and retries.
@@ -123,9 +128,6 @@ The honest cost of last-writer-wins: **a simultaneous rename can lose one side's
   the manifest edit (D6).
 - **Tombstones are never pruned.** A scope holding tens of folders never notices; one that churns
   folders for years will carry them.
-- **A rotation does not re-wrap the manifest.** [`lib/rekey`](../rekey/README.md) walks items; the
-  manifest stays under the generation it was last written with until the next edit re-seals it
-  under the current one, exactly as the address book does.
 - **`resetFolders`** replaces a manifest that fails validation with an empty one, over whatever
   revision is stored. Only the user starts it — the tab strip offers it beside the explanation — because
   it throws the tabs away; the items themselves are untouched.
@@ -138,6 +140,8 @@ the server sees which folder is inside which and which item sits where, and **ne
 | Export | What |
 | --- | --- |
 | `listTreeFolders` | Every live folder, names opened here, and the tree validated before it is returned |
+| `listTreeFolderRecords` | The same rows unopened, with their wraps and generations — what a rotation's re-wrap reads |
+| `openTreeFolderName` | One folder's sealed name, `undefined` when it will not open — what the Trash uses for a deleted folder |
 | `createTreeFolder`, `renameTreeFolder` | Seal the name under a fresh DEK wrapped by the scope's KEK |
 | `moveTreeFolder` | `null` is the top level |
 | `deleteTreeFolder` | Signed `folder-delete` over `[scope, folder_id]`; the server takes the subtree and its items |

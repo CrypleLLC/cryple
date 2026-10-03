@@ -4,14 +4,23 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ConnectionNotTrustedError,
   deleteShare,
+  editSharedFolders,
   listConnections,
   listItemRecipients,
+  loadSharedFolders,
   shareItemById,
   type ConnectionRecord,
   type ItemRecipientRecord,
   type ItemType,
 } from '@/lib/sharing';
-import { ITEM_LABELS, sendableConnections, sendRefusal, SHARING_COPY } from '@/lib/app';
+import { placeItem } from '@/lib/folders';
+import {
+  ITEM_LABELS,
+  sendableConnections,
+  sendRefusal,
+  sharedFolderChoices,
+  SHARING_COPY,
+} from '@/lib/app';
 import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
 import { Button, Empty, Notice, Select } from '@/components/ui';
 import { Modal } from '@/components/modal';
@@ -27,11 +36,13 @@ export default function ShareItemDialog({
   onClose: () => void;
 }) {
   const context = useAuthedContext();
-  const { reportError, fullDevice } = useCryple();
+  const { reportError, fullDevice, holds } = useCryple();
 
   const [connections, setConnections] = useState<ConnectionRecord[]>([]);
   const [recipients, setRecipients] = useState<ItemRecipientRecord[]>([]);
   const [chosen, setChosen] = useState('');
+  const [folders, setFolders] = useState<{ id: string; label: string }[]>([]);
+  const [folder, setFolder] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
 
@@ -52,6 +63,26 @@ export default function ShareItemDialog({
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    setFolder('');
+    setFolders([]);
+    const connection = connections.find((candidate) => candidate.id === chosen);
+    if (connection === undefined || !holds('sharing')) {
+      return;
+    }
+    let current = true;
+    loadSharedFolders(context, connection)
+      .then((manifest) => {
+        if (current) {
+          setFolders(sharedFolderChoices(manifest));
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [context, connections, chosen, holds]);
+
   async function send() {
     const connection = connections.find((candidate) => candidate.id === chosen);
     if (!connection) {
@@ -62,7 +93,10 @@ export default function ShareItemDialog({
     setMessage(undefined);
 
     try {
-      await shareItemById(context, connection, itemType, itemId);
+      const share = await shareItemById(context, connection, itemType, itemId);
+      if (folder !== '') {
+        await editSharedFolders(context, connection, placeItem(share.id, folder));
+      }
       setChosen('');
       await refresh();
     } catch (error) {
@@ -110,6 +144,17 @@ export default function ShareItemDialog({
               choices={[{ value: '', label: 'Choose a connection…' }, ...choices]}
               onChange={(event) => setChosen(event.target.value)}
             />
+            {folders.length > 0 ? (
+              <Select
+                label={SHARING_COPY.fileInFolder}
+                value={folder}
+                choices={[
+                  { value: '', label: SHARING_COPY.fileInTop },
+                  ...folders.map((choice) => ({ value: choice.id, label: choice.label })),
+                ]}
+                onChange={(event) => setFolder(event.target.value)}
+              />
+            ) : null}
             <Button onClick={send} disabled={busy || chosen === ''}>
               Send
             </Button>

@@ -42,6 +42,7 @@ import {
   VaultIcon,
   type IconProps,
   SharingIcon,
+  TrashIcon,
 } from '@/components/ui/icons';
 import StorageMeter from './StorageMeter';
 import { ScreenStripSlotProvider } from './ScreenStrip';
@@ -54,6 +55,10 @@ const DocumentsScreen = dynamic(() => import('@/components/documents/DocumentsSc
 });
 
 const DriveScreen = dynamic(() => import('@/components/drive/DriveScreen'), {
+  loading: () => <Spinner />,
+});
+
+const TrashScreen = dynamic(() => import('@/components/trash/TrashScreen'), {
   loading: () => <Spinner />,
 });
 
@@ -135,6 +140,13 @@ const NAV_ITEMS = [
     appIcon: SharingFeatureIcon,
     screen: SharedScreen,
     miniatures: true,
+  },
+  {
+    id: 'trash',
+    label: 'Trash',
+    description: 'Deleted documents and Drive files, until they are deleted for good.',
+    icon: TrashIcon,
+    screen: TrashScreen,
   },
 ] as const satisfies readonly NavItem[];
 

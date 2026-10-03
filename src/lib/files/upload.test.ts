@@ -531,3 +531,97 @@ describe('resuming an upload after a reload', () => {
     );
   });
 });
+
+describe('the same upload sent twice', () => {
+  const TWO_CHUNKS = CHUNK_PAYLOAD_BYTES + 1000;
+
+  function replayApi(stored: Record<string, unknown>) {
+    const calls: { url: string; init: RequestInit }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init: RequestInit) => {
+        calls.push({ url, init });
+        const ok = (body: unknown, status = 200) =>
+          ({ status, ok: true, text: async () => JSON.stringify(body), headers: { get: () => null } }) as unknown as Response;
+        if (init.method === 'POST') {
+          return ok({ message: 'ok', data: stored }, 200);
+        }
+        if (init.method === 'PATCH') {
+          return ok({ message: 'ok', data: { ...stored, r2_state: 'ok' } });
+        }
+        return ok({ message: 'ok', data: { uploaded: [1], parts: [{ number: 2, url: 'https://r2.example/part2', size: 1 }] } });
+      }),
+    );
+    return calls;
+  }
+
+  async function firstAttempt(context: AuthedContext, source: UploadFile) {
+    const api = mockApi();
+    await uploadFile(context, source, { id: ID, concurrency: 1, put: async () => undefined });
+    const post = api.bodies[0] as { ciphertext: string; wrapped_dek: string; key_generation: number; size_bytes: number };
+    vi.unstubAllGlobals();
+    return {
+      id: ID,
+      ciphertext: post.ciphertext,
+      wrapped_dek: post.wrapped_dek,
+      key_generation: post.key_generation,
+      size_bytes: post.size_bytes,
+      ciphertext_sha256: 'a'.repeat(64),
+      version: 'v1',
+      gcs_state: 'pending',
+      created_at: 'now',
+      updated_at: 'now',
+    };
+  }
+
+  it('continues an unfinished row under the key it was created with, not a new one', { timeout: 30_000 }, async () => {
+    const context = await newContext();
+    const stored = await firstAttempt(context, file(TWO_CHUNKS));
+    const calls = replayApi({ ...stored, r2_state: 'pending' });
+    const sent: Uint8Array[] = [];
+
+    await uploadFile(context, file(TWO_CHUNKS), {
+      id: ID,
+      concurrency: 1,
+      put: async (_part, body) => {
+        sent.push(Uint8Array.from(body));
+      },
+    });
+
+    expect(calls.some((call) => call.url.endsWith(`/files/${ID}/upload`))).toBe(true);
+    expect(sent).toHaveLength(1);
+    const dek = await scopeDekWrapper(context, 'files').unwrapDek(stored as WrappedDek);
+    await expect(openChunk(sent[0], 1, 2, dek)).resolves.toBeInstanceOf(Uint8Array);
+  });
+
+  it('returns a finished row as it is, sending nothing, when it is the same file', { timeout: 30_000 }, async () => {
+    const context = await newContext();
+    const stored = await firstAttempt(context, file(TWO_CHUNKS));
+    const calls = replayApi({ ...stored, r2_state: 'ok' });
+    const { put, sent } = recordingPutter();
+
+    const record = await uploadFile(context, file(TWO_CHUNKS), { id: ID, put });
+
+    expect(record.r2_state).toBe('ok');
+    expect(sent).toEqual([]);
+    expect(calls.some((call) => call.init.method === 'PATCH')).toBe(false);
+  });
+
+  it('refuses to reuse an id for different contents', { timeout: 30_000 }, async () => {
+    const context = await newContext();
+    const stored = await firstAttempt(context, file(TWO_CHUNKS));
+    replayApi({ ...stored, r2_state: 'ok' });
+
+    const other: UploadFile = { ...file(TWO_CHUNKS), stream: file(TWO_CHUNKS, 'x').stream };
+    const bytes = new Uint8Array(TWO_CHUNKS).fill(0xcd);
+    other.stream = () =>
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bytes);
+          controller.close();
+        },
+      });
+
+    await expect(uploadFile(context, other, { id: ID, put: recordingPutter().put })).rejects.toThrow(SourceMismatchError);
+  });
+});

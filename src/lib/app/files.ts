@@ -1,4 +1,5 @@
 import { formatBytes } from './vault';
+import { daysLabel } from './trash';
 import { countOf, FILE_NOUNS, type FolderNouns } from './folders';
 import type { FileRecord, StorageUsage, UploadProgress } from '@/lib/files';
 
@@ -159,16 +160,30 @@ export function usedShareLabel(usage: StorageUsage): string {
 export const DELETED_SPACE_RETURNS =
   'Space from a deleted file returns within a minute, once both copies are removed.';
 
-export function fileDeleteConfirmation(name: string): string {
+export const TRASHED_SPACE_RETURNS = 'Its space is freed now, while it waits in the Trash.';
+
+export function fileDeleteConfirmation(name: string, retentionDays = 0): string {
+  if (retentionDays > 0) {
+    return (
+      `${fileName(name)} goes to the Trash, where you can restore it for ${daysLabel(retentionDays)}. ` +
+      `After that it is deleted for good. ${TRASHED_SPACE_RETURNS}`
+    );
+  }
   return (
     `Deleting ${fileName(name)} is permanent. Only this account holds the key, so nobody — ` +
     `including Cryple — can restore it. ${DELETED_SPACE_RETURNS}`
   );
 }
 
-export function fileBatchDeleteConfirmation(count: number): string {
+export function fileBatchDeleteConfirmation(count: number, retentionDays = 0): string {
   const files = count === 1 ? 'this file' : `these ${count} files`;
   const them = count === 1 ? 'it' : 'them';
+  if (retentionDays > 0) {
+    return (
+      `${count === 1 ? 'This file goes' : `These ${count} files go`} to the Trash, where you can restore ` +
+      `${them} for ${daysLabel(retentionDays)}. After that ${count === 1 ? 'it is' : 'they are'} deleted for good.`
+    );
+  }
   return (
     `Deleting ${files} is permanent. Only this account holds the keys, so nobody — ` +
     `including Cryple — can restore ${them}. ${DELETED_SPACE_RETURNS}`

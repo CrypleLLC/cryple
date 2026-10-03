@@ -29,6 +29,7 @@ import {
   INVALID_TREE_MESSAGE,
   LISTING_EMPTY_CELL,
   listingDateLabel,
+  sharedFolderDeleteConfirmation,
   UNREADABLE_FOLDER,
   type FolderNouns,
 } from '@/lib/app';
@@ -72,7 +73,10 @@ export function folderLabel(folder: TreeFolder): string {
   return folder.name ?? UNREADABLE_FOLDER;
 }
 
+export type FolderDeletes = 'contents' | 'grouping';
+
 export interface FolderTreeState {
+  deletes: FolderDeletes;
   folders: TreeFolder[] | undefined;
   current: string | null;
   open: (id: string | null) => void;
@@ -152,6 +156,7 @@ export function useFolderTree(scope: TreeScope, onItemsChanged: () => void): Fol
   const children = useMemo(() => childrenOf(folders ?? [], current), [folders, current]);
 
   return {
+    deletes: 'contents',
     folders,
     current,
     open: setCurrent,
@@ -215,18 +220,28 @@ function useDropTarget(state: FolderTreeState, target: string | null, itemIdsFor
   };
 }
 
+export interface PathAncestor {
+  label: string;
+  icon?: ReactNode;
+  onOpen: () => void;
+}
+
 export function FolderPath({
   state,
   rootLabel,
   rootIcon,
   itemIdsFor,
   onDetails,
+  ancestors = [],
+  invalidNotice,
 }: {
   state: FolderTreeState;
   rootLabel: string;
   rootIcon: ReactNode;
   itemIdsFor: (ids: string[]) => string[];
   onDetails?: (folderId: string) => void;
+  ancestors?: readonly PathAncestor[];
+  invalidNotice?: ReactNode;
 }) {
   const [naming, setNaming] = useState(false);
   const openFolder = state.path.at(-1);
@@ -240,6 +255,9 @@ export function FolderPath({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
         <nav aria-label="Folder path" className="min-w-0 flex-1">
           <ol className="flex min-w-0 flex-wrap items-center gap-0.5">
+            {ancestors.map((ancestor, index) => (
+              <AncestorSegment key={`${index}-${ancestor.label}`} ancestor={ancestor} first={index === 0} />
+            ))}
             <PathSegment
               state={state}
               target={null}
@@ -247,6 +265,7 @@ export function FolderPath({
               icon={rootIcon}
               last={state.path.length === 0}
               itemIdsFor={itemIdsFor}
+              separated={ancestors.length > 0}
             />
             {state.path.map((folder, index) => (
               <PathSegment
@@ -287,7 +306,7 @@ export function FolderPath({
         )}
       </div>
 
-      {state.invalid ? <Notice tone="warning">{INVALID_TREE_MESSAGE}</Notice> : null}
+      {state.invalid ? (invalidNotice ?? <Notice tone="warning">{INVALID_TREE_MESSAGE}</Notice>) : null}
       {state.message ? (
         <Notice tone="danger" onDismiss={() => state.setMessage(undefined)}>
           {state.message}
@@ -313,6 +332,26 @@ export function FolderPath({
   );
 }
 
+function AncestorSegment({ ancestor, first }: { ancestor: PathAncestor; first: boolean }) {
+  return (
+    <li className="flex min-w-0 items-center gap-0.5">
+      {first ? null : (
+        <span aria-hidden="true" className="px-0.5 text-ink-faint">
+          /
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={ancestor.onOpen}
+        className="flex min-w-0 max-w-[16rem] items-center gap-1.5 rounded-lg px-2 py-1.5 text-compact font-semibold text-ink-muted transition-colors hover:bg-raised hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+      >
+        {ancestor.icon}
+        <span className="truncate">{ancestor.label}</span>
+      </button>
+    </li>
+  );
+}
+
 function PathSegment({
   state,
   target,
@@ -320,6 +359,7 @@ function PathSegment({
   icon,
   last,
   itemIdsFor,
+  separated = false,
 }: {
   state: FolderTreeState;
   target: string | null;
@@ -327,12 +367,13 @@ function PathSegment({
   icon?: ReactNode;
   last: boolean;
   itemIdsFor: (ids: string[]) => string[];
+  separated?: boolean;
 }) {
   const drop = useDropTarget(state, target, itemIdsFor);
 
   return (
     <li className="flex min-w-0 items-center gap-0.5">
-      {target !== null ? (
+      {target !== null || separated ? (
         <span aria-hidden="true" className="px-0.5 text-ink-faint">
           /
         </span>
@@ -378,6 +419,7 @@ export function FolderTile({
   const drop = useDropTarget(state, folder.id, itemIdsFor);
   const [deleting, setDeleting] = useState(false);
   const label = folderLabel(folder);
+  const mayDelete = state.deletes === 'grouping' || fullDevice;
 
   return (
     <li className="group relative" {...drop.props}>
@@ -422,7 +464,7 @@ export function FolderTile({
             <InfoIcon className="h-3 w-3 shrink-0" />
           </TileAction>
         ) : null}
-        {fullDevice ? (
+        {mayDelete ? (
           <TileAction label={`Delete ${label}`} tone="danger" disabled={state.busy} onClick={() => setDeleting(true)}>
             <TrashIcon className="h-3 w-3 shrink-0" />
           </TileAction>
@@ -447,17 +489,28 @@ function DeleteFolderModal({
   nouns: FolderNouns;
   onDone: () => void;
 }) {
+  const { account } = useCryple();
+  const retentionDays = account?.retention_days ?? 0;
   const label = folderLabel(folder);
   const subfolders = useMemo(
     () => descendantsOf(state.folders ?? [], folder.id).size - 1,
     [state.folders, folder.id],
   );
+  const grouping = state.deletes === 'grouping';
 
   return (
     <ConfirmDeleteModal
       title={`Delete “${label}”`}
       busy={state.busy}
-      confirmLabel={state.busy ? 'Deleting…' : 'Delete folder and contents'}
+      confirmLabel={
+        state.busy
+          ? 'Deleting…'
+          : grouping
+            ? 'Delete folder'
+            : retentionDays > 0
+              ? 'Move to Trash'
+              : 'Delete folder and contents'
+      }
       onKeep={onDone}
       onConfirm={() =>
         void state.remove(folder.id).then((result) => {
@@ -467,7 +520,9 @@ function DeleteFolderModal({
         })
       }
     >
-      {folderDeleteConfirmation(label, subfolders, nouns)}
+      {grouping
+        ? sharedFolderDeleteConfirmation(label, subfolders)
+        : folderDeleteConfirmation(label, subfolders, nouns, retentionDays)}
     </ConfirmDeleteModal>
   );
 }
@@ -489,6 +544,7 @@ export function FolderRow({
   const drop = useDropTarget(state, folder.id, itemIdsFor);
   const [deleting, setDeleting] = useState(false);
   const label = folderLabel(folder);
+  const mayDelete = state.deletes === 'grouping' || fullDevice;
 
   return (
     <ListingRow
@@ -516,7 +572,7 @@ export function FolderRow({
               <InfoIcon className="h-3 w-3 shrink-0" />
             </TileAction>
           ) : null}
-          {fullDevice ? (
+          {mayDelete ? (
             <TileAction label={`Delete ${label}`} tone="danger" disabled={state.busy} onClick={() => setDeleting(true)}>
               <TrashIcon className="h-3 w-3 shrink-0" />
             </TileAction>

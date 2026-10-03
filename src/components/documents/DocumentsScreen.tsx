@@ -19,6 +19,7 @@ import {
   documentCountLabel,
   DOCUMENT_NOUNS,
   countOf,
+  deleteActionLabel,
   documentDeleteConfirmation,
   documentHref,
   documentMiniatureTitlePixels,
@@ -70,7 +71,8 @@ import { PanelFacts } from '@/components/shell/SidePanel';
 
 export default function DocumentsScreen() {
   const context = useAuthedContext();
-  const { reportError, fullDevice } = useCryple();
+  const { reportError, fullDevice, account } = useCryple();
+  const retentionDays = account?.retention_days ?? 0;
 
   const [summaries, setSummaries] = useState<DocumentSummary[]>();
   const [message, setMessage] = useState<string>();
@@ -333,10 +335,10 @@ export default function DocumentsScreen() {
 
       {confirming && (
         <Notice tone="warning">
-          <p>{documentDeleteConfirmation(selected.length)}</p>
+          <p>{documentDeleteConfirmation(selected.length, retentionDays)}</p>
           <div className="mt-3 flex gap-2">
             <Button variant="danger" disabled={busy} onClick={() => void removeSelected()}>
-              Delete permanently
+              {deleteActionLabel(retentionDays)}
             </Button>
             <Button variant="secondary" disabled={busy} onClick={() => setConfirming(false)}>
               Keep them

@@ -54,7 +54,8 @@ unless all of these hold:
 - the counterparty is still **trusted** against the pinned root key. `mayPin` is false here: a
   catch-up in the background must never quietly pin a key nobody compared.
 
-It then re-wraps **every** share on the connection, in both directions. `listConnectionShares`
+It then re-wraps **every** share on the connection, in both directions, and the friendship's
+folder manifest when there is one ([below](#the-folders-of-a-friendship--foldersts)). `listConnectionShares`
 gives the set; each share's DEK is opened under the old sub-key and sealed under the new one. The
 scope a share was sent under is not recorded on the row, so each is tried scope by scope until one
 opens — that is what makes a share's scope still decide which sub-key applies. All of it goes in
@@ -65,6 +66,52 @@ leave nothing on the connection openable.
 derive the new connection key, so it cannot read anything shared from now on. It could already read
 what was shared before, and re-wrapping does not take that back — the same prospective limit
 [revocation](#sharing-is-a-reference-and-revocation-is-prospective) has.
+
+## The folders of a friendship — `folders.ts`
+
+[Task 133](../../../../tasks.md#task-133) D10: **every accepted connection is a folder in Shared**,
+named after the other person's current username, and inside it **either side** creates folders and
+files any share on the connection — whoever created the folder, whoever sent the share. The
+friendship folder is the connection itself; only what is inside it is stored, as one sealed
+manifest per connection that both sides write
+([`sharing` domain](../../../../api-general/internal/domain/sharing/README.md#the-shared-folders-task-1334)).
+
+- **The pure half is [`lib/folders`](../folders/README.md)'s**: the same manifest, validation,
+  merge and edits as the vault's tabs, under `SHARED_FOLDER_RULES` — 8 levels, no `home`.
+  Placements are keyed by **share id**, which is unique across both directions where an item id
+  is not.
+- **Sealed under the connection's `sharing` sub-key**, `sharedFoldersSubkey(connection_key)` —
+  `deriveShareSubkey` with `sharing` as the scope. A fresh DEK per write seals the JSON and is
+  wrapped with `wrapUnderConnection`. The sub-key is derived from the connection key each time and
+  never stored, so a device without `sharing` cannot open the folders and lists the friendship
+  flat (D9).
+- **`loadSharedFolders`** reads and validates, and starts from an empty manifest when there is
+  none. A tree that fails validation is a `FolderManifestInvalidError`, reported and never
+  rendered; `resetSharedFolders` replaces it, for both sides, only when the user asks.
+- **`editSharedFolders`** applies an edit, merges it into what it holds and `PUT`s it. On
+  `409 CONFLICT` it re-reads and applies the same edit to what the other side stored. **An edit
+  the cached manifest refuses is retried once on a fresh read before it is refused**: the other
+  person creates folders this side has not seen, and filing into one of them must not fail
+  because of a stale cache.
+- **Every write names the connection key**, as the connection's `recipient_key_generation`, and
+  `connection-folders-update` signs it. A re-establishment moves it: a `GET` whose generation
+  differs from the connection row, or a `409 STALE_KEY_GENERATION` on a write, re-reads
+  `GET /connections`, updates the row in place and seals again. The per-session cache is keyed by
+  that generation too, so a re-established connection never reuses a manifest opened under the
+  old key.
+- **`reestablishConnection` carries it**: it re-wraps the manifest's DEK from the old `sharing`
+  sub-key to the new one and sends it with the exchange, which applies it in the same transaction.
+
+**What either side sees.** `GET /connections/{id}/shares` lists both directions with a `direction`
+each. An `inbound` share is described with `describeReceived`, as before; an `outbound` one with
+`describeSent`, which unwraps the DEK under this side's own sub-key and reads the ciphertext from
+this account's own item (`getSecret`, `getNote`, `getFileDownload`) — `GET /shares/{id}` is the
+recipient's read and answers `404` to the sender. `openSentFile` downloads an item this account
+sent; `openSharedFile` one it received. `ReceivedItem` carries `direction` and the `counterparty`,
+which is the sender for an inbound share and the recipient for an outbound one.
+
+**Sending into a folder.** `shareItem` and `shareItemById` return the share, so the send dialog
+can file it with `placeItem(share.id, folder)` in the same gesture.
 
 ## Trust: the root key, pinned, and the proof path
 
@@ -151,5 +198,6 @@ nobody can reproduce, and the damage would only show on the far side, later.
 ## Where it lives in the UI
 
 Inviting, reviewing a fingerprint, nicknames and disconnecting are in the **Sharing** settings
-tab. What arrived is the **Shared** tab, a tile grid with _Download_ and _Copy to my own account_.
-Only item types the device holds are offered.
+tab. The **Shared** tab is one folder per friendship, holding what went both ways, organised into
+folders by both people, with _Download_ and _Copy to my own account_. Only item types the device
+holds are offered.
