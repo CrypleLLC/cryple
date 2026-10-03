@@ -1,8 +1,8 @@
-import { Node } from '@tiptap/core';
+import { Node } from "@tiptap/core";
 
-export const PAGE_BREAK_NAME = 'pageBreak';
+export const PAGE_BREAK_NAME = "pageBreak";
 
-declare module '@tiptap/core' {
+declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     pageBreak: {
       setPageBreak: () => ReturnType;
@@ -12,19 +12,19 @@ declare module '@tiptap/core' {
 
 export const PageBreak = Node.create({
   name: PAGE_BREAK_NAME,
-  group: 'block',
+  group: "block",
   atom: true,
   selectable: true,
 
   parseHTML() {
-    return [{ tag: 'div[data-page-break]' }];
+    return [{ tag: "div[data-page-break]" }];
   },
 
   renderHTML() {
     return [
-      'div',
-      { 'data-page-break': '', class: 'cryple-page-break' },
-      ['span', { class: 'cryple-page-break-label' }, 'Page break'],
+      "div",
+      { "data-page-break": "", class: "zekke-page-break" },
+      ["span", { class: "zekke-page-break-label" }, "Page break"],
     ];
   },
 
@@ -39,7 +39,7 @@ export const PageBreak = Node.create({
 
   addKeyboardShortcuts() {
     return {
-      'Mod-Enter': () => this.editor.commands.setPageBreak(),
+      "Mod-Enter": () => this.editor.commands.setPageBreak(),
     };
   },
 });

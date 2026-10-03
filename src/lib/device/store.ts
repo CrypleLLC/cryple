@@ -1,4 +1,4 @@
-import { isDeviceRecord, type DeviceRecord } from './record';
+import { isDeviceRecord, type DeviceRecord } from "./record";
 
 export interface DeviceRecordStore {
   read(): Promise<DeviceRecord | undefined>;
@@ -6,9 +6,9 @@ export interface DeviceRecordStore {
   remove(): Promise<void>;
 }
 
-export const DEVICE_DATABASE = 'cryple-device';
-export const DEVICE_OBJECT_STORE = 'device';
-export const DEVICE_RECORD_KEY = 'current';
+export const DEVICE_DATABASE = "zekke-device";
+export const DEVICE_OBJECT_STORE = "device";
+export const DEVICE_RECORD_KEY = "current";
 
 export function memoryDeviceStore(initial?: DeviceRecord): DeviceRecordStore {
   let record = initial;
@@ -55,33 +55,44 @@ async function transact<T>(
   }
 }
 
-export function indexedDbDeviceStore(factory: IDBFactory = indexedDB): DeviceRecordStore {
+export function indexedDbDeviceStore(
+  factory: IDBFactory = indexedDB,
+): DeviceRecordStore {
   return {
     read: async () => {
-      const value = await transact<unknown>(factory, 'readonly', (store) =>
+      const value = await transact<unknown>(factory, "readonly", (store) =>
         store.get(DEVICE_RECORD_KEY),
       );
       return isDeviceRecord(value) ? value : undefined;
     },
     write: async (record) => {
-      await transact(factory, 'readwrite', (store) => store.put(record, DEVICE_RECORD_KEY));
+      await transact(factory, "readwrite", (store) =>
+        store.put(record, DEVICE_RECORD_KEY),
+      );
     },
     remove: async () => {
-      await transact(factory, 'readwrite', (store) => store.delete(DEVICE_RECORD_KEY));
+      await transact(factory, "readwrite", (store) =>
+        store.delete(DEVICE_RECORD_KEY),
+      );
     },
   };
 }
 
 export function browserDeviceStore(): DeviceRecordStore {
-  if (typeof indexedDB === 'undefined') {
+  if (typeof indexedDB === "undefined") {
     return memoryDeviceStore();
   }
   return indexedDbDeviceStore(indexedDB);
 }
 
-export const ABANDONED_LOCAL_STORAGE_KEYS = ['encrypted_seed', 'cryple_mode_hint'] as const;
+export const ABANDONED_LOCAL_STORAGE_KEYS = [
+  "encrypted_seed",
+  "zekke_mode_hint",
+] as const;
 
-export const ABANDONED_LOCAL_STORAGE_PREFIXES = ['cryple.sharing.fingerprint.'] as const;
+export const ABANDONED_LOCAL_STORAGE_PREFIXES = [
+  "zekke.sharing.fingerprint.",
+] as const;
 
 function isAbandoned(key: string): boolean {
   return (
@@ -91,7 +102,9 @@ function isAbandoned(key: string): boolean {
 }
 
 export function discardAbandonedLocalStorage(
-  storage: Storage | undefined = typeof localStorage === 'undefined' ? undefined : localStorage,
+  storage: Storage | undefined = typeof localStorage === "undefined"
+    ? undefined
+    : localStorage,
 ): void {
   if (storage === undefined) {
     return;

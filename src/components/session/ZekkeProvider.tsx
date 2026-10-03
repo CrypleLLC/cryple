@@ -67,7 +67,7 @@ export type EnrolOutcome =
 
 const TOKEN_RENEWAL_MARGIN_MS = 5 * 60 * 1000;
 
-interface CrypleValue {
+interface ZekkeValue {
   phase: AppPhase;
   account?: AccountRecord;
   paranoid: boolean;
@@ -93,25 +93,25 @@ interface CrypleValue {
   services: AccountServices;
 }
 
-const CrypleContext = createContext<CrypleValue | undefined>(undefined);
+const ZekkeContext = createContext<ZekkeValue | undefined>(undefined);
 
-export function useCryple(): CrypleValue {
-  const value = useContext(CrypleContext);
+export function useZekke(): ZekkeValue {
+  const value = useContext(ZekkeContext);
   if (value === undefined) {
-    throw new Error('useCryple must be used inside <CrypleProvider>');
+    throw new Error('useZekke must be used inside <ZekkeProvider>');
   }
   return value;
 }
 
 export function useAuthedContext(): AuthedContext {
-  const { context } = useCryple();
+  const { context } = useZekke();
   if (context === undefined) {
     throw new Error('no unlocked session — this screen must render only in the ready phase');
   }
   return context;
 }
 
-export function CrypleProvider({ children }: { children: ReactNode }) {
+export function ZekkeProvider({ children }: { children: ReactNode }) {
   const session = useMemo(() => new SessionKeystore(), []);
   const tokens = useMemo(() => new TokenStore(), []);
   const store = useMemo(() => browserDeviceStore(), []);
@@ -390,7 +390,7 @@ export function CrypleProvider({ children }: { children: ReactNode }) {
   const holds = useCallback((scope: Scope) => scopes.includes(scope), [scopes]);
   const fullDevice = scopes.includes('admin');
 
-  const value = useMemo<CrypleValue>(
+  const value = useMemo<ZekkeValue>(
     () => ({
       phase,
       account,
@@ -435,5 +435,5 @@ export function CrypleProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  return <CrypleContext.Provider value={value}>{children}</CrypleContext.Provider>;
+  return <ZekkeContext.Provider value={value}>{children}</ZekkeContext.Provider>;
 }

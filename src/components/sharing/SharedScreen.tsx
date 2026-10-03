@@ -35,7 +35,7 @@ import {
   type FolderNouns,
   type ViewableMedia,
 } from '@/lib/app';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
+import { useAuthedContext, useZekke } from '@/components/session/ZekkeProvider';
 import { scopeForItemType } from '@/lib/scopes';
 import { Button, Card, Empty, Notice, Spinner } from '@/components/ui';
 import {
@@ -58,7 +58,7 @@ const sameIds = (ids: string[]) => ids;
 
 export default function SharedScreen() {
   const context = useAuthedContext();
-  const { reportError } = useCryple();
+  const { reportError } = useZekke();
 
   const [connections, setConnections] = useState<ConnectionRecord[]>();
   const [openId, setOpenId] = useState<string>();
@@ -142,7 +142,7 @@ function FriendshipGrid({
 }
 
 function FriendshipSpace({ connection, onBack }: { connection: ConnectionRecord; onBack: () => void }) {
-  const { holds } = useCryple();
+  const { holds } = useZekke();
 
   return holds('sharing') ? (
     <OrganisedSpace connection={connection} onBack={onBack} />
@@ -153,7 +153,7 @@ function FriendshipSpace({ connection, onBack }: { connection: ConnectionRecord;
 
 function useSpaceItems(connection: ConnectionRecord, organised: boolean) {
   const context = useAuthedContext();
-  const { reportError } = useCryple();
+  const { reportError } = useZekke();
   const [items, setItems] = useState<ReceivedItem[]>();
   const [message, setMessage] = useState<string>();
 
@@ -340,7 +340,7 @@ function SpaceContents({
   moveTo: (item: ReceivedItem) => ReactNode;
 }) {
   const context = useAuthedContext();
-  const { reportError, holds } = useCryple();
+  const { reportError, holds } = useZekke();
   const [notice, setNotice] = useState<string>();
   const [openedId, setOpenedId] = useState<string>();
   const [busy, setBusy] = useState(false);

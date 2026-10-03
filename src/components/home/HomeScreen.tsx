@@ -1,11 +1,11 @@
 'use client';
 
-import { useCryple } from '@/components/session/CrypleProvider';
+import { useZekke } from '@/components/session/ZekkeProvider';
 import { useShellNavigation } from '@/components/shell/ShellNavigation';
 import HomeStorage from './HomeStorage';
 
 export default function HomeScreen() {
-  const { holds } = useCryple();
+  const { holds } = useZekke();
 
   return (
     <div className="space-y-10">

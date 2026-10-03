@@ -94,7 +94,7 @@ import {
   type Transfer,
   type ViewableMedia,
 } from '@/lib/app';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
+import { useAuthedContext, useZekke } from '@/components/session/ZekkeProvider';
 import {
   CloseIcon,
   DownloadIcon,
@@ -151,7 +151,7 @@ interface DriveTile {
 
 export default function DriveScreen() {
   const context = useAuthedContext();
-  const { reportError, fullDevice, account } = useCryple();
+  const { reportError, fullDevice, account } = useZekke();
   const retentionDays = account?.retention_days ?? 0;
 
   const [tiles, setTiles] = useState<DriveTile[]>();

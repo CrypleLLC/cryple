@@ -4,30 +4,30 @@ Milestone 5 — the product logic behind the shell. Everything here is framework
 can be unit-tested under the existing node-environment Vitest setup; the React components in
 [`src/components`](../../components/README.md) are thin renderers over it.
 
-| Module | What it owns |
-| --- | --- |
-| `onboarding.ts` | The onboarding state machine, PIN/mnemonic validation copy, the recovery kit step |
-| `unlock.ts` | The unlock screen's sentences: attempts left, a forgotten browser, offline, rate limited |
-| `second-factor.ts` | Paranoid mode's copy, and when to suggest waiting after refused account PINs |
-| `devices.ts` | The devices screen's rows and copy |
-| `sign-out.ts` | Lock and *Remove this browser* |
-| `transfers.ts` | Uploads in flight, including a queue paused by `429` |
-| `vault.ts` | The vault index view model, received-ciphertext integrity check, and the local secret name/value format |
-| `passwords.ts` | The credential payload format (`site`, `username`, `password`, optional `note`, `urls` and `match`), the row builder sorted by site then username, and the host-only site label. **Fields it does not know are kept** in `extra` and written back on every edit, so an edit here never drops what the browser extension or a later version wrote |
-| `notes.ts` | The notes file-grid view model — title, thumbnail, selection, character budget and autosave state |
-| `folders.ts` | The folder copy and view models: the tab strip (`buildFolderTabs`, `itemsInTab`, tab naming and deleting) and the documents/drive tree (folder naming, what a delete takes, why a move was refused) |
-| `pairing.ts` | The *Connect a browser extension* flow's copy, its steps and its countdown |
-| `icon-size.ts` | The four-step size scale shared by all three grids, the columns each draws, and the remembered size and grid-or-list layout per screen |
-| `marquee.ts` | The geometry of selecting with a dragged box ([Selecting with the mouse](../../components/tiles/README.md#selecting-with-the-mouse)) |
-| `viewer.ts` | What the media viewer opens (`mediaKindOf`), its keys, stepping and copy ([The media viewer](../../components/modal/README.md#the-media-viewer)) |
-| `listing.ts` | The list layout: newest-created-first order, the modified date, and the short status labels ([Grid or list](../../components/tiles/README.md#grid-or-list)) |
-| `modal.ts` | A modal's keyboard contract, backdrop dismissal and scroll-lock counting |
-| `shell.ts` | `accountInitial`, the sidebar avatar's letter |
-| `username.ts` | The rename screen's validation and the copy that has to be on it |
-| `private-text.ts` | The attributes that stop the browser shipping typed text to a spelling, grammar or translation service |
-| `clipboard.ts` | Copying a secret, and clearing it off the clipboard afterwards |
-| `pin-entry.ts` | The six-box PIN entry: typing, pasting, backspace and arrows over one contiguous value ([One box per digit](#one-box-per-digit--pin-entryts)) |
-| `secret-field.ts` | Masking a secret or a PIN while it is typed, without turning it into a password field |
+| Module             | What it owns                                                                                                                                                                                                                                                                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `onboarding.ts`    | The onboarding state machine, PIN/mnemonic validation copy, the recovery kit step                                                                                                                                                                                                                                                                |
+| `unlock.ts`        | The unlock screen's sentences: attempts left, a forgotten browser, offline, rate limited                                                                                                                                                                                                                                                         |
+| `second-factor.ts` | Paranoid mode's copy, and when to suggest waiting after refused account PINs                                                                                                                                                                                                                                                                     |
+| `devices.ts`       | The devices screen's rows and copy                                                                                                                                                                                                                                                                                                               |
+| `sign-out.ts`      | Lock and _Remove this browser_                                                                                                                                                                                                                                                                                                                   |
+| `transfers.ts`     | Uploads in flight, including a queue paused by `429`                                                                                                                                                                                                                                                                                             |
+| `vault.ts`         | The vault index view model, received-ciphertext integrity check, and the local secret name/value format                                                                                                                                                                                                                                          |
+| `passwords.ts`     | The credential payload format (`site`, `username`, `password`, optional `note`, `urls` and `match`), the row builder sorted by site then username, and the host-only site label. **Fields it does not know are kept** in `extra` and written back on every edit, so an edit here never drops what the browser extension or a later version wrote |
+| `notes.ts`         | The notes file-grid view model — title, thumbnail, selection, character budget and autosave state                                                                                                                                                                                                                                                |
+| `folders.ts`       | The folder copy and view models: the tab strip (`buildFolderTabs`, `itemsInTab`, tab naming and deleting) and the documents/drive tree (folder naming, what a delete takes, why a move was refused)                                                                                                                                              |
+| `pairing.ts`       | The _Connect a browser extension_ flow's copy, its steps and its countdown                                                                                                                                                                                                                                                                       |
+| `icon-size.ts`     | The four-step size scale shared by all three grids, the columns each draws, and the remembered size and grid-or-list layout per screen                                                                                                                                                                                                           |
+| `marquee.ts`       | The geometry of selecting with a dragged box ([Selecting with the mouse](../../components/tiles/README.md#selecting-with-the-mouse))                                                                                                                                                                                                             |
+| `viewer.ts`        | What the media viewer opens (`mediaKindOf`), its keys, stepping and copy ([The media viewer](../../components/modal/README.md#the-media-viewer))                                                                                                                                                                                                 |
+| `listing.ts`       | The list layout: newest-created-first order, the modified date, and the short status labels ([Grid or list](../../components/tiles/README.md#grid-or-list))                                                                                                                                                                                      |
+| `modal.ts`         | A modal's keyboard contract, backdrop dismissal and scroll-lock counting                                                                                                                                                                                                                                                                         |
+| `shell.ts`         | `accountInitial`, the sidebar avatar's letter                                                                                                                                                                                                                                                                                                    |
+| `username.ts`      | The rename screen's validation and the copy that has to be on it                                                                                                                                                                                                                                                                                 |
+| `private-text.ts`  | The attributes that stop the browser shipping typed text to a spelling, grammar or translation service                                                                                                                                                                                                                                           |
+| `clipboard.ts`     | Copying a secret, and clearing it off the clipboard afterwards                                                                                                                                                                                                                                                                                   |
+| `pin-entry.ts`     | The six-box PIN entry: typing, pasting, backspace and arrows over one contiguous value ([One box per digit](#one-box-per-digit--pin-entryts))                                                                                                                                                                                                    |
+| `secret-field.ts`  | Masking a secret or a PIN while it is typed, without turning it into a password field                                                                                                                                                                                                                                                            |
 
 ## Plaintext the browser would otherwise send away
 
@@ -35,13 +35,13 @@ The app's own code never sends plaintext anywhere, and no dependency makes a req
 (checked 2026-09-13, source and built bundle). **The browser does**, through features that run on
 any editable text unless the page opts out:
 
-| Feature | Where the text goes | What stops it |
-| --- | --- | --- |
-| Chrome *Enhanced spell check* | Google | `spellcheck="false"` |
-| Edge *Microsoft Editor* | Microsoft | `spellcheck="false"` |
-| Grammarly and similar extensions | The extension's vendor | `data-gramm`, `data-gramm_editor`, `data-enable-grammarly` |
-| Page translation | Google | `translate="no"` on `<html>` and `<meta name="google" content="notranslate">` |
-| Mobile autocorrect and capitalisation | The keyboard's learning model | `autocorrect="off"`, `autocapitalize="off"` |
+| Feature                               | Where the text goes           | What stops it                                                                 |
+| ------------------------------------- | ----------------------------- | ----------------------------------------------------------------------------- |
+| Chrome _Enhanced spell check_         | Google                        | `spellcheck="false"`                                                          |
+| Edge _Microsoft Editor_               | Microsoft                     | `spellcheck="false"`                                                          |
+| Grammarly and similar extensions      | The extension's vendor        | `data-gramm`, `data-gramm_editor`, `data-enable-grammarly`                    |
+| Page translation                      | Google                        | `translate="no"` on `<html>` and `<meta name="google" content="notranslate">` |
+| Mobile autocorrect and capitalisation | The keyboard's learning model | `autocorrect="off"`, `autocapitalize="off"`                                   |
 
 `PRIVATE_TEXT_PROPS` is the React spelling of that set and `PRIVATE_TEXT_ATTRIBUTES` the DOM one,
 derived from it so the two cannot drift — TipTap's `editorProps.attributes` takes raw attribute
@@ -81,22 +81,22 @@ whole tab and says so in its confirmation label.
 
 ## A secret is masked while it is typed
 
-The vault's *Value* field hides what is typed by default: the value is not readable over a shoulder,
+The vault's _Value_ field hides what is typed by default: the value is not readable over a shoulder,
 in a screen share or in a recording. A show/hide button next to it reveals the value, and the field
 hides again after each secret is added.
 
 **It is not `type="password"`, on purpose.** A password input is what makes the browser offer to
 save the value in its password manager — Google Password Manager, iCloud Keychain, Firefox's — and
-those sync to their vendors' clouds. Saving a vault secret there moves it out of Cryple's
+those sync to their vendors' clouds. Saving a vault secret there moves it out of Zekke's
 encryption and into someone else's, which is the class of leak this client exists to avoid.
 
 `secretInputAttributes(masked, cssMasking)` decides the attributes:
 
-| State | Input | Why |
-| --- | --- | --- |
-| masked, CSS masking available | `type="text"` + `-webkit-text-security: disc` | Drawn as dots, and a text field to every password-saving heuristic |
-| masked, CSS masking unavailable | `type="password"` | The only way left to mask. Only browsers older than Firefox 114 land here |
-| revealed | `type="text"` | |
+| State                           | Input                                         | Why                                                                       |
+| ------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------- |
+| masked, CSS masking available   | `type="text"` + `-webkit-text-security: disc` | Drawn as dots, and a text field to every password-saving heuristic        |
+| masked, CSS masking unavailable | `type="password"`                             | The only way left to mask. Only browsers older than Firefox 114 land here |
+| revealed                        | `type="text"`                                 |                                                                           |
 
 - **Every state carries** `autocomplete="off"` and the ignore attributes 1Password (`data-1p-ignore`),
   LastPass (`data-lpignore`), Bitwarden (`data-bwignore`) and Dashlane-style detectors
@@ -111,7 +111,7 @@ encryption and into someone else's, which is the class of leak this client exist
 - **The masking class is a Tailwind arbitrary property**, `[-webkit-text-security:disc]`, because
   React's `CSSProperties` has no key for the vendor property.
 - **Masking hides the characters and nothing else.** The value can still be selected and copied out
-  of the field by whoever is typing it, and the list's own *Show values* toggle is separate.
+  of the field by whoever is typing it, and the list's own _Show values_ toggle is separate.
 
 ## A PIN is not a password the browser may keep
 
@@ -121,11 +121,11 @@ component is `PinField`; **a PIN must never be typed into a plain `Field` with
 `type="password"`**.
 
 The reason is sharper here than it is for a vault value. A `type="password"` input is what makes
-Chrome offer *Save password?*, and `autocomplete="off"` does not stop it — browsers' own managers
+Chrome offer _Save password?_, and `autocomplete="off"` does not stop it — browsers' own managers
 ignore that attribute on password inputs, which is exactly why the masked **text** input is the
 mechanism and the attributes are only the belt. What a saved PIN costs:
 
-- **It leaves Cryple.** The device PIN is the second thing standing between a stolen browser
+- **It leaves Zekke.** The device PIN is the second thing standing between a stolen browser
   profile and the keyrings. Saved, it syncs to a vendor cloud and the seal is only as good as that
   account.
 - **An autofilled wrong PIN is spent silently.** The device registration allows
@@ -153,7 +153,7 @@ tested without rendering.
 - **Anything that is not a digit is ignored.**
 - **Backspace** in a filled box clears it; in an empty box, `backspaceInPin` removes the previous
   digit and moves back to it. Left and right arrows move between filled boxes (`stepPinFocus`).
-- **Each box is labelled by its position** (`pinBoxLabel`: *PIN, digit 3 of 6*), and the row is a
+- **Each box is labelled by its position** (`pinBoxLabel`: _PIN, digit 3 of 6_), and the row is a
   `role="group"` named by the field's label.
 - **The boxes and their label are centred** in whatever holds the field.
 - **Only the first box takes `autoFocus`.** Enter still submits the surrounding form.
@@ -163,14 +163,14 @@ tested without rendering.
   (`PinFieldHandle.focus`, through `ref`); the last field of a form runs the form's action.
   Where it applies:
 
-  | Where | Focus on arrival | Sixth digit |
-  | --- | --- | --- |
-  | Unlock | the PIN | unlocks |
-  | Sign-up and adding a browser | the PIN | PIN → confirmation → submits |
-  | Settings, this browser's PIN | the new PIN | new → confirmation → changes it |
+  | Where                              | Focus on arrival           | Sixth digit                                                         |
+  | ---------------------------------- | -------------------------- | ------------------------------------------------------------------- |
+  | Unlock                             | the PIN                    | unlocks                                                             |
+  | Sign-up and adding a browser       | the PIN                    | PIN → confirmation → submits                                        |
+  | Settings, this browser's PIN       | the new PIN                | new → confirmation → changes it                                     |
   | Settings, changing the account PIN | — (the phrase comes first) | current → new → confirmation → changes it, once the phrase is valid |
-  | Settings, turning Paranoid on | — (the phrase comes first) | new → confirmation, **then waits for the button** |
-  | Settings, deleting the account | — (the phrase comes first) | **waits for the button** |
+  | Settings, turning Paranoid on      | — (the phrase comes first) | new → confirmation, **then waits for the button**                   |
+  | Settings, deleting the account     | — (the phrase comes first) | **waits for the button**                                            |
 
   The last two never fire on their own because they cannot be undone: Paranoid has no way back,
   and a deleted account is gone. Those are clicks worth making on purpose.
@@ -215,8 +215,8 @@ PIN ends the account for ever has to be on screen before the field is filled, no
   PIN.
 
 Both modes carry a `summary` and a `tradeoff`, because a choice presented with only the safe option
-explained is not one either. `MODE_COPY` is asserted never to contain the words *disable*, *remove
-the PIN* or *turn off* — the mode change is one-way and the copy must never imply otherwise.
+explained is not one either. `MODE_COPY` is asserted never to contain the words _disable_, _remove
+the PIN_ or _turn off_ — the mode change is one-way and the copy must never imply otherwise.
 
 ### The recovery kit comes after enrolment
 
@@ -252,18 +252,18 @@ Standard is described as a deliberate choice, not a lesser one.
 
 Signing in on a new browser is adding it with the phrase (`ENROL_STEP_COPY`): the copy says the
 browser does not keep the phrase (`PHRASE_NOT_KEPT`), that the phrase is in the page's memory
-while typed, and offers *I lost my other devices*. What that does and does not do
+while typed, and offers _I lost my other devices_. What that does and does not do
 (`lostDevicesWarning`) appears under it once the box is ticked, so it is read at the moment it
 applies rather than skimmed by everyone signing in.
 
 ## Unlocking — `unlock.ts`
 
-| Outcome | Sentence |
-| --- | --- |
-| Wrong PIN | `wrongPinMessage(attemptsRemaining)`: the attempts left, and that at zero the browser forgets the account and the phrase is needed |
-| Registration gone (`404`) | `UNLOCK_COPY.forgotten`: too many wrong PINs, or removed from another device. The PIN is never asked for again |
-| Server unreachable | `UNLOCK_COPY.offline`: not a PIN error, and no attempt was used |
-| `429` | `rateLimitMessage`: when to try again, and that it is not about the account |
+| Outcome                   | Sentence                                                                                                                           |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Wrong PIN                 | `wrongPinMessage(attemptsRemaining)`: the attempts left, and that at zero the browser forgets the account and the phrase is needed |
+| Registration gone (`404`) | `UNLOCK_COPY.forgotten`: too many wrong PINs, or removed from another device. The PIN is never asked for again                     |
+| Server unreachable        | `UNLOCK_COPY.offline`: not a PIN error, and no attempt was used                                                                    |
+| `429`                     | `rateLimitMessage`: when to try again, and that it is not about the account                                                        |
 
 ## Paranoid — `second-factor.ts`
 
@@ -275,9 +275,9 @@ PIN useless.
 
 ## Leaving a session
 
-| | What happens | Coming back needs |
-| --- | --- | --- |
-| **Lock** | The keystore forgets its keys; the device stays | the PIN |
+|                         | What happens                                                                                      | Coming back needs   |
+| ----------------------- | ------------------------------------------------------------------------------------------------- | ------------------- |
+| **Lock**                | The keystore forgets its keys; the device stays                                                   | the PIN             |
 | **Remove this browser** | A self `device-remove`: the server stops accepting this device at once, and the record is deleted | the recovery phrase |
 
 Only removal confirms, and the confirmation says the vault is **untouched**, because "remove this
@@ -306,7 +306,6 @@ written by another client cannot blank the whole vault; the caller decides what 
 do (this UI offers Delete but not Copy). Row size is measured from the ciphertext **received**,
 matching `checkIntegrity`'s stance rather than trusting `ciphertext_bytes`.
 
-
 ### The secret name/value format
 
 The wire contract has no `name` field on a secret — only opaque `ciphertext`. `SecretPayload`
@@ -325,7 +324,7 @@ too.** A secret sent to another account arrives as that same JSON envelope, and 
 deliberately ignorant of its shape. `sharedSecretView` in `sharing.ts` is the adapter: it decodes
 the envelope into the `{ name, body }` pair the Shared grid draws, so the tile is named after the
 secret and the reader is shown its **value** rather than the envelope around it. `sharedNoteView`
-is the same seam for a note, where the plaintext *is* the body and the title comes from
+is the same seam for a note, where the plaintext _is_ the body and the title comes from
 `noteTitle`. A malformed envelope falls back to `UNREADABLE_SECRET_NAME` and the raw text — all
 there is to show — rather than throwing, because `describeReceived` must never throw.
 
@@ -336,13 +335,13 @@ What the Shared screen decides is pure and in `sharing.ts`, so it is tested with
 - `friendshipFolders` — the accepted connections, one folder each, ordered by the other person's
   username. A pending invitation has no folder.
 - `sharedTreeFolders` — the friendship's manifest as the `TreeFolder` list the folder components
-  already draw, so the Shared space reuses the Drive's path bar, tiles and *Move to…*.
+  already draw, so the Shared space reuses the Drive's path bar, tiles and _Move to…_.
 - `sharesInFolder` — which shares sit in the open folder. Unfiled shares, shares filed in a folder
   that was deleted since, and every share when the folders cannot be read, are at the top.
-- `sharedFolderChoices` — every folder, indented, for the *Put it in* choice when sending.
+- `sharedFolderChoices` — every folder, indented, for the _Put it in_ choice when sending.
 - `sharedFolderDeleteConfirmation` — says what deleting a folder here does: it goes for both
   people, and nothing in it is unshared.
-- `sharedItemSubtitle` — *Note from anacosta* or *File you sent to anacosta*: a friendship's space
+- `sharedItemSubtitle` — _Note from anacosta_ or _File you sent to anacosta_: a friendship's space
   holds both directions.
 - `sharedFolderEditProblem` — the sentence for a folder edit the manifest refused.
 
@@ -355,11 +354,11 @@ account's `retention_days` and never by a plan name.
   `fileBatchDeleteConfirmation` and `folderDeleteConfirmation` take `retentionDays`: with `0` they say
   the delete is permanent, as they always did; above it they say the item goes to the Trash and for
   how long, and the Drive's adds that the space is freed at once. `deleteActionLabel` is the button:
-  *Move to Trash* or *Delete permanently*.
+  _Move to Trash_ or _Delete permanently_.
 - **The Trash screen's copy** is `TRASH_COPY`, and `trashRetentionNotice` the line on top — an
   account that keeps nothing is told so plainly rather than shown an unexplained empty list.
 - `daysLeft` and `trashExpiryLabel` count from the deletion, never below zero; `trashEntryName`
-  names what could not be opened by its kind (*Untitled document*, *Unreadable folder*), and
+  names what could not be opened by its kind (_Untitled document_, _Unreadable folder_), and
   `trashEntryDetail` says where an entry came from and how much a folder holds.
 
 ## The notes file grid
@@ -385,7 +384,7 @@ formatting is byte-for-byte what the user typed. There is no
   line's **plain text** (`# Letter to Ana` → `Letter to Ana`), and a line whose only content was a
   marker is skipped rather than becoming a blank name. The format's shape did not change — a note
   with no formatting still reads exactly as before.
-- `isNoteEmpty` likewise asks whether the note *looks* empty, not whether the string is. A
+- `isNoteEmpty` likewise asks whether the note _looks_ empty, not whether the string is. A
   document of nothing but empty list lines is visibly blank, and treating it as content would
   spend a `PUT` every two seconds on a note with nothing in it.
 - Both keep the 5000-character limit honest — it counts what the user can see, never the markers.
@@ -430,8 +429,8 @@ read through `useSyncExternalStore`.
 unmounts the drive. When this state lived in the component, the upload carried on — the promise does
 not care that its caller is gone — but its progress died with the component, and returning to the
 drive showed a file with no sign that anything was happening. The bug that made this necessary was
-reported that way exactly: *"I go to notes and go back to drive, the animation doesn't show up
-anymore."*
+reported that way exactly: _"I go to notes and go back to drive, the animation doesn't show up
+anymore."_
 
 Three things it has to get right, and each has a test:
 
@@ -491,17 +490,17 @@ while a note sits open and untouched, and every `PUT` re-seals the entire note, 
 is not free.
 
 `noteSaveState({ draft, saved, saving })` is the indicator, and it reports six states rather than
-a boolean because autosave has to *narrate itself* — with no button to press, "nothing is
+a boolean because autosave has to _narrate itself_ — with no button to press, "nothing is
 happening" and "your work is safe" look identical unless the UI says which:
 
-| State | Label | When |
-| --- | --- | --- |
-| `blank` | *(nothing)* | A new note nobody has typed in — say nothing rather than "Unsaved" |
-| `editing` | Unsaved changes | The 2s timer is counting down |
-| `saving` | Saving… | A write is in flight |
-| `saved` | Saved | The draft matches what was persisted |
-| `over-limit` | Too long to save | Past 5000 characters |
-| `emptied` | Nothing to save — use Delete to remove this note | An existing note cleared to nothing |
+| State        | Label                                            | When                                                               |
+| ------------ | ------------------------------------------------ | ------------------------------------------------------------------ |
+| `blank`      | _(nothing)_                                      | A new note nobody has typed in — say nothing rather than "Unsaved" |
+| `editing`    | Unsaved changes                                  | The 2s timer is counting down                                      |
+| `saving`     | Saving…                                          | A write is in flight                                               |
+| `saved`      | Saved                                            | The draft matches what was persisted                               |
+| `over-limit` | Too long to save                                 | Past 5000 characters                                               |
+| `emptied`    | Nothing to save — use Delete to remove this note | An existing note cleared to nothing                                |
 
 Two of those exist only because autosave made them reachable. **`emptied`** is the one a Save
 button hid: clearing a stored note's text leaves it permanently unsavable, and without a
@@ -519,16 +518,16 @@ how far over the limit a paste landed instead of just refusing.
 ## How large the three grids draw themselves
 
 `icon-size.ts` is the whole zoom control as data. One vocabulary of five steps — `tiny`, `small`,
-`medium`, `large`, `huge`, shown as *Extra small* to *Extra large* — serves the drive, notes and documents, because they are three views of the same
+`medium`, `large`, `huge`, shown as _Extra small_ to _Extra large_ — serves the drive, notes and documents, because they are three views of the same
 idea and a user who has learned the control on one should not meet a different one on the next.
 
 The steps carry **two geometries**, because the screens are not drawing the same kind of thing:
 
-| | Drive | Documents | Notes |
-| --- | --- | --- | --- |
-| What is drawn | a square icon, `glyphPixels` | an A4 miniature `glyphPixels` wide | a page miniature filling the column |
-| What the step sets | `tilePixels`, the column the icon sits in | the drive's `tilePixels` column | `pagePixels('notes', size)`, the column, which *is* the page width |
-| Sizes | 32 / 48 / 64 / 96 / 128 glyphs | 32 / 48 / 64 / 96 / 128 pages | 104 / 136 / 160 / 200 / 264 columns |
+|                    | Drive                                     | Documents                          | Notes                                                              |
+| ------------------ | ----------------------------------------- | ---------------------------------- | ------------------------------------------------------------------ |
+| What is drawn      | a square icon, `glyphPixels`              | an A4 miniature `glyphPixels` wide | a page miniature filling the column                                |
+| What the step sets | `tilePixels`, the column the icon sits in | the drive's `tilePixels` column    | `pagePixels('notes', size)`, the column, which _is_ the page width |
+| Sizes              | 32 / 48 / 64 / 96 / 128 glyphs            | 32 / 48 / 64 / 96 / 128 pages      | 104 / 136 / 160 / 200 / 264 columns                                |
 
 **Documents is laid out exactly like the drive.** Both screens hold folders, and a folder should
 be the same size on either at the same step, so the documents grid takes the drive's columns, its
@@ -539,14 +538,14 @@ fills the column. A test pins that the two grids and the two widths are the same
 
 **A drive file has no page to draw, and a note is nothing but one.** That is the whole reason for
 the split. The drive's glyph sizes are the ones a desktop file manager uses, and for its reason:
-they are the sizes an SVG of a sheet of paper stays legible at. A note's miniature is its *content*,
+they are the sizes an SVG of a sheet of paper stays legible at. A note's miniature is its _content_,
 so shrinking it to 48px would be showing the user nothing at all — the page grid starts at 136px,
 where a title is still readable and the body is at least a texture.
 
 - **The drive tile is always wider than the glyph it holds.** The name wraps under the icon over up
   to two lines, so a tile sized to the glyph would break every filename after four characters. A
   test pins the inequality rather than the two numbers. A page grid needs no such gap: the miniature
-  *is* the column.
+  _is_ the column.
 - **Every grid is `auto-fill`, not a column count.** Choosing a size chooses how big a thing is, and
   the row fits however many of them fit — a fixed `grid-cols-5` would make the small step draw five
   enormous gaps instead of twenty small tiles, which is the opposite of what was asked for.
@@ -568,8 +567,8 @@ where a title is still readable and the body is at least a texture.
   other red file exactly where a grid shows the most of them. See
   [the drive tile](../../components/drive/README.md#the-drive-tile-is-an-icon-not-a-page).
 - **The names under the tiles shrink with the two smallest steps.** Each step carries a
-  `labelClass`: 11px at *Extra small*, 12px at *Small*, and the 13px body size (`text-compact`)
-  from *Medium* up, where it always was. A 13px name under a 32px glyph was louder than the icon
+  `labelClass`: 11px at _Extra small_, 12px at _Small_, and the 13px body size (`text-compact`)
+  from _Medium_ up, where it always was. A 13px name under a 32px glyph was louder than the icon
   it labels, and wrapped after a few characters in the 80px tile. The drive's files and folders,
   Documents' pages and folders, and the Notes grid all read it from the scale (`PageTile` and
   `FolderTile` take it as `labelClass`), so one step means one text size everywhere. A test pins
@@ -596,8 +595,8 @@ step — the assertion that once caught a 120px page where both landed on 6.
 
 ### Remembered per screen, not once
 
-Each grid has its own key — `cryple_drive_icon_size`, `cryple_notes_icon_size`,
-`cryple_documents_icon_size` — and its own default: the drive opens at `medium`, the two page grids
+Each grid has its own key — `zekke_drive_icon_size`, `zekke_notes_icon_size`,
+`zekke_documents_icon_size` — and its own default: the drive opens at `medium`, the two page grids
 at `large`, which is the size they were fixed at before. They are separate because the shapes are:
 wanting dense file icons says nothing about wanting unreadable note previews, and one shared value
 would make each screen's control quietly reach into the other two.
@@ -612,7 +611,7 @@ not a reload, and a size that resets every visit is the kind of small wrongness 
 single time.
 
 The drive and documents also remember whether they are drawn as a grid or a list —
-`cryple_drive_layout`, `cryple_documents_layout` — through the same exemption and for the same
+`zekke_drive_layout`, `zekke_documents_layout` — through the same exemption and for the same
 reason: one of two literal words, read back through a guard that falls back to the grid.
 
 Reading it during render would desynchronise the server-rendered HTML from the first client paint,
@@ -638,7 +637,6 @@ past its edge, let go, and the dialog closes mid-selection.
 **`scrollLockTransition` is reference-counted**, so a nested dialog closing cannot hand the page
 back its scrollbar while an outer one is still open.
 
-
 ## Renaming the account
 
 `username.ts` is the Security screen's username panel minus the DOM. `checkUsername(input,
@@ -650,7 +648,7 @@ matters: normalising after validating would reject `PedroSilva`, which is the sa
 **Two sentences on that screen are not optional, and a test pins each.**
 
 - **A rename adds a name, it does not remove one.** Every name the account has ever held stays
-  owned by it for ever — the server keeps the set because it *is* the uniqueness constraint, and
+  owned by it for ever — the server keeps the set because it _is_ the uniqueness constraint, and
   it cannot be moved into the client's encrypted space like every other label. A user who renames
   to distance themselves from a name has not erased it, and this is the one place the product can
   say so.
@@ -664,7 +662,7 @@ reclaim call.
 **No copy here may speculate about who holds a name that was refused.** The server answers a
 collision identically whether the string is another account's current name or one it reserved, and
 narrating a difference would undo the uniformity that stops the claim route being a rename oracle.
-A test greps the whole copy object for *another account*, *someone else* and *taken by*.
+A test greps the whole copy object for _another account_, _someone else_ and _taken by_.
 
 ## The shell's account chrome
 
@@ -676,4 +674,4 @@ that restated the encryption guarantee and showed a shortened `user_address`. **
 removed on 2026-09-09 as noise** — it said the same thing on every screen, next to screens whose
 own copy already says it. Both helpers went with it rather than being left as dead exports; the
 fingerprint's one non-obvious rule, if anything ever needs it again, was that it is **not**
-prefixed `0x` — Cryple derives no secp256k1 key and has no EOA.
+prefixed `0x` — Zekke derives no secp256k1 key and has no EOA.

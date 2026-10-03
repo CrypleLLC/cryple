@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { ownRootFingerprint, verifyConnection, type ConnectionRecord } from '@/lib/sharing';
 import { SHARING_COPY, trustAlarm, type TrustAlarm } from '@/lib/app';
-import { useAuthedContext } from '@/components/session/CrypleProvider';
+import { useAuthedContext } from '@/components/session/ZekkeProvider';
 import { Button, Card, Notice } from '@/components/ui';
 
 export default function ConnectionInvitation({

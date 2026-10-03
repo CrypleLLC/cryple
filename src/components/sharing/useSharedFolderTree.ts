@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   childrenOf,
   createFolder,
@@ -15,17 +15,21 @@ import {
   renameFolder,
   type FolderEdit,
   type FolderManifest,
-} from '@/lib/folders';
+} from "@/lib/folders";
 import {
   ConnectionGoneError,
   editSharedFolders,
   loadSharedFolders,
   resetSharedFolders,
   type ConnectionRecord,
-} from '@/lib/sharing';
-import { sharedFolderEditProblem, sharedTreeFolders, SHARING_COPY } from '@/lib/app';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
-import type { FolderTreeState } from '@/components/folders/FolderBrowser';
+} from "@/lib/sharing";
+import {
+  sharedFolderEditProblem,
+  sharedTreeFolders,
+  SHARING_COPY,
+} from "@/lib/app";
+import { useAuthedContext, useZekke } from "@/components/session/ZekkeProvider";
+import type { FolderTreeState } from "@/components/folders/FolderBrowser";
 
 export interface SharedFolderTreeState extends FolderTreeState {
   manifest: FolderManifest | undefined;
@@ -33,12 +37,15 @@ export interface SharedFolderTreeState extends FolderTreeState {
 }
 
 function placeAll(ids: readonly string[], target: string | null): FolderEdit {
-  return (manifest, rules) => ids.reduce((placed, id) => placeItem(id, target)(placed, rules), manifest);
+  return (manifest, rules) =>
+    ids.reduce((placed, id) => placeItem(id, target)(placed, rules), manifest);
 }
 
-export function useSharedFolderTree(connection: ConnectionRecord): SharedFolderTreeState {
+export function useSharedFolderTree(
+  connection: ConnectionRecord,
+): SharedFolderTreeState {
   const context = useAuthedContext();
-  const { reportError } = useCryple();
+  const { reportError } = useZekke();
 
   const [manifest, setManifest] = useState<FolderManifest>();
   const [loaded, setLoaded] = useState(false);
@@ -63,7 +70,11 @@ export function useSharedFolderTree(connection: ConnectionRecord): SharedFolderT
   const accept = useCallback((next: FolderManifest) => {
     setManifest(next);
     setInvalid(false);
-    setCurrent((open) => (open !== null && !liveFolders(next).some((folder) => folder.id === open) ? null : open));
+    setCurrent((open) =>
+      open !== null && !liveFolders(next).some((folder) => folder.id === open)
+        ? null
+        : open,
+    );
   }, []);
 
   const reload = useCallback(async () => {
@@ -104,14 +115,25 @@ export function useSharedFolderTree(connection: ConnectionRecord): SharedFolderT
   );
 
   const folders = useMemo(
-    () => (loaded ? (manifest === undefined ? [] : sharedTreeFolders(manifest)) : undefined),
+    () =>
+      loaded
+        ? manifest === undefined
+          ? []
+          : sharedTreeFolders(manifest)
+        : undefined,
     [loaded, manifest],
   );
-  const path = useMemo(() => pathTo(folders ?? [], current), [folders, current]);
-  const children = useMemo(() => childrenOf(folders ?? [], current), [folders, current]);
+  const path = useMemo(
+    () => pathTo(folders ?? [], current),
+    [folders, current],
+  );
+  const children = useMemo(
+    () => childrenOf(folders ?? [], current),
+    [folders, current],
+  );
 
   return {
-    deletes: 'grouping',
+    deletes: "grouping",
     folders,
     current,
     open: setCurrent,
@@ -126,7 +148,9 @@ export function useSharedFolderTree(connection: ConnectionRecord): SharedFolderT
     rename: (id, name) => edit(renameFolder(id, name)),
     remove: async (id) => {
       const count = descendantsOf(folders ?? [], id).size;
-      return (await edit(deleteFolder(id))) ? { folders: count, items: 0 } : undefined;
+      return (await edit(deleteFolder(id)))
+        ? { folders: count, items: 0 }
+        : undefined;
     },
     moveFolder: (id, target) => edit(moveFolder(id, { parentId: target })),
     moveItems: (ids, target) => edit(placeAll(ids, target)),

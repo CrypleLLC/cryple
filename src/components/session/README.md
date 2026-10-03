@@ -2,20 +2,20 @@
 
 Who is signed in on this browser, and the screens before the app opens.
 
-| File | Role |
-| --- | --- |
-| `CrypleProvider.tsx` | Session custody, phase machine, error translation, cross-tab handoff |
-| `AppProviders.tsx` | Mounts `CrypleProvider` in the root layout so every route shares one session |
-| `SessionGate.tsx` | The loading / onboarding / locked / ready switch, wrapped around each route |
-| `Onboarding.tsx` | Sign up (phrase, Standard or Paranoid, PIN, recovery kit) and adding this browser with a phrase, including *I lost my devices* and the too-many-devices picker |
-| `Unlock.tsx` | PIN unlock through the server's OPRF, with the attempts left, and *I forgot this browser's PIN* |
+| File                | Role                                                                                                                                                           |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ZekkeProvider.tsx` | Session custody, phase machine, error translation, cross-tab handoff                                                                                           |
+| `AppProviders.tsx`  | Mounts `ZekkeProvider` in the root layout so every route shares one session                                                                                    |
+| `SessionGate.tsx`   | The loading / onboarding / locked / ready switch, wrapped around each route                                                                                    |
+| `Onboarding.tsx`    | Sign up (phrase, Standard or Paranoid, PIN, recovery kit) and adding this browser with a phrase, including _I lost my devices_ and the too-many-devices picker |
+| `Unlock.tsx`        | PIN unlock through the server's OPRF, with the attempts left, and _I forgot this browser's PIN_                                                                |
 
-Every screen reads the session through `useCryple()` and `useAuthedContext()` from
-`CrypleProvider.tsx`.
+Every screen reads the session through `useZekke()` and `useAuthedContext()` from
+`ZekkeProvider.tsx`.
 
 ## Session custody
 
-`CrypleProvider` owns the one `SessionKeystore`, the one `TokenStore` and the device record store
+`ZekkeProvider` owns the one `SessionKeystore`, the one `TokenStore` and the device record store
 (IndexedDB). Its phase is `loading → onboarding | locked → ready`: `locked` when a device record
 exists, `onboarding` when none does. The flows themselves are [`lib/account`](../../lib/account/README.md);
 the provider maps their outcomes to sentences and phases.
@@ -36,15 +36,15 @@ copy built client-side from the `code`.
 
 ### The provider's `notice` ends with the session it explained
 
-`notice` carries a sentence about *why* the app is where it is: this browser forgot the account
+`notice` carries a sentence about _why_ the app is where it is: this browser forgot the account
 after too many wrong PINs, the device was removed, the session was renewed. The first two are set
 on the way **out** to onboarding, where `Onboarding` shows them so the person knows why they are
 typing their phrase again.
 
 **Getting back in clears it.** Both ways into the vault — `becomeReady` after an unlock and
 `enterVault` after signing up or adding this browser — call `setNotice(undefined)`. Before this,
-the notice outlived the problem it described: after signing in again, *"This browser has forgotten
-your account…"* sat on top of every screen, true of a session that no longer existed and with no way
+the notice outlived the problem it described: after signing in again, _"This browser has forgotten
+your account…"_ sat on top of every screen, true of a session that no longer existed and with no way
 to close it. The shell also shows it with a dismiss control, through `dismissNotice`, for the
 notices that are raised while the vault is open.
 
@@ -52,8 +52,8 @@ notices that are raised while the vault is open.
 
 `createAccount` keeps the drafted genesis across a failed attempt, so a retry sends the same
 batch; it discards the draft after an authentication refusal. The phrase stays in onboarding
-state only until the recovery kit step is finished. `enrolBrowser` maps its outcomes to *no
-account uses this phrase* (with *Create an account with this phrase*), the too-many-devices
+state only until the recovery kit step is finished. `enrolBrowser` maps its outcomes to _no
+account uses this phrase_ (with _Create an account with this phrase_), the too-many-devices
 picker, or a message.
 
 Neither opens the vault on its own: the component calls `enterVault` immediately after adding a

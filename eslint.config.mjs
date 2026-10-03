@@ -1,6 +1,6 @@
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { FlatCompat } from '@eslint/eslintrc';
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { FlatCompat } from "@eslint/eslintrc";
 
 const compat = new FlatCompat({
   baseDirectory: dirname(fileURLToPath(import.meta.url)),
@@ -8,72 +8,77 @@ const compat = new FlatCompat({
 
 const config = [
   {
-    ignores: ['.next/**', 'node_modules/**', 'next-env.d.ts', 'tsconfig.tsbuildinfo'],
+    ignores: [
+      ".next/**",
+      "node_modules/**",
+      "next-env.d.ts",
+      "tsconfig.tsbuildinfo",
+    ],
   },
 
-  ...compat.extends('next/core-web-vitals', 'next/typescript'),
+  ...compat.extends("next/core-web-vitals", "next/typescript"),
 
   {
     rules: {
-      'no-console': 'error',
+      "no-console": "error",
 
-      '@typescript-eslint/no-unused-vars': [
-        'warn',
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
         {
-          argsIgnorePattern: '^_',
-          varsIgnorePattern: '^_',
-          caughtErrorsIgnorePattern: '^_',
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
           ignoreRestSiblings: true,
         },
       ],
 
-      'no-restricted-globals': [
-        'error',
+      "no-restricted-globals": [
+        "error",
         {
-          name: 'localStorage',
+          name: "localStorage",
           message:
-            'Nothing secret lives in localStorage. The device record lives in IndexedDB through ' +
-            'src/lib/device. See src/lib/device/README.md.',
+            "Nothing secret lives in localStorage. The device record lives in IndexedDB through " +
+            "src/lib/device. See src/lib/device/README.md.",
         },
         {
-          name: 'indexedDB',
+          name: "indexedDB",
           message:
-            'IndexedDB holds exactly two things: this device record (src/lib/device/store.ts) and ' +
-            'unfinished upload handles (src/lib/files/handles.ts). A new use needs an argument ' +
-            'in its README and an exemption in eslint.config.mjs.',
+            "IndexedDB holds exactly two things: this device record (src/lib/device/store.ts) and " +
+            "unfinished upload handles (src/lib/files/handles.ts). A new use needs an argument " +
+            "in its README and an exemption in eslint.config.mjs.",
         },
         {
-          name: 'sessionStorage',
+          name: "sessionStorage",
           message:
-            'Nothing in Cryple is persisted to sessionStorage. Session key material is held in ' +
-            'memory by SessionKeystore. See src/lib/session/README.md.',
+            "Nothing in Zekke is persisted to sessionStorage. Session key material is held in " +
+            "memory by SessionKeystore. See src/lib/session/README.md.",
         },
       ],
 
-      'no-restricted-properties': [
-        'error',
-        ...['window', 'globalThis', 'self'].flatMap((object) => [
+      "no-restricted-properties": [
+        "error",
+        ...["window", "globalThis", "self"].flatMap((object) => [
           {
             object,
-            property: 'localStorage',
+            property: "localStorage",
             message:
               `${object}.localStorage is the same persistent store as the bare global, and ` +
-              'no-restricted-globals cannot see it. Only the exempt modules in eslint.config.mjs ' +
-              'may reach it.',
+              "no-restricted-globals cannot see it. Only the exempt modules in eslint.config.mjs " +
+              "may reach it.",
           },
           {
             object,
-            property: 'indexedDB',
+            property: "indexedDB",
             message:
               `${object}.indexedDB is the same store as the bare global. Only the exempt modules ` +
-              'in eslint.config.mjs may reach it.',
+              "in eslint.config.mjs may reach it.",
           },
           {
             object,
-            property: 'sessionStorage',
+            property: "sessionStorage",
             message:
-              `Nothing in Cryple is persisted to sessionStorage, through ${object} or otherwise. ` +
-              'See src/lib/session/README.md.',
+              `Nothing in Zekke is persisted to sessionStorage, through ${object} or otherwise. ` +
+              "See src/lib/session/README.md.",
           },
         ]),
       ],
@@ -86,10 +91,10 @@ const config = [
   // preferences with no bearing on secrets, and losing them on every reload is
   // the kind of small wrongness a user notices on every visit.
   {
-    files: ['src/lib/app/icon-size.ts'],
+    files: ["src/lib/app/icon-size.ts"],
     rules: {
-      'no-restricted-globals': 'off',
-      'no-restricted-properties': 'off',
+      "no-restricted-globals": "off",
+      "no-restricted-properties": "off",
     },
   },
 
@@ -101,10 +106,10 @@ const config = [
   // earlier deployment left in browsers that ran it. It only removes; it never
   // reads or writes. See src/lib/device/README.md.
   {
-    files: ['src/lib/device/store.ts', 'src/lib/files/handles.ts'],
+    files: ["src/lib/device/store.ts", "src/lib/files/handles.ts"],
     rules: {
-      'no-restricted-globals': 'off',
-      'no-restricted-properties': 'off',
+      "no-restricted-globals": "off",
+      "no-restricted-properties": "off",
     },
   },
 
@@ -113,16 +118,19 @@ const config = [
   // tab, which no server can fetch and none may see, so <img> is the only option
   // here rather than the lazy one.
   {
-    files: ['src/components/drive/DriveScreen.tsx', 'src/components/modal/MediaViewer.tsx'],
+    files: [
+      "src/components/drive/DriveScreen.tsx",
+      "src/components/modal/MediaViewer.tsx",
+    ],
     rules: {
-      '@next/next/no-img-element': 'off',
+      "@next/next/no-img-element": "off",
     },
   },
 
   {
-    files: ['**/*.test.ts', '**/*.test.tsx'],
+    files: ["**/*.test.ts", "**/*.test.tsx"],
     rules: {
-      '@typescript-eslint/no-non-null-assertion': 'off',
+      "@typescript-eslint/no-non-null-assertion": "off",
     },
   },
 ];

@@ -1,6 +1,6 @@
-import type { CredentialSummary } from '@/lib/credentials';
+import type { CredentialSummary } from "@/lib/credentials";
 
-export type SiteMatch = 'domain' | 'host';
+export type SiteMatch = "domain" | "host";
 
 export interface CredentialPayload {
   site: string;
@@ -12,26 +12,42 @@ export interface CredentialPayload {
   extra?: Record<string, unknown>;
 }
 
-const KNOWN_FIELDS = new Set(['site', 'username', 'password', 'note', 'urls', 'match']);
+const KNOWN_FIELDS = new Set([
+  "site",
+  "username",
+  "password",
+  "note",
+  "urls",
+  "match",
+]);
 
 export class MalformedCredentialPayloadError extends Error {
   constructor() {
-    super('This credential was not written by this app and cannot be displayed.');
-    this.name = 'MalformedCredentialPayloadError';
+    super(
+      "This credential was not written by this app and cannot be displayed.",
+    );
+    this.name = "MalformedCredentialPayloadError";
   }
 }
 
 export function encodeCredentialPayload(payload: CredentialPayload): string {
   const { site, username, password, note, urls, match, extra } = payload;
-  const encoded: Record<string, unknown> = { ...(extra ?? {}), site, username, password };
+  const encoded: Record<string, unknown> = {
+    ...(extra ?? {}),
+    site,
+    username,
+    password,
+  };
   if (note !== undefined && note.length > 0) {
     encoded.note = note;
   }
-  const others = (urls ?? []).map((url) => url.trim()).filter((url) => url.length > 0);
+  const others = (urls ?? [])
+    .map((url) => url.trim())
+    .filter((url) => url.length > 0);
   if (others.length > 0) {
     encoded.urls = others;
   }
-  if (match === 'host') {
+  if (match === "host") {
     encoded.match = match;
   }
   return JSON.stringify(encoded);
@@ -45,22 +61,29 @@ export function decodeCredentialPayload(plaintext: string): CredentialPayload {
     throw new MalformedCredentialPayloadError();
   }
 
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new MalformedCredentialPayloadError();
   }
   const candidate = parsed as Record<string, unknown>;
   const { site, username, password, note, urls, match } = candidate;
 
-  if (typeof site !== 'string' || typeof username !== 'string' || typeof password !== 'string') {
+  if (
+    typeof site !== "string" ||
+    typeof username !== "string" ||
+    typeof password !== "string"
+  ) {
     throw new MalformedCredentialPayloadError();
   }
-  if (note !== undefined && typeof note !== 'string') {
+  if (note !== undefined && typeof note !== "string") {
     throw new MalformedCredentialPayloadError();
   }
-  if (urls !== undefined && (!Array.isArray(urls) || urls.some((url) => typeof url !== 'string'))) {
+  if (
+    urls !== undefined &&
+    (!Array.isArray(urls) || urls.some((url) => typeof url !== "string"))
+  ) {
     throw new MalformedCredentialPayloadError();
   }
-  if (match !== undefined && match !== 'domain' && match !== 'host') {
+  if (match !== undefined && match !== "domain" && match !== "host") {
     throw new MalformedCredentialPayloadError();
   }
 
@@ -74,16 +97,18 @@ export function decodeCredentialPayload(plaintext: string): CredentialPayload {
   if (match !== undefined) {
     payload.match = match;
   }
-  const extra = Object.fromEntries(Object.entries(candidate).filter(([key]) => !KNOWN_FIELDS.has(key)));
+  const extra = Object.fromEntries(
+    Object.entries(candidate).filter(([key]) => !KNOWN_FIELDS.has(key)),
+  );
   if (Object.keys(extra).length > 0) {
     payload.extra = extra;
   }
   return payload;
 }
 
-export const UNREADABLE_CREDENTIAL_SITE = 'Unreadable credential';
+export const UNREADABLE_CREDENTIAL_SITE = "Unreadable credential";
 
-export const MASKED_PASSWORD = '••••••••';
+export const MASKED_PASSWORD = "••••••••";
 
 export interface PasswordRow {
   id: string;
@@ -103,13 +128,17 @@ export interface OpenedCredential {
   plaintext?: string;
 }
 
-export function buildPasswordRows(opened: readonly OpenedCredential[]): PasswordRow[] {
+export function buildPasswordRows(
+  opened: readonly OpenedCredential[],
+): PasswordRow[] {
   return opened.map((entry) => toPasswordRow(entry)).sort(bySiteThenUsername);
 }
 
 function bySiteThenUsername(a: PasswordRow, b: PasswordRow): number {
-  const site = a.site.localeCompare(b.site, undefined, { sensitivity: 'base' });
-  return site === 0 ? a.username.localeCompare(b.username, undefined, { sensitivity: 'base' }) : site;
+  const site = a.site.localeCompare(b.site, undefined, { sensitivity: "base" });
+  return site === 0
+    ? a.username.localeCompare(b.username, undefined, { sensitivity: "base" })
+    : site;
 }
 
 function toPasswordRow({ record, plaintext }: OpenedCredential): PasswordRow {
@@ -131,7 +160,7 @@ function toPasswordRow({ record, plaintext }: OpenedCredential): PasswordRow {
       site: payload.site,
       username: payload.username,
       password: payload.password,
-      note: payload.note ?? '',
+      note: payload.note ?? "",
       readable: true,
       payload,
     };
@@ -143,9 +172,9 @@ function toPasswordRow({ record, plaintext }: OpenedCredential): PasswordRow {
 function unreadable() {
   return {
     site: UNREADABLE_CREDENTIAL_SITE,
-    username: '',
-    password: '',
-    note: '',
+    username: "",
+    password: "",
+    note: "",
     readable: false,
   };
 }
@@ -157,18 +186,22 @@ export function siteLabel(site: string): string {
   }
 
   try {
-    const url = new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`);
-    return url.hostname.replace(/^www\./, '');
+    const url = new URL(
+      trimmed.includes("://") ? trimmed : `https://${trimmed}`,
+    );
+    return url.hostname.replace(/^www\./, "");
   } catch {
     return trimmed;
   }
 }
 
 export const PASSWORD_PURGE_CONFIRMATION =
-  'Deleting permanently erases every saved version of it, its previous passwords included, from ' +
-  'every device. It cannot be undone: only this account holds the key, so nobody — including ' +
-  'Cryple — can bring it back.';
+  "Deleting permanently erases every saved version of it, its previous passwords included, from " +
+  "every device. It cannot be undone: only this account holds the key, so nobody — including " +
+  "Zekke — can bring it back.";
 
 export function passwordPurgeConfirmationTitle(count: number): string {
-  return count === 1 ? 'Delete this password permanently?' : `Delete ${count} passwords permanently?`;
+  return count === 1
+    ? "Delete this password permanently?"
+    : `Delete ${count} passwords permanently?`;
 }

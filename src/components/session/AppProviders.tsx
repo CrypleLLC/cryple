@@ -1,8 +1,8 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { CrypleProvider } from './CrypleProvider';
+import { ZekkeProvider } from './ZekkeProvider';
 
 export default function AppProviders({ children }: { children: ReactNode }) {
-  return <CrypleProvider>{children}</CrypleProvider>;
+  return <ZekkeProvider>{children}</ZekkeProvider>;
 }

@@ -15,7 +15,7 @@ import {
   trashRetentionNotice,
   trashSummary,
 } from '@/lib/app';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
+import { useAuthedContext, useZekke } from '@/components/session/ZekkeProvider';
 import { Button, Card, Empty, HintedIconButton, Notice, Spinner } from '@/components/ui';
 import { DocumentsIcon, FileTypeIcon, FolderGlyph, TrashIcon } from '@/components/ui/icons';
 import { ConfirmDeleteModal } from '@/components/modal';
@@ -24,7 +24,7 @@ const TRASH_SCOPES: readonly TreeScope[] = ['documents', 'files'];
 
 export default function TrashScreen() {
   const context = useAuthedContext();
-  const { reportError, holds, fullDevice, account } = useCryple();
+  const { reportError, holds, fullDevice, account } = useZekke();
   const retentionDays = account?.retention_days ?? 0;
   const scopes = useMemo(() => TRASH_SCOPES.filter((scope) => holds(scope)), [holds]);
 

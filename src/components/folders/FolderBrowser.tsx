@@ -33,7 +33,7 @@ import {
   UNREADABLE_FOLDER,
   type FolderNouns,
 } from '@/lib/app';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
+import { useAuthedContext, useZekke } from '@/components/session/ZekkeProvider';
 import { DRAGGED_ITEMS_TYPE } from './FolderTabs';
 import { FolderGlyph, FolderPlusIcon, InfoIcon, TrashIcon } from '@/components/ui/icons';
 import { Button, Field, Notice } from '@/components/ui';
@@ -41,7 +41,7 @@ import { ConfirmDeleteModal, FormModal } from '@/components/modal';
 import { ListingRow, TileAction } from '@/components/tiles';
 import { SIDE_PANEL_TRIGGER } from '@/components/shell/SidePanel';
 
-export const DRAGGED_FOLDER_TYPE = 'application/x-cryple-folder';
+export const DRAGGED_FOLDER_TYPE = 'application/x-zekke-folder';
 
 export function startFolderDrag(event: ReactDragEvent, id: string) {
   event.dataTransfer.setData(DRAGGED_FOLDER_TYPE, id);
@@ -97,7 +97,7 @@ export interface FolderTreeState {
 
 export function useFolderTree(scope: TreeScope, onItemsChanged: () => void): FolderTreeState {
   const context = useAuthedContext();
-  const { reportError } = useCryple();
+  const { reportError } = useZekke();
 
   const [folders, setFolders] = useState<TreeFolder[]>();
   const [current, setCurrent] = useState<string | null>(null);
@@ -415,7 +415,7 @@ export function FolderTile({
   itemIdsFor: (ids: string[]) => string[];
   onDetails?: () => void;
 }) {
-  const { fullDevice } = useCryple();
+  const { fullDevice } = useZekke();
   const drop = useDropTarget(state, folder.id, itemIdsFor);
   const [deleting, setDeleting] = useState(false);
   const label = folderLabel(folder);
@@ -489,7 +489,7 @@ function DeleteFolderModal({
   nouns: FolderNouns;
   onDone: () => void;
 }) {
-  const { account } = useCryple();
+  const { account } = useZekke();
   const retentionDays = account?.retention_days ?? 0;
   const label = folderLabel(folder);
   const subfolders = useMemo(
@@ -540,7 +540,7 @@ export function FolderRow({
   itemIdsFor: (ids: string[]) => string[];
   onDetails?: () => void;
 }) {
-  const { fullDevice } = useCryple();
+  const { fullDevice } = useZekke();
   const drop = useDropTarget(state, folder.id, itemIdsFor);
   const [deleting, setDeleting] = useState(false);
   const label = folderLabel(folder);

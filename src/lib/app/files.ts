@@ -1,12 +1,12 @@
-import { formatBytes } from './vault';
-import { daysLabel } from './trash';
-import { countOf, FILE_NOUNS, type FolderNouns } from './folders';
-import type { FileRecord, StorageUsage, UploadProgress } from '@/lib/files';
+import { formatBytes } from "./vault";
+import { daysLabel } from "./trash";
+import { countOf, FILE_NOUNS, type FolderNouns } from "./folders";
+import type { FileRecord, StorageUsage, UploadProgress } from "@/lib/files";
 
-export const UNREADABLE_FILE_NAME = 'Unreadable file';
+export const UNREADABLE_FILE_NAME = "Unreadable file";
 export const FILE_NAME_MAX_CHARACTERS = 80;
 
-const ELLIPSIS = '…';
+const ELLIPSIS = "…";
 
 export function fileName(name: string): string {
   const trimmed = name.trim();
@@ -17,7 +17,7 @@ export function fileName(name: string): string {
   const characters = Array.from(trimmed);
   return characters.length <= FILE_NAME_MAX_CHARACTERS
     ? trimmed
-    : `${characters.slice(0, FILE_NAME_MAX_CHARACTERS).join('').trimEnd()}${ELLIPSIS}`;
+    : `${characters.slice(0, FILE_NAME_MAX_CHARACTERS).join("").trimEnd()}${ELLIPSIS}`;
 }
 
 export function fullFileName(name: string): string {
@@ -26,75 +26,81 @@ export function fullFileName(name: string): string {
 }
 
 export type FileKind =
-  | 'image'
-  | 'video'
-  | 'audio'
-  | 'pdf'
-  | 'archive'
-  | 'document'
-  | 'sheet'
-  | 'slides'
-  | 'code'
-  | 'text'
-  | 'other';
+  | "image"
+  | "video"
+  | "audio"
+  | "pdf"
+  | "archive"
+  | "document"
+  | "sheet"
+  | "slides"
+  | "code"
+  | "text"
+  | "other";
 
 const DOCUMENT_TYPES = /msword|wordprocessingml|opendocument\.text|rtf|epub/;
 const SHEET_TYPES = /ms-excel|spreadsheetml|opendocument\.spreadsheet|csv/;
 const SLIDES_TYPES = /ms-powerpoint|presentationml|opendocument\.presentation/;
 const ARCHIVE_TYPES = /zip|tar|gzip|bzip|rar|7z-compressed|x-xz/;
-const CODE_TYPES = /javascript|typescript|json|xml|x-sh|x-python|x-c|x-java|yaml|sql|wasm/;
+const CODE_TYPES =
+  /javascript|typescript|json|xml|x-sh|x-python|x-c|x-java|yaml|sql|wasm/;
 
 export function fileKind(mime: string): FileKind {
   const type = mime.toLowerCase();
 
-  if (type === 'application/pdf') return 'pdf';
-  if (DOCUMENT_TYPES.test(type)) return 'document';
-  if (SHEET_TYPES.test(type)) return 'sheet';
-  if (SLIDES_TYPES.test(type)) return 'slides';
-  if (type.startsWith('image/')) return 'image';
-  if (type.startsWith('video/')) return 'video';
-  if (type.startsWith('audio/')) return 'audio';
-  if (ARCHIVE_TYPES.test(type)) return 'archive';
-  if (CODE_TYPES.test(type)) return 'code';
-  if (type.startsWith('text/')) return 'text';
+  if (type === "application/pdf") return "pdf";
+  if (DOCUMENT_TYPES.test(type)) return "document";
+  if (SHEET_TYPES.test(type)) return "sheet";
+  if (SLIDES_TYPES.test(type)) return "slides";
+  if (type.startsWith("image/")) return "image";
+  if (type.startsWith("video/")) return "video";
+  if (type.startsWith("audio/")) return "audio";
+  if (ARCHIVE_TYPES.test(type)) return "archive";
+  if (CODE_TYPES.test(type)) return "code";
+  if (type.startsWith("text/")) return "text";
 
-  return 'other';
+  return "other";
 }
 
 export const FILE_EXTENSION_MAX_CHARACTERS = 4;
 
 export function fileExtension(name: string): string {
-  const base = name.trim().split('/').pop() ?? '';
-  const cut = base.lastIndexOf('.');
+  const base = name.trim().split("/").pop() ?? "";
+  const cut = base.lastIndexOf(".");
   if (cut <= 0 || cut === base.length - 1) {
-    return '';
+    return "";
   }
 
   const extension = base.slice(cut + 1);
   return /^[A-Za-z0-9]+$/.test(extension) &&
     extension.length <= FILE_EXTENSION_MAX_CHARACTERS
     ? extension.toUpperCase()
-    : '';
+    : "";
 }
 
-export const REPLICATION_PENDING = 'Saved. A second copy is made within a minute.';
-export const REPLICATION_DONE = 'Saved, with a second copy.';
-export const REPLICATION_FAILED = 'Saved. The second copy has not been made.';
-export const PRIMARY_MISSING = 'This file is being repaired. It cannot be opened right now.';
-export const UPLOAD_UNFINISHED = 'This upload never finished, so the file is not in your vault.';
+export const REPLICATION_PENDING =
+  "Saved. A second copy is made within a minute.";
+export const REPLICATION_DONE = "Saved, with a second copy.";
+export const REPLICATION_FAILED = "Saved. The second copy has not been made.";
+export const PRIMARY_MISSING =
+  "This file is being repaired. It cannot be opened right now.";
+export const UPLOAD_UNFINISHED =
+  "This upload never finished, so the file is not in your vault.";
 
-export function replicationLabel(file: Pick<FileRecord, 'r2_state' | 'gcs_state'>): string {
-  if (file.r2_state === 'missing') {
+export function replicationLabel(
+  file: Pick<FileRecord, "r2_state" | "gcs_state">,
+): string {
+  if (file.r2_state === "missing") {
     return PRIMARY_MISSING;
   }
-  if (file.r2_state !== 'ok') {
+  if (file.r2_state !== "ok") {
     return UPLOAD_UNFINISHED;
   }
 
   switch (file.gcs_state) {
-    case 'ok':
+    case "ok":
       return REPLICATION_DONE;
-    case 'failed':
+    case "failed":
       return REPLICATION_FAILED;
     default:
       return REPLICATION_PENDING;
@@ -102,15 +108,17 @@ export function replicationLabel(file: Pick<FileRecord, 'r2_state' | 'gcs_state'
 }
 
 export function fileCaption(status: string, trueBytes: number): string {
-  return status === '' || status === REPLICATION_DONE ? formatBytes(trueBytes) : status;
+  return status === "" || status === REPLICATION_DONE
+    ? formatBytes(trueBytes)
+    : status;
 }
 
-export function isOpenable(file: Pick<FileRecord, 'r2_state'>): boolean {
-  return file.r2_state === 'ok';
+export function isOpenable(file: Pick<FileRecord, "r2_state">): boolean {
+  return file.r2_state === "ok";
 }
 
-export function isResumable(file: Pick<FileRecord, 'r2_state'>): boolean {
-  return file.r2_state === 'pending';
+export function isResumable(file: Pick<FileRecord, "r2_state">): boolean {
+  return file.r2_state === "pending";
 }
 
 export interface StorageBar {
@@ -142,10 +150,17 @@ export function storageBar(usage: StorageUsage): StorageBar {
     quotaLabel: formatBytes(usage.quota_bytes),
     summary: `${formatBytes(usage.stored_bytes)} of ${formatBytes(usage.quota_bytes)} used`,
     uploadingSummary:
-      reserved === 0 ? undefined : `${formatBytes(reserved)} held by unfinished uploads`,
+      reserved === 0
+        ? undefined
+        : `${formatBytes(reserved)} held by unfinished uploads`,
     percent,
-    reservedPercent: Math.max(0, share(usage.used_bytes, usage.quota_bytes) - percent),
-    nearlyFull: usage.quota_bytes > 0 && usage.used_bytes / usage.quota_bytes >= NEARLY_FULL_AT,
+    reservedPercent: Math.max(
+      0,
+      share(usage.used_bytes, usage.quota_bytes) - percent,
+    ),
+    nearlyFull:
+      usage.quota_bytes > 0 &&
+      usage.used_bytes / usage.quota_bytes >= NEARLY_FULL_AT,
   };
 }
 
@@ -158,11 +173,15 @@ export function usedShareLabel(usage: StorageUsage): string {
 }
 
 export const DELETED_SPACE_RETURNS =
-  'Space from a deleted file returns within a minute, once both copies are removed.';
+  "Space from a deleted file returns within a minute, once both copies are removed.";
 
-export const TRASHED_SPACE_RETURNS = 'Its space is freed now, while it waits in the Trash.';
+export const TRASHED_SPACE_RETURNS =
+  "Its space is freed now, while it waits in the Trash.";
 
-export function fileDeleteConfirmation(name: string, retentionDays = 0): string {
+export function fileDeleteConfirmation(
+  name: string,
+  retentionDays = 0,
+): string {
   if (retentionDays > 0) {
     return (
       `${fileName(name)} goes to the Trash, where you can restore it for ${daysLabel(retentionDays)}. ` +
@@ -171,22 +190,25 @@ export function fileDeleteConfirmation(name: string, retentionDays = 0): string 
   }
   return (
     `Deleting ${fileName(name)} is permanent. Only this account holds the key, so nobody — ` +
-    `including Cryple — can restore it. ${DELETED_SPACE_RETURNS}`
+    `including Zekke — can restore it. ${DELETED_SPACE_RETURNS}`
   );
 }
 
-export function fileBatchDeleteConfirmation(count: number, retentionDays = 0): string {
-  const files = count === 1 ? 'this file' : `these ${count} files`;
-  const them = count === 1 ? 'it' : 'them';
+export function fileBatchDeleteConfirmation(
+  count: number,
+  retentionDays = 0,
+): string {
+  const files = count === 1 ? "this file" : `these ${count} files`;
+  const them = count === 1 ? "it" : "them";
   if (retentionDays > 0) {
     return (
-      `${count === 1 ? 'This file goes' : `These ${count} files go`} to the Trash, where you can restore ` +
-      `${them} for ${daysLabel(retentionDays)}. After that ${count === 1 ? 'it is' : 'they are'} deleted for good.`
+      `${count === 1 ? "This file goes" : `These ${count} files go`} to the Trash, where you can restore ` +
+      `${them} for ${daysLabel(retentionDays)}. After that ${count === 1 ? "it is" : "they are"} deleted for good.`
     );
   }
   return (
     `Deleting ${files} is permanent. Only this account holds the keys, so nobody — ` +
-    `including Cryple — can restore ${them}. ${DELETED_SPACE_RETURNS}`
+    `including Zekke — can restore ${them}. ${DELETED_SPACE_RETURNS}`
   );
 }
 
@@ -199,7 +221,7 @@ export function fileBatchDeleteSummary(result: {
     return undefined;
   }
 
-  const were = missing === 1 ? 'was' : 'were';
+  const were = missing === 1 ? "was" : "were";
   if (result.deleted === 0) {
     return `${fileCountLabel(missing)} ${were} already gone. The list is now up to date.`;
   }
@@ -212,7 +234,10 @@ export function resumeHint(name: string, remembered: boolean): string {
     : `Finish uploading ${fileName(name)} — pick the same file again`;
 }
 
-export function toggleFileSelection(selected: readonly string[], id: string): string[] {
+export function toggleFileSelection(
+  selected: readonly string[],
+  id: string,
+): string[] {
   return selected.includes(id)
     ? selected.filter((candidate) => candidate !== id)
     : [...selected, id];
@@ -221,16 +246,17 @@ export function toggleFileSelection(selected: readonly string[], id: string): st
 export function discardConfirmation(name: string): string {
   return (
     `Discarding ${fileName(name)} throws away an upload that never finished. Nothing was ` +
-    'stored, so there is nothing to restore — and the space it was holding comes back at once.'
+    "stored, so there is nothing to restore — and the space it was holding comes back at once."
   );
 }
 
-export function storageFullMessage(usage: StorageUsage, neededBytes: number): string {
-  return (
-    `This file needs ${formatBytes(neededBytes)} and only ${formatBytes(
-      Math.max(0, usage.quota_bytes - usage.used_bytes),
-    )} is free. ${DELETED_SPACE_RETURNS}`
-  );
+export function storageFullMessage(
+  usage: StorageUsage,
+  neededBytes: number,
+): string {
+  return `This file needs ${formatBytes(neededBytes)} and only ${formatBytes(
+    Math.max(0, usage.quota_bytes - usage.used_bytes),
+  )} is free. ${DELETED_SPACE_RETURNS}`;
 }
 
 export interface FileTile {
@@ -247,11 +273,16 @@ export interface FileTile {
 }
 
 export function fileCountLabel(count: number): string {
-  return count === 1 ? '1 file' : `${count} files`;
+  return count === 1 ? "1 file" : `${count} files`;
 }
 
-export function transferLabel(phase: UploadProgress['phase'], percent: number): string {
-  return phase === 'completing' ? 'Finishing the upload…' : `Uploading… ${percent}%`;
+export function transferLabel(
+  phase: UploadProgress["phase"],
+  percent: number,
+): string {
+  return phase === "completing"
+    ? "Finishing the upload…"
+    : `Uploading… ${percent}%`;
 }
 
 export function uploadPercent(doneBytes: number, totalBytes: number): number {
@@ -262,28 +293,32 @@ export function uploadPercent(doneBytes: number, totalBytes: number): number {
 }
 
 const FILE_KIND_LABELS: Record<FileKind, string> = {
-  image: 'Image',
-  video: 'Video',
-  audio: 'Audio',
-  pdf: 'PDF document',
-  archive: 'Archive',
-  document: 'Document',
-  sheet: 'Spreadsheet',
-  slides: 'Presentation',
-  code: 'Code',
-  text: 'Text',
-  other: 'File',
+  image: "Image",
+  video: "Video",
+  audio: "Audio",
+  pdf: "PDF document",
+  archive: "Archive",
+  document: "Document",
+  sheet: "Spreadsheet",
+  slides: "Presentation",
+  code: "Code",
+  text: "Text",
+  other: "File",
 };
 
-export const UNKNOWN_FILE_TYPE = 'Unknown type';
+export const UNKNOWN_FILE_TYPE = "Unknown type";
 
-export function fileTypeLabel(kind: FileKind, name: string, readable: boolean): string {
+export function fileTypeLabel(
+  kind: FileKind,
+  name: string,
+  readable: boolean,
+): string {
   if (!readable) {
     return UNKNOWN_FILE_TYPE;
   }
   const extension = fileExtension(name);
   const label = FILE_KIND_LABELS[kind];
-  return extension === '' || kind === 'pdf' ? label : `${label} · ${extension}`;
+  return extension === "" || kind === "pdf" ? label : `${label} · ${extension}`;
 }
 
 export function exactBytesLabel(bytes: number): string {
@@ -291,7 +326,7 @@ export function exactBytesLabel(bytes: number): string {
     return formatBytes(bytes);
   }
   const whole = Math.round(bytes);
-  const exact = `${whole.toLocaleString('en-US')} ${whole === 1 ? 'byte' : 'bytes'}`;
+  const exact = `${whole.toLocaleString("en-US")} ${whole === 1 ? "byte" : "bytes"}`;
   return whole < 1024 ? exact : `${formatBytes(whole)} (${exact})`;
 }
 
@@ -301,7 +336,10 @@ export interface FolderContents {
   bytes: number;
 }
 
-export function folderContents(fileBytes: readonly number[], folders: number): FolderContents {
+export function folderContents(
+  fileBytes: readonly number[],
+  folders: number,
+): FolderContents {
   return {
     items: fileBytes.length,
     folders,
@@ -310,28 +348,29 @@ export function folderContents(fileBytes: readonly number[], folders: number): F
 }
 
 export function folderItemsLabel(
-  contents: Pick<FolderContents, 'items' | 'folders'>,
+  contents: Pick<FolderContents, "items" | "folders">,
   nouns: FolderNouns = FILE_NOUNS,
 ): string {
   const items = countOf(contents.items, nouns);
   if (contents.folders === 0) {
     return items;
   }
-  return `${items}, ${contents.folders === 1 ? '1 folder' : `${contents.folders} folders`}`;
+  return `${items}, ${contents.folders === 1 ? "1 folder" : `${contents.folders} folders`}`;
 }
 
 export const FILE_NAME_LIMIT = 255;
 
 export const FILE_NAME_PROBLEMS = {
-  empty: 'A file needs a name.',
+  empty: "A file needs a name.",
   tooLong: `A file name is at most ${FILE_NAME_LIMIT} characters.`,
-  separator: 'A file name cannot contain / or \\.',
-  control: 'A file name cannot contain line breaks or other control characters.',
+  separator: "A file name cannot contain / or \\.",
+  control:
+    "A file name cannot contain line breaks or other control characters.",
 } as const;
 
 export function fileNameProblem(name: string): string | undefined {
   const trimmed = name.trim();
-  if (trimmed === '') {
+  if (trimmed === "") {
     return FILE_NAME_PROBLEMS.empty;
   }
   if (Array.from(trimmed).length > FILE_NAME_LIMIT) {
@@ -346,10 +385,13 @@ export function fileNameProblem(name: string): string | undefined {
   return undefined;
 }
 
-export function extensionChangeNote(before: string, after: string): string | undefined {
+export function extensionChangeNote(
+  before: string,
+  after: string,
+): string | undefined {
   const was = fileExtension(before);
   const now = fileExtension(after.trim());
-  if (was === '' || was === now) {
+  if (was === "" || was === now) {
     return undefined;
   }
   return `The file stays a ${was} file. Changing the name does not convert it.`;

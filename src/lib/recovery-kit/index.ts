@@ -1,29 +1,35 @@
-import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from 'pdf-lib';
-import { encode } from 'uqr';
-import { assertValidMnemonic } from '@/lib/keys';
-import { GLYPH_ADVANCE, GLYPH_PATHS, GLYPH_UNITS_PER_EM } from './glyphs';
+import {
+  PDFDocument,
+  rgb,
+  StandardFonts,
+  type PDFFont,
+  type PDFPage,
+} from "pdf-lib";
+import { encode } from "uqr";
+import { assertValidMnemonic } from "@/lib/keys";
+import { GLYPH_ADVANCE, GLYPH_PATHS, GLYPH_UNITS_PER_EM } from "./glyphs";
 
 export const RECOVERY_KIT_COPY = {
-  appName: 'Cryple',
-  heading: 'Recovery Kit',
-  documentTitle: 'Cryple Recovery Kit',
+  appName: "Zekke",
+  heading: "Recovery Kit",
+  documentTitle: "Zekke Recovery Kit",
   intro:
-    'Your recovery phrase is your account. Keep this document offline: printed, or on a storage ' +
-    'device that never connects to the internet.',
-  usernameLabel: 'Username',
-  createdLabel: 'Created',
-  phraseLabel: 'Recovery phrase',
-  qrCaption: 'Scan with the Cryple mobile app to sign in.',
+    "Your recovery phrase is your account. Keep this document offline: printed, or on a storage " +
+    "device that never connects to the internet.",
+  usernameLabel: "Username",
+  createdLabel: "Created",
+  phraseLabel: "Recovery phrase",
+  qrCaption: "Scan with the Zekke mobile app to sign in.",
   phraseNotCopyable:
-    'These words cannot be selected or copied, on purpose. A clipboard is shared with other apps ' +
-    'and is often synced to your other devices, so your recovery phrase should never pass through ' +
-    'one. Type it in by hand when you need it.',
+    "These words cannot be selected or copied, on purpose. A clipboard is shared with other apps " +
+    "and is often synced to your other devices, so your recovery phrase should never pass through " +
+    "one. Type it in by hand when you need it.",
   warning:
-    'Anyone who holds this document can open your vault. Cryple never sees this phrase and cannot ' +
-    'reset or recover it: if you lose it, nobody can restore it for you.',
+    "Anyone who holds this document can open your vault. Zekke never sees this phrase and cannot " +
+    "reset or recover it: if you lose it, nobody can restore it for you.",
 } as const;
 
-export const RECOVERY_KIT_QR_ERROR_CORRECTION = 'M';
+export const RECOVERY_KIT_QR_ERROR_CORRECTION = "M";
 export const RECOVERY_KIT_QR_QUIET_ZONE_MODULES = 4;
 export const RECOVERY_KIT_PHRASE_COLUMNS = 3;
 
@@ -52,25 +58,27 @@ export interface RecoveryKitContent {
 
 export class RecoveryKitGlyphError extends Error {
   constructor() {
-    super('the recovery phrase has a character the kit has no outline for');
-    this.name = 'RecoveryKitGlyphError';
+    super("the recovery phrase has a character the kit has no outline for");
+    this.name = "RecoveryKitGlyphError";
   }
 }
 
 export class RecoveryKitOverflowError extends Error {
   constructor() {
-    super('recovery kit content does not fit on one page');
-    this.name = 'RecoveryKitOverflowError';
+    super("recovery kit content does not fit on one page");
+    this.name = "RecoveryKitOverflowError";
   }
 }
 
 export function recoveryKitPhrase(mnemonic: string): string {
   assertValidMnemonic(mnemonic);
 
-  return mnemonic.normalize('NFKD').trim().split(/\s+/).join(' ');
+  return mnemonic.normalize("NFKD").trim().split(/\s+/).join(" ");
 }
 
-export function recoveryKitContent(input: RecoveryKitInput): RecoveryKitContent {
+export function recoveryKitContent(
+  input: RecoveryKitInput,
+): RecoveryKitContent {
   const phrase = recoveryKitPhrase(input.mnemonic);
 
   return {
@@ -79,7 +87,9 @@ export function recoveryKitContent(input: RecoveryKitInput): RecoveryKitContent 
     intro: RECOVERY_KIT_COPY.intro,
     username: input.username,
     created: input.createdAt.toISOString().slice(0, 10),
-    words: phrase.split(' ').map((word, index) => ({ position: index + 1, word })),
+    words: phrase
+      .split(" ")
+      .map((word, index) => ({ position: index + 1, word })),
     qrPayload: phrase,
     qrCaption: RECOVERY_KIT_COPY.qrCaption,
     warning: RECOVERY_KIT_COPY.warning,
@@ -111,7 +121,7 @@ export function qrModulePath(modules: readonly (readonly boolean[])[]): string {
     }
   });
 
-  return runs.join('');
+  return runs.join("");
 }
 
 export function recoveryKitGridCell(
@@ -124,7 +134,9 @@ export function recoveryKitGridCell(
   return { column: Math.floor(index / rows), row: index % rows };
 }
 
-export function recoveryKitWordOutlines(word: string): { path: string; offset: number }[] {
+export function recoveryKitWordOutlines(
+  word: string,
+): { path: string; offset: number }[] {
   return [...word].map((letter, index) => {
     const path = GLYPH_PATHS[letter];
     if (path === undefined) {
@@ -135,7 +147,7 @@ export function recoveryKitWordOutlines(word: string): { path: string; offset: n
 }
 
 export function recoveryKitFileName(username: string): string {
-  return `cryple-recovery-kit-${username}.pdf`;
+  return `zekke-recovery-kit-${username}.pdf`;
 }
 
 const A4_PAGE: [number, number] = [595.28, 841.89];
@@ -181,27 +193,37 @@ function drawOutlinedWord(
   }
 }
 
-function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+function wrapText(
+  text: string,
+  font: PDFFont,
+  size: number,
+  maxWidth: number,
+): string[] {
   const lines: string[] = [];
-  let line = '';
+  let line = "";
 
-  for (const word of text.split(' ')) {
-    const candidate = line === '' ? word : `${line} ${word}`;
-    if (line !== '' && font.widthOfTextAtSize(candidate, size) > maxWidth) {
+  for (const word of text.split(" ")) {
+    const candidate = line === "" ? word : `${line} ${word}`;
+    if (line !== "" && font.widthOfTextAtSize(candidate, size) > maxWidth) {
       lines.push(line);
       line = word;
     } else {
       line = candidate;
     }
   }
-  if (line !== '') {
+  if (line !== "") {
     lines.push(line);
   }
 
   return lines;
 }
 
-function fittedSize(text: string, font: PDFFont, preferred: number, maxWidth: number): number {
+function fittedSize(
+  text: string,
+  font: PDFFont,
+  preferred: number,
+  maxWidth: number,
+): number {
   const minimum = 8;
   let size = preferred;
   while (size > minimum && font.widthOfTextAtSize(text, size) > maxWidth) {
@@ -214,7 +236,13 @@ function fittedSize(text: string, font: PDFFont, preferred: number, maxWidth: nu
 function drawParagraph(
   page: PDFPage,
   text: string,
-  options: { x: number; top: number; width: number; font: PDFFont; color: typeof INK },
+  options: {
+    x: number;
+    top: number;
+    width: number;
+    font: PDFFont;
+    color: typeof INK;
+  },
 ): number {
   let baseline = options.top - BODY_SIZE;
   for (const line of wrapText(text, options.font, BODY_SIZE, options.width)) {
@@ -234,7 +262,14 @@ function drawParagraph(
 function drawField(
   page: PDFPage,
   fonts: KitFonts,
-  field: { label: string; value: string; valueSize: number; x: number; top: number; width: number },
+  field: {
+    label: string;
+    value: string;
+    valueSize: number;
+    x: number;
+    top: number;
+    width: number;
+  },
 ): number {
   const labelBaseline = field.top - LABEL_SIZE;
   page.drawText(field.label.toUpperCase(), {
@@ -245,7 +280,12 @@ function drawField(
     color: INK_MUTED,
   });
 
-  const valueSize = fittedSize(field.value, fonts.bold, field.valueSize, field.width);
+  const valueSize = fittedSize(
+    field.value,
+    fonts.bold,
+    field.valueSize,
+    field.width,
+  );
   const valueBaseline = labelBaseline - 8 - valueSize;
   page.drawText(field.value, {
     x: field.x,
@@ -339,10 +379,18 @@ function drawIdentity(
 
   const captionWidth = QR_SIZE + 32;
   let captionBaseline = top - QR_SIZE - 6 - LABEL_SIZE;
-  for (const line of wrapText(content.qrCaption, fonts.regular, LABEL_SIZE, captionWidth)) {
+  for (const line of wrapText(
+    content.qrCaption,
+    fonts.regular,
+    LABEL_SIZE,
+    captionWidth,
+  )) {
     const lineWidth = fonts.regular.widthOfTextAtSize(line, LABEL_SIZE);
     page.drawText(line, {
-      x: Math.min(qrLeft + (QR_SIZE - lineWidth) / 2, width - PAGE_MARGIN - lineWidth),
+      x: Math.min(
+        qrLeft + (QR_SIZE - lineWidth) / 2,
+        width - PAGE_MARGIN - lineWidth,
+      ),
       y: captionBaseline,
       size: LABEL_SIZE,
       font: fonts.regular,
@@ -373,7 +421,8 @@ function drawPhrase(
 
   const boxTop = top - LABEL_SIZE - 12;
   const rows = Math.ceil(content.words.length / RECOVERY_KIT_PHRASE_COLUMNS);
-  const boxHeight = 2 * PHRASE_BOX_PADDING + (rows - 1) * PHRASE_ROW_HEIGHT + PHRASE_WORD_SIZE;
+  const boxHeight =
+    2 * PHRASE_BOX_PADDING + (rows - 1) * PHRASE_ROW_HEIGHT + PHRASE_WORD_SIZE;
 
   page.drawRectangle({
     x: PAGE_MARGIN,
@@ -384,17 +433,22 @@ function drawPhrase(
     borderWidth: 1,
   });
 
-  const columnWidth = (boxWidth - 2 * PHRASE_BOX_PADDING) / RECOVERY_KIT_PHRASE_COLUMNS;
+  const columnWidth =
+    (boxWidth - 2 * PHRASE_BOX_PADDING) / RECOVERY_KIT_PHRASE_COLUMNS;
   const numberWidth = 22;
 
   content.words.forEach(({ position, word }, index) => {
     const { column, row } = recoveryKitGridCell(index, content.words.length);
     const cellLeft = PAGE_MARGIN + PHRASE_BOX_PADDING + column * columnWidth;
-    const baseline = boxTop - PHRASE_BOX_PADDING - row * PHRASE_ROW_HEIGHT - PHRASE_WORD_SIZE;
+    const baseline =
+      boxTop - PHRASE_BOX_PADDING - row * PHRASE_ROW_HEIGHT - PHRASE_WORD_SIZE;
     const number = String(position);
 
     page.drawText(number, {
-      x: cellLeft + numberWidth - fonts.regular.widthOfTextAtSize(number, LABEL_SIZE),
+      x:
+        cellLeft +
+        numberWidth -
+        fonts.regular.widthOfTextAtSize(number, LABEL_SIZE),
       y: baseline,
       size: LABEL_SIZE,
       font: fonts.regular,
@@ -437,8 +491,14 @@ function drawWarning(
   const [width] = A4_PAGE;
   const boxWidth = width - 2 * PAGE_MARGIN;
   const padding = 14;
-  const lines = wrapText(content.warning, fonts.bold, BODY_SIZE, boxWidth - 2 * padding);
-  const boxHeight = 2 * padding + (lines.length - 1) * BODY_LINE_HEIGHT + BODY_SIZE;
+  const lines = wrapText(
+    content.warning,
+    fonts.bold,
+    BODY_SIZE,
+    boxWidth - 2 * padding,
+  );
+  const boxHeight =
+    2 * padding + (lines.length - 1) * BODY_LINE_HEIGHT + BODY_SIZE;
 
   page.drawRectangle({
     x: PAGE_MARGIN,
@@ -460,7 +520,9 @@ function drawWarning(
   return top - boxHeight;
 }
 
-export async function buildRecoveryKitPdf(input: RecoveryKitInput): Promise<Uint8Array> {
+export async function buildRecoveryKitPdf(
+  input: RecoveryKitInput,
+): Promise<Uint8Array> {
   const content = recoveryKitContent(input);
 
   const document = await PDFDocument.create();

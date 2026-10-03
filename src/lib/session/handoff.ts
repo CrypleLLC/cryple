@@ -1,8 +1,8 @@
-import { isHandoffMaterial, type SessionHandoffMaterial } from './index';
+import { isHandoffMaterial, type SessionHandoffMaterial } from "./index";
 
 export const HANDOFF_TIMEOUT_MS = 1200;
-export const HANDOFF_REQUEST = 'cryple-session-handoff/request';
-export const HANDOFF_OFFER = 'cryple-session-handoff/offer';
+export const HANDOFF_REQUEST = "zekke-session-handoff/request";
+export const HANDOFF_OFFER = "zekke-session-handoff/offer";
 
 export interface HandoffOffer {
   material: SessionHandoffMaterial;
@@ -26,8 +26,8 @@ export interface HandoffHost {
   readonly origin: string;
   readonly opener: HandoffPeer | null;
   open(url: string): HandoffPeer | null;
-  addEventListener(type: 'message', listener: HandoffListener): void;
-  removeEventListener(type: 'message', listener: HandoffListener): void;
+  addEventListener(type: "message", listener: HandoffListener): void;
+  removeEventListener(type: "message", listener: HandoffListener): void;
 }
 
 interface RequestMessage {
@@ -42,21 +42,21 @@ interface OfferMessage {
 }
 
 function isRequest(value: unknown): value is RequestMessage {
-  if (typeof value !== 'object' || value === null) {
+  if (typeof value !== "object" || value === null) {
     return false;
   }
   const message = value as Partial<RequestMessage>;
-  return message.kind === HANDOFF_REQUEST && typeof message.nonce === 'string';
+  return message.kind === HANDOFF_REQUEST && typeof message.nonce === "string";
 }
 
 function isOffer(value: unknown): value is OfferMessage {
-  if (typeof value !== 'object' || value === null) {
+  if (typeof value !== "object" || value === null) {
     return false;
   }
   const message = value as Partial<OfferMessage>;
   return (
     message.kind === HANDOFF_OFFER &&
-    typeof message.nonce === 'string' &&
+    typeof message.nonce === "string" &&
     isHandoffMaterial(message.offer?.material)
   );
 }
@@ -95,13 +95,17 @@ export class HandoffServer {
       }
 
       child.postMessage(
-        { kind: HANDOFF_OFFER, nonce: event.data.nonce, offer } satisfies OfferMessage,
+        {
+          kind: HANDOFF_OFFER,
+          nonce: event.data.nonce,
+          offer,
+        } satisfies OfferMessage,
         this.host.origin,
       );
     };
 
-    this.host.addEventListener('message', listener);
-    return () => this.host.removeEventListener('message', listener);
+    this.host.addEventListener("message", listener);
+    return () => this.host.removeEventListener("message", listener);
   }
 
   private openedChild(source: unknown): HandoffPeer | undefined {
@@ -145,15 +149,18 @@ export function requestSessionFromOpener(
 
     const settle = (offer?: HandoffOffer) => {
       clearTimeout(timer);
-      host.removeEventListener('message', listener);
+      host.removeEventListener("message", listener);
       resolve(offer);
     };
 
-    host.addEventListener('message', listener);
+    host.addEventListener("message", listener);
     const timer = setTimeout(() => settle(undefined), timeoutMs);
 
     try {
-      opener.postMessage({ kind: HANDOFF_REQUEST, nonce } satisfies RequestMessage, host.origin);
+      opener.postMessage(
+        { kind: HANDOFF_REQUEST, nonce } satisfies RequestMessage,
+        host.origin,
+      );
     } catch {
       settle(undefined);
     }
@@ -161,7 +168,7 @@ export function requestSessionFromOpener(
 }
 
 export function browserHandoffHost(): HandoffHost | undefined {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return undefined;
   }
 
@@ -171,9 +178,11 @@ export function browserHandoffHost(): HandoffHost | undefined {
     get opener() {
       return (target.opener as HandoffPeer | null) ?? null;
     },
-    open: (url) => target.open(url, '_blank'),
-    addEventListener: (type, listener) => target.addEventListener(type, listener),
-    removeEventListener: (type, listener) => target.removeEventListener(type, listener),
+    open: (url) => target.open(url, "_blank"),
+    addEventListener: (type, listener) =>
+      target.addEventListener(type, listener),
+    removeEventListener: (type, listener) =>
+      target.removeEventListener(type, listener),
   };
 }
 
@@ -191,7 +200,9 @@ export function openWithSessionHandoff(url: string): boolean {
   return sharedServer()?.open(url) !== undefined;
 }
 
-export function serveSession(provide: () => HandoffOffer | undefined): () => void {
+export function serveSession(
+  provide: () => HandoffOffer | undefined,
+): () => void {
   return sharedServer()?.serve(provide) ?? (() => undefined);
 }
 
@@ -199,5 +210,7 @@ export function requestSession(
   timeoutMs: number = HANDOFF_TIMEOUT_MS,
 ): Promise<HandoffOffer | undefined> {
   const host = browserHandoffHost();
-  return host === undefined ? Promise.resolve(undefined) : requestSessionFromOpener(host, { timeoutMs });
+  return host === undefined
+    ? Promise.resolve(undefined)
+    : requestSessionFromOpener(host, { timeoutMs });
 }

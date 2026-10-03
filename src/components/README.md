@@ -11,28 +11,28 @@ the repo's Vitest setup is node-environment and matches `src/**/*.test.ts` only.
 
 Shared — no domain knowledge, imported through their `index.ts`:
 
-| Folder | What it holds |
-| --- | --- |
-| [`ui`](./ui/README.md) | The primitives: `Card`, `Button`, the fields, `Badge`, `Notice`, `Empty`, `Spinner`, `CopyButton`, `SizeStepper`, and the icons |
-| [`modal`](./modal/README.md) | `Modal`, and the shapes dialogs take: `FormModal`, `ConfirmDeleteModal`, `ModalActions` |
-| [`item-list`](./item-list/README.md) | The item table the Vault and Passwords list their rows in |
-| [`tiles`](./tiles/README.md) | The file-grid parts: `PageTile`, `TileCheckbox`, `TileAction` |
+| Folder                               | What it holds                                                                                                                   |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| [`ui`](./ui/README.md)               | The primitives: `Card`, `Button`, the fields, `Badge`, `Notice`, `Empty`, `Spinner`, `CopyButton`, `SizeStepper`, and the icons |
+| [`modal`](./modal/README.md)         | `Modal`, and the shapes dialogs take: `FormModal`, `ConfirmDeleteModal`, `ModalActions`                                         |
+| [`item-list`](./item-list/README.md) | The item table the Vault and Passwords list their rows in                                                                       |
+| [`tiles`](./tiles/README.md)         | The file-grid parts: `PageTile`, `TileCheckbox`, `TileAction`                                                                   |
 
 Domains — one folder each:
 
-| Folder | What it is |
-| --- | --- |
-| [`session`](./session/README.md) | The session provider, the gate, onboarding and unlock |
-| [`home`](./home/README.md) | The Home screen: every section as an app icon |
-| [`shell`](./shell/README.md) | The sidebar shell, navigation, account menu, storage meter, staging banner |
-| [`vault`](./vault/README.md) | The Vault, and the show/hide-values toggle |
-| [`passwords`](./passwords/README.md) | The Passwords tab |
-| [`notes`](./notes/README.md) | The notes grid and the note editor |
-| [`documents`](./documents/README.md) | The documents grid and the `/docs/[id]` editor |
-| [`drive`](./drive/README.md) | The drive |
-| [`folders`](./folders/README.md) | Tabs (Vault, Notes) and nested folders (Documents, Drive) |
-| [`sharing`](./sharing/README.md) | Connections, sending, and what arrived |
-| [`settings`](./settings/README.md) | The Settings modal and its tabs |
+| Folder                               | What it is                                                                 |
+| ------------------------------------ | -------------------------------------------------------------------------- |
+| [`session`](./session/README.md)     | The session provider, the gate, onboarding and unlock                      |
+| [`home`](./home/README.md)           | The Home screen: every section as an app icon                              |
+| [`shell`](./shell/README.md)         | The sidebar shell, navigation, account menu, storage meter, staging banner |
+| [`vault`](./vault/README.md)         | The Vault, and the show/hide-values toggle                                 |
+| [`passwords`](./passwords/README.md) | The Passwords tab                                                          |
+| [`notes`](./notes/README.md)         | The notes grid and the note editor                                         |
+| [`documents`](./documents/README.md) | The documents grid and the `/docs/[id]` editor                             |
+| [`drive`](./drive/README.md)         | The drive                                                                  |
+| [`folders`](./folders/README.md)     | Tabs (Vault, Notes) and nested folders (Documents, Drive)                  |
+| [`sharing`](./sharing/README.md)     | Connections, sending, and what arrived                                     |
+| [`settings`](./settings/README.md)   | The Settings modal and its tabs                                            |
 
 ### The rules the layout follows
 
@@ -55,7 +55,7 @@ Every colour, type step and shadow is a Tailwind v4 `@theme` token in
 [`globals.css`](../app/globals.css). Components name tokens (`bg-surface`, `text-ink-muted`,
 `border-line`, `shadow-card`) and never raw palette values, so a palette change is one file.
 
-The palette is the Cryple design system as `cryple.io` uses it, with the three adjustments that
+The palette is the Zekke design system as `zekke.io` uses it, with the three adjustments that
 system itself flags for text-dense surfaces:
 
 - **Brand indigo `#6366f1` is not a text colour on light grounds** (4.47:1). `brand-500` is for
@@ -93,13 +93,13 @@ is not "consistency" — it is deleting a signal.**
 **The note editor keeps `bg-surface`, and that is deliberate.** It is the area you type into, in
 the same family as `Field` and `TextArea`, and those keep a light background because writing on the
 grey ground is worse to read. Its shadow went, so it is a writing surface rather than a highlighted
-panel. The documents editor's `.cryple-sheet` keeps its surface and shadow for the same reason and
+panel. The documents editor's `.zekke-sheet` keeps its surface and shadow for the same reason and
 one more: an A4 page is literally paper.
 
 ### One light theme, on purpose
 
 There are no `dark:` variants and no `prefers-color-scheme` block; `:root` sets
-`color-scheme: light`. The Cryple design system defines a light palette only, and inventing a dark
+`color-scheme: light`. The Zekke design system defines a light palette only, and inventing a dark
 one here is exactly the drift it was written down to stop. Because components name tokens rather
 than colours, adding dark mode later means redefining the token block under a media query — not
 touching a component.

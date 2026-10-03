@@ -25,7 +25,7 @@ import {
   trustAlarm,
   type ConnectionGroups,
 } from '@/lib/app';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
+import { useAuthedContext, useZekke } from '@/components/session/ZekkeProvider';
 import ConnectionInvitation from './ConnectionInvitation';
 import { Badge, Button, Card, Empty, Field, Notice } from '@/components/ui';
 import { SharingIcon } from '@/components/ui/icons';
@@ -34,7 +34,7 @@ const EMPTY_GROUPS: ConnectionGroups = { awaitingMe: [], awaitingThem: [], accep
 
 export default function SharingScreen() {
   const context = useAuthedContext();
-  const { reportError, fullDevice } = useCryple();
+  const { reportError, fullDevice } = useZekke();
 
   const [groups, setGroups] = useState<ConnectionGroups>(EMPTY_GROUPS);
   const [trust, setTrust] = useState<Readonly<Record<string, ConnectionTrust>>>({});

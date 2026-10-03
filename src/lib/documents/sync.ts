@@ -1,7 +1,7 @@
-import * as Y from 'yjs';
-import { ApiError } from '@/lib/api';
-import { zeroBytes } from '@/lib/encoding';
-import { openUpdate, sealUpdate } from './crypto';
+import * as Y from "yjs";
+import { ApiError } from "@/lib/api";
+import { zeroBytes } from "@/lib/encoding";
+import { openUpdate, sealUpdate } from "./crypto";
 import {
   MAX_UPDATE_CHARACTERS,
   SequenceGapError,
@@ -12,13 +12,14 @@ import {
   type DocumentRecord,
   type DocumentUpdateRecord,
   type PendingUpdate,
-} from './records';
+} from "./records";
 
-export const REMOTE_ORIGIN = Symbol('cryple/documents/remote');
+export const REMOTE_ORIGIN = Symbol("Zekke/documents/remote");
 export const DEFAULT_DEBOUNCE_MS = 1500;
 export const DEFAULT_POLL_INTERVAL_MS = 20_000;
 export const DEFAULT_COMPACT_THRESHOLD = 64;
-export const MAX_UPDATE_RAW_BYTES = Math.floor((MAX_UPDATE_CHARACTERS * 3) / 4) - 64;
+export const MAX_UPDATE_RAW_BYTES =
+  Math.floor((MAX_UPDATE_CHARACTERS * 3) / 4) - 64;
 
 export interface DocumentTransport {
   fetchDocument(id: string): Promise<DocumentRecord>;
@@ -27,16 +28,31 @@ export interface DocumentTransport {
     since: number,
     options?: { expectFollowing?: boolean },
   ): Promise<DocumentUpdateRecord[]>;
-  pushUpdates(id: string, updates: readonly PendingUpdate[]): Promise<AppendResult>;
+  pushUpdates(
+    id: string,
+    updates: readonly PendingUpdate[],
+  ): Promise<AppendResult>;
   compact(
     id: string,
-    body: { snapshot_ciphertext: string; through_seq: number; expected_revision?: number },
+    body: {
+      snapshot_ciphertext: string;
+      through_seq: number;
+      expected_revision?: number;
+    },
   ): Promise<DocumentRecord>;
-  unwrapDek(document: Pick<DocumentRecord, 'wrapped_dek' | 'key_generation'>): Promise<Uint8Array>;
+  unwrapDek(
+    document: Pick<DocumentRecord, "wrapped_dek" | "key_generation">,
+  ): Promise<Uint8Array>;
   listMeta(): Promise<DocumentMetaRecord[]>;
 }
 
-export type SyncStatus = 'idle' | 'loading' | 'synced' | 'saving' | 'offline' | 'error';
+export type SyncStatus =
+  | "idle"
+  | "loading"
+  | "synced"
+  | "saving"
+  | "offline"
+  | "error";
 
 export interface SyncState {
   status: SyncStatus;
@@ -77,7 +93,7 @@ export class DocumentSync {
   private updateHandler?: (update: Uint8Array, origin: unknown) => void;
 
   private state: SyncState = {
-    status: 'idle',
+    status: "idle",
     cursor: 0,
     snapshotSeq: 0,
     revision: 0,
@@ -85,12 +101,17 @@ export class DocumentSync {
     gapDetected: false,
   };
 
-  constructor(id: string, transport: DocumentTransport, options: DocumentSyncOptions = {}) {
+  constructor(
+    id: string,
+    transport: DocumentTransport,
+    options: DocumentSyncOptions = {},
+  ) {
     this.id = id;
     this.transport = transport;
     this.debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
     this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
-    this.compactThreshold = options.compactThreshold ?? DEFAULT_COMPACT_THRESHOLD;
+    this.compactThreshold =
+      options.compactThreshold ?? DEFAULT_COMPACT_THRESHOLD;
     this.now = options.now ?? (() => Date.now());
   }
 
@@ -105,7 +126,7 @@ export class DocumentSync {
   }
 
   async open(): Promise<void> {
-    this.patch({ status: 'loading' });
+    this.patch({ status: "loading" });
 
     const record = await this.transport.fetchDocument(this.id);
     this.dek = await this.transport.unwrapDek(record);
@@ -132,12 +153,12 @@ export class DocumentSync {
         return;
       }
       this.queued.push(update.slice());
-      this.patch({ status: 'saving', pending: this.pendingCount() });
+      this.patch({ status: "saving", pending: this.pendingCount() });
       this.scheduleFlush();
     };
-    this.doc.on('update', this.updateHandler);
+    this.doc.on("update", this.updateHandler);
 
-    this.patch({ status: 'synced' });
+    this.patch({ status: "synced" });
   }
 
   async pull(options: { coldStart?: boolean } = {}): Promise<number> {
@@ -154,7 +175,11 @@ export class DocumentSync {
       }
     } catch (error) {
       if (error instanceof SequenceGapError) {
-        this.patch({ gapDetected: true, status: 'error', error: error.message });
+        this.patch({
+          gapDetected: true,
+          status: "error",
+          error: error.message,
+        });
       }
       throw error;
     }
@@ -173,7 +198,9 @@ export class DocumentSync {
   }
 
   async poll(): Promise<boolean> {
-    const meta = (await this.transport.listMeta()).find((entry) => entry.id === this.id);
+    const meta = (await this.transport.listMeta()).find(
+      (entry) => entry.id === this.id,
+    );
     if (meta === undefined) {
       return false;
     }
@@ -190,7 +217,10 @@ export class DocumentSync {
 
   startPolling(): () => void {
     this.stopPolling();
-    this.pollTimer = setInterval(() => void this.poll().catch(() => this.markOffline()), this.pollIntervalMs);
+    this.pollTimer = setInterval(
+      () => void this.poll().catch(() => this.markOffline()),
+      this.pollIntervalMs,
+    );
     this.pollTimer.unref?.();
     return () => this.stopPolling();
   }
@@ -239,7 +269,7 @@ export class DocumentSync {
         this.inFlight = undefined;
         this.patch({
           cursor: this.cursorAfterAppend(result),
-          status: this.pendingCount() > 0 ? 'saving' : 'synced',
+          status: this.pendingCount() > 0 ? "saving" : "synced",
           pending: this.pendingCount(),
           lastSavedAt: this.now(),
           error: undefined,
@@ -254,7 +284,9 @@ export class DocumentSync {
 
   async compact(): Promise<void> {
     if (this.state.gapDetected) {
-      throw new Error('refusing to compact: a gap in the update log means unmerged data is missing');
+      throw new Error(
+        "refusing to compact: a gap in the update log means unmerged data is missing",
+      );
     }
 
     const dek = this.requireDek();
@@ -274,7 +306,7 @@ export class DocumentSync {
         expected_revision: this.state.revision,
       });
     } catch (error) {
-      if (error instanceof ApiError && error.code === 'CONFLICT') {
+      if (error instanceof ApiError && error.code === "CONFLICT") {
         await this.refreshHead();
         return;
       }
@@ -293,7 +325,10 @@ export class DocumentSync {
   }
 
   shouldCompact(): boolean {
-    return !this.state.gapDetected && this.state.cursor - this.state.snapshotSeq >= this.compactThreshold;
+    return (
+      !this.state.gapDetected &&
+      this.state.cursor - this.state.snapshotSeq >= this.compactThreshold
+    );
   }
 
   async close(): Promise<void> {
@@ -316,7 +351,7 @@ export class DocumentSync {
       this.debounceTimer = undefined;
     }
     if (this.updateHandler !== undefined) {
-      this.doc.off('update', this.updateHandler);
+      this.doc.off("update", this.updateHandler);
       this.updateHandler = undefined;
     }
     zeroBytes(this.dek);
@@ -421,7 +456,7 @@ export class DocumentSync {
 
   private markOffline(error?: unknown): void {
     this.patch({
-      status: 'offline',
+      status: "offline",
       pending: this.pendingCount(),
       error: error instanceof Error ? error.message : undefined,
     });
@@ -429,7 +464,7 @@ export class DocumentSync {
 
   private requireDek(): Uint8Array {
     if (this.dek === undefined) {
-      throw new Error('document is not open — call open() before syncing');
+      throw new Error("document is not open — call open() before syncing");
     }
     return this.dek;
   }

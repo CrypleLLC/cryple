@@ -44,7 +44,7 @@ import {
   type ItemLayout,
 } from '@/lib/app';
 import { openWithSessionHandoff } from '@/lib/session/handoff';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
+import { useAuthedContext, useZekke } from '@/components/session/ZekkeProvider';
 import { DocumentsIcon, FileTypeIcon, SharingIcon, TrashIcon } from '@/components/ui/icons';
 import {
   Button,
@@ -71,7 +71,7 @@ import { PanelFacts } from '@/components/shell/SidePanel';
 
 export default function DocumentsScreen() {
   const context = useAuthedContext();
-  const { reportError, fullDevice, account } = useCryple();
+  const { reportError, fullDevice, account } = useZekke();
   const retentionDays = account?.retention_days ?? 0;
 
   const [summaries, setSummaries] = useState<DocumentSummary[]>();

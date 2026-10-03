@@ -1,6 +1,6 @@
 # `lib/keys` — the frozen key tree
 
-Derives every key a Cryple account has from its BIP39 seed phrase. This is the trust root:
+Derives every key a Zekke account has from its BIP39 seed phrase. This is the trust root:
 a wrong constant here does not throw, it produces a **different account**, and the failure
 surfaces long after the mistake was made.
 
@@ -24,7 +24,7 @@ BIP39 mnemonic (12 or 24 words)
   ├─ HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|mlkem768",  L=64)  → ML-KEM-768 (derived, reserved, not published)
   └─ HKDF-SHA512(seed, salt=∅, info="Cryple-Key-v1|vault-kek", L=32)  → the ROOT WRAP key
 
-  RESERVED, NEVER DERIVED:  m/44'/60'/…   — Cryple has no secp256k1 key and no EOA.
+  RESERVED, NEVER DERIVED:  m/44'/60'/…   — Zekke has no secp256k1 key and no EOA.
 ```
 
 **What the seed is for.** The seed is a cold root ([device-keys.md](../../../../api-general/docs/crypto/device-keys.md)):
@@ -52,7 +52,7 @@ needs — `userAddress`, `signing`, `wrapKey` — and `zeroRootKeys` zeroes them
 | `mnemonicToSeed` / `isValidMnemonic` / `generateMnemonic`                        | BIP39 layer, see below.                                                    |
 | `deriveHardenedPath` / `deriveMasterNode` / `deriveHardenedChild`                | SLIP-0010 primitives.                                                      |
 
-`CrypleKeyTree` carries the private material and its encodings; `identity.publicKeySpkiBase64` is the root `public_key` sent at sign-up (124 chars).
+`ZekkeKeyTree` carries the private material and its encodings; `identity.publicKeySpkiBase64` is the root `public_key` sent at sign-up (124 chars).
 
 ## The traps this module exists to avoid
 

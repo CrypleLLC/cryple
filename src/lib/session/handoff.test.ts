@@ -1,5 +1,5 @@
-import { openTestSession } from '@/test/session';
-import { describe, expect, it } from 'vitest';
+import { openTestSession } from "@/test/session";
+import { describe, expect, it } from "vitest";
 import {
   HANDOFF_OFFER,
   HANDOFF_REQUEST,
@@ -9,14 +9,14 @@ import {
   type HandoffMessageEvent,
   type HandoffOffer,
   type HandoffPeer,
-} from './handoff';
+} from "./handoff";
 
-const ORIGIN = 'https://app.cryple.example';
-const DOCUMENT_URL = '/docs/00000000-0000-4000-8000-000000000000';
+const ORIGIN = "https://app.zekke.example";
+const DOCUMENT_URL = "/docs/00000000-0000-4000-8000-000000000000";
 
 const OFFER: HandoffOffer = {
   material: (await openTestSession()).context.session.exportForHandoff(),
-  token: 'header.payload.signature',
+  token: "header.payload.signature",
 };
 
 interface FakeWindow {
@@ -86,8 +86,10 @@ function fakeBrowser() {
         child.opener = reference(child, created);
         return reference(created, child);
       },
-      addEventListener: (_type, listener) => void created.listeners.add(listener),
-      removeEventListener: (_type, listener) => void created.listeners.delete(listener),
+      addEventListener: (_type, listener) =>
+        void created.listeners.add(listener),
+      removeEventListener: (_type, listener) =>
+        void created.listeners.delete(listener),
     };
 
     return created;
@@ -97,7 +99,7 @@ function fakeBrowser() {
     const peer = server.open(DOCUMENT_URL);
     const child = peer === undefined ? undefined : windowsByReference.get(peer);
     if (child === undefined) {
-      throw new Error('the fake browser did not open a window');
+      throw new Error("the fake browser did not open a window");
     }
     return child;
   }
@@ -120,18 +122,20 @@ function countingServer(
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
 
-describe('session handoff', () => {
-  it('hands the session to a window the unlocked tab opened', async () => {
+describe("session handoff", () => {
+  it("hands the session to a window the unlocked tab opened", async () => {
     const browser = fakeBrowser();
     const parent = browser.window();
     const { server } = countingServer(parent.host);
 
     const child = browser.open(server);
 
-    await expect(requestSessionFromOpener(child.host, { timeoutMs: 200 })).resolves.toEqual(OFFER);
+    await expect(
+      requestSessionFromOpener(child.host, { timeoutMs: 200 }),
+    ).resolves.toEqual(OFFER);
   });
 
-  it('serves the same window again after it reloads', async () => {
+  it("serves the same window again after it reloads", async () => {
     const browser = fakeBrowser();
     const parent = browser.window();
     const { server, counter } = countingServer(parent.host);
@@ -139,11 +143,13 @@ describe('session handoff', () => {
     const child = browser.open(server);
     await requestSessionFromOpener(child.host, { timeoutMs: 200 });
 
-    await expect(requestSessionFromOpener(child.host, { timeoutMs: 200 })).resolves.toEqual(OFFER);
+    await expect(
+      requestSessionFromOpener(child.host, { timeoutMs: 200 }),
+    ).resolves.toEqual(OFFER);
     expect(counter.asked).toBe(2);
   });
 
-  it('answers nothing to a same-origin window it did not open, even one holding a reference to it', async () => {
+  it("answers nothing to a same-origin window it did not open, even one holding a reference to it", async () => {
     const browser = fakeBrowser();
     const parent = browser.window();
     const { counter } = countingServer(parent.host);
@@ -151,48 +157,56 @@ describe('session handoff', () => {
     const stranger = browser.window();
     stranger.opener = browser.reference(stranger, parent);
 
-    await expect(requestSessionFromOpener(stranger.host, { timeoutMs: 50 })).resolves.toBeUndefined();
+    await expect(
+      requestSessionFromOpener(stranger.host, { timeoutMs: 50 }),
+    ).resolves.toBeUndefined();
     expect(counter.asked).toBe(0);
   });
 
-  it('ignores a request from an opened window that has left this origin', async () => {
+  it("ignores a request from an opened window that has left this origin", async () => {
     const browser = fakeBrowser();
     const parent = browser.window();
     const { server, counter } = countingServer(parent.host);
 
     const child = browser.open(server);
-    child.origin = 'https://evil.example';
-    browser.reference(child, parent).postMessage({ kind: HANDOFF_REQUEST, nonce: 'n' }, ORIGIN);
+    child.origin = "https://evil.example";
+    browser
+      .reference(child, parent)
+      .postMessage({ kind: HANDOFF_REQUEST, nonce: "n" }, ORIGIN);
     await settle();
 
     expect(counter.asked).toBe(0);
   });
 
-  it('forgets a window once it is closed', async () => {
+  it("forgets a window once it is closed", async () => {
     const browser = fakeBrowser();
     const parent = browser.window();
     const { server, counter } = countingServer(parent.host);
 
     const child = browser.open(server);
     child.closed = true;
-    browser.reference(child, parent).postMessage({ kind: HANDOFF_REQUEST, nonce: 'n' }, ORIGIN);
+    browser
+      .reference(child, parent)
+      .postMessage({ kind: HANDOFF_REQUEST, nonce: "n" }, ORIGIN);
     await settle();
 
     expect(counter.asked).toBe(0);
   });
 
-  it('gets nothing from an opener that is locked', async () => {
+  it("gets nothing from an opener that is locked", async () => {
     const browser = fakeBrowser();
     const parent = browser.window();
     const { server, counter } = countingServer(parent.host, () => undefined);
 
     const child = browser.open(server);
 
-    await expect(requestSessionFromOpener(child.host, { timeoutMs: 50 })).resolves.toBeUndefined();
+    await expect(
+      requestSessionFromOpener(child.host, { timeoutMs: 50 }),
+    ).resolves.toBeUndefined();
     expect(counter.asked).toBe(1);
   });
 
-  it('stops answering once serving is stopped', async () => {
+  it("stops answering once serving is stopped", async () => {
     const browser = fakeBrowser();
     const parent = browser.window();
     const { server, stop } = countingServer(parent.host);
@@ -200,10 +214,12 @@ describe('session handoff', () => {
     const child = browser.open(server);
     stop();
 
-    await expect(requestSessionFromOpener(child.host, { timeoutMs: 50 })).resolves.toBeUndefined();
+    await expect(
+      requestSessionFromOpener(child.host, { timeoutMs: 50 }),
+    ).resolves.toBeUndefined();
   });
 
-  it('refuses an offer carrying a different nonce', async () => {
+  it("refuses an offer carrying a different nonce", async () => {
     const browser = fakeBrowser();
     const parent = browser.window();
     const child = browser.window();
@@ -211,15 +227,17 @@ describe('session handoff', () => {
 
     parent.listeners.add((event) => {
       (event.source as HandoffPeer).postMessage(
-        { kind: HANDOFF_OFFER, nonce: 'someone-else', offer: OFFER },
+        { kind: HANDOFF_OFFER, nonce: "someone-else", offer: OFFER },
         ORIGIN,
       );
     });
 
-    await expect(requestSessionFromOpener(child.host, { timeoutMs: 50 })).resolves.toBeUndefined();
+    await expect(
+      requestSessionFromOpener(child.host, { timeoutMs: 50 }),
+    ).resolves.toBeUndefined();
   });
 
-  it('refuses an offer from a window that is not its opener', async () => {
+  it("refuses an offer from a window that is not its opener", async () => {
     const browser = fakeBrowser();
     const parent = browser.window();
     const child = browser.window();
@@ -228,17 +246,23 @@ describe('session handoff', () => {
 
     parent.listeners.add((event) => {
       const nonce = (event.data as { nonce: string }).nonce;
-      browser.reference(stranger, child).postMessage({ kind: HANDOFF_OFFER, nonce, offer: OFFER }, ORIGIN);
+      browser
+        .reference(stranger, child)
+        .postMessage({ kind: HANDOFF_OFFER, nonce, offer: OFFER }, ORIGIN);
     });
 
-    await expect(requestSessionFromOpener(child.host, { timeoutMs: 50 })).resolves.toBeUndefined();
+    await expect(
+      requestSessionFromOpener(child.host, { timeoutMs: 50 }),
+    ).resolves.toBeUndefined();
   });
 
-  it('asks nobody without an opener, and leaves no listener behind', async () => {
+  it("asks nobody without an opener, and leaves no listener behind", async () => {
     const browser = fakeBrowser();
     const lone = browser.window();
 
-    await expect(requestSessionFromOpener(lone.host, { timeoutMs: 50 })).resolves.toBeUndefined();
+    await expect(
+      requestSessionFromOpener(lone.host, { timeoutMs: 50 }),
+    ).resolves.toBeUndefined();
     expect(lone.listeners.size).toBe(0);
   });
 });

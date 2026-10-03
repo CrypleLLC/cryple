@@ -15,8 +15,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Cryple - Secure Your Data",
-  description: "Securely store and manage your sensitive data with Cryple.",
+  title: "Zekke - Secure Your Data",
+  description: "Securely store and manage your sensitive data with Zekke.",
   other: { google: "notranslate" },
 };
 

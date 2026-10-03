@@ -90,7 +90,7 @@ export default function DocumentToolbar({ editor }: { editor: Editor | null }) {
     <div
       role="toolbar"
       aria-label="Formatting"
-      className="cryple-no-print flex flex-wrap items-center gap-1 px-3 py-1.5"
+      className="zekke-no-print flex flex-wrap items-center gap-1 px-3 py-1.5"
     >
       <ToolButton
         label="Undo"

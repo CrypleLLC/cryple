@@ -21,7 +21,7 @@ import {
   sharedFolderChoices,
   SHARING_COPY,
 } from '@/lib/app';
-import { useAuthedContext, useCryple } from '@/components/session/CrypleProvider';
+import { useAuthedContext, useZekke } from '@/components/session/ZekkeProvider';
 import { Button, Empty, Notice, Select } from '@/components/ui';
 import { Modal } from '@/components/modal';
 import { SharingIcon } from '@/components/ui/icons';
@@ -36,7 +36,7 @@ export default function ShareItemDialog({
   onClose: () => void;
 }) {
   const context = useAuthedContext();
-  const { reportError, fullDevice, holds } = useCryple();
+  const { reportError, fullDevice, holds } = useZekke();
 
   const [connections, setConnections] = useState<ConnectionRecord[]>([]);
   const [recipients, setRecipients] = useState<ItemRecipientRecord[]>([]);

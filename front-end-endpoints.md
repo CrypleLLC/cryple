@@ -1,4 +1,4 @@
-# Cryple API — Endpoint Reference
+# Zekke API — Endpoint Reference
 
 Every HTTP endpoint the server exposes: the exact request payload it accepts, the success response it returns, and every error response it can produce.
 
@@ -175,8 +175,8 @@ path** is not in that category — see `405` below — and does return the envel
 | 405  | `METHOD_NOT_ALLOWED`   | The path exists but does not accept this verb.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 409  | `CONFLICT`             | The resource is not in a state that accepts the request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | 409  | `STALE_KEY_GENERATION` | A `wrapped_dek` (or a sharing sub-key or address book) sealed under a generation that is not the scope's current one. Re-read `GET /keyrings`, re-wrap under the current generation, and retry.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| 422  | `FOLDER_TOO_DEEP` | A folder create or move would make the tree deeper than 8 levels. |
-| 422  | `FOLDER_INTO_ITSELF` | A folder move would put it inside itself or its own subtree. |
+| 422  | `FOLDER_TOO_DEEP`      | A folder create or move would make the tree deeper than 8 levels.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| 422  | `FOLDER_INTO_ITSELF`   | A folder move would put it inside itself or its own subtree.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | 409  | `TOO_MANY_DEVICES`     | §19 only: the account already has `DEVICES_MAX_PER_ACCOUNT` active devices.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | 413  | `BAD_REQUEST`          | `POST /files` only ([§17](#17-files-endpoints)): the declared object exceeds `FILES_MAX_OBJECT_BYTES`. **Note the code is `BAD_REQUEST`, not a code of its own** — branch on the status, not the code, to tell this from an ordinary field rejection.                                                                                                                                                                                                                                                                                                                                                                                                |
 | 429  | `TOO_MANY_REQUESTS`    | Four budgets. Per client address: one shared by the public routes (`/sign-up`, `/sign-in`, `/auth/verify`, `/users/lookup`, `/devices/enrol`, `/devices/enrol/chain`, `/oprf/account/evaluate`), one on the device PIN routes (`/oprf/devices/{id}/evaluate`, `/confirm`), and one shared by `PUT /users/username` and `GET /users/resolve`. Per account: one on `POST /files`. The address or account sent more requests than that budget allows in the current window. `Retry-After` is the number of seconds to wait. **It says nothing about the account** — do not show it as an authentication failure, and do not retry before `Retry-After`. |
@@ -383,14 +383,14 @@ Your own account, as the API sees it. Takes no parameters: the account is the on
 }
 ```
 
-| Field          | Notes                                                                                                                                                                                     |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `user_address` | The `SHA-256` of the seed you authenticated with. Useful to confirm the client derived the account you expected.                                                                          |
-| `username`     | The account's **current** username ([§8](#8-users-endpoints)); this is how one account addresses another. Assigned automatically at sign-up and changeable through `PUT /users/username`. |
-| `uuid`         | Your public identifier — what a contact feeds to `GET /users/{uuid}/public-keys` (§19).                                                                                                   |
-| `paranoid`     | **`true` = Paranoid Mode**, `false` = Standard Mode. Always present, never omitted.                                                                                                       |
-| `retention_days` | How many days deleted documents and Drive files wait in the Trash before they are destroyed. `0` keeps nothing: say so before a delete, and show an empty Trash. |
-| `created_at`   | Account creation.                                                                                                                                                                         |
+| Field            | Notes                                                                                                                                                                                     |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `user_address`   | The `SHA-256` of the seed you authenticated with. Useful to confirm the client derived the account you expected.                                                                          |
+| `username`       | The account's **current** username ([§8](#8-users-endpoints)); this is how one account addresses another. Assigned automatically at sign-up and changeable through `PUT /users/username`. |
+| `uuid`           | Your public identifier — what a contact feeds to `GET /users/{uuid}/public-keys` (§19).                                                                                                   |
+| `paranoid`       | **`true` = Paranoid Mode**, `false` = Standard Mode. Always present, never omitted.                                                                                                       |
+| `retention_days` | How many days deleted documents and Drive files wait in the Trash before they are destroyed. `0` keeps nothing: say so before a delete, and show an empty Trash.                          |
+| `created_at`     | Account creation.                                                                                                                                                                         |
 
 **Call this on first launch after a restore.** `paranoid` is the one fact a client cannot derive and cannot safely cache: it decides whether to prompt for a PIN, and a reinstall wipes local state. The alternative — probing `/sign-in` and reading the `404` — burns a challenge, costs the 350 ms floor, and returns the same `404` for a wrong PIN, a wrong seed and a nonexistent account. See [§5.4](./front-end-guide.md#54-standard-mode-vs-paranoid-mode).
 
@@ -1257,8 +1257,35 @@ A deleted document or folder waits here for the account's `retention_days` (`GET
 ```json
 {
   "data": {
-    "folders": [{ "id": "…", "parent_id": "…", "ciphertext": "sealed name", "wrapped_dek": "…", "key_generation": 2, "position": 0, "created_at": "…", "updated_at": "…", "deleted_at": "…", "item_count": 3 }],
-    "documents": [{ "id": "…", "folder_id": "…", "wrapped_dek": "…", "key_generation": 2, "snapshot_seq": 4, "latest_seq": 6, "revision": 3, "version": "v1", "created_at": "…", "updated_at": "…", "deleted_at": "…" }]
+    "folders": [
+      {
+        "id": "…",
+        "parent_id": "…",
+        "ciphertext": "sealed name",
+        "wrapped_dek": "…",
+        "key_generation": 2,
+        "position": 0,
+        "created_at": "…",
+        "updated_at": "…",
+        "deleted_at": "…",
+        "item_count": 3
+      }
+    ],
+    "documents": [
+      {
+        "id": "…",
+        "folder_id": "…",
+        "wrapped_dek": "…",
+        "key_generation": 2,
+        "snapshot_seq": 4,
+        "latest_seq": 6,
+        "revision": 3,
+        "version": "v1",
+        "created_at": "…",
+        "updated_at": "…",
+        "deleted_at": "…"
+      }
+    ]
   }
 }
 ```
@@ -1287,7 +1314,20 @@ exactly like an item. Every route needs the scope; the delete needs a **full** d
 **`GET`** → `200`, every live folder:
 
 ```json
-{ "data": [ { "id": "…", "parent_id": "…", "ciphertext": "sealed(DEK, name)", "wrapped_dek": "…", "key_generation": 2, "position": 0, "created_at": "…", "updated_at": "…" } ] }
+{
+  "data": [
+    {
+      "id": "…",
+      "parent_id": "…",
+      "ciphertext": "sealed(DEK, name)",
+      "wrapped_dek": "…",
+      "key_generation": 2,
+      "position": 0,
+      "created_at": "…",
+      "updated_at": "…"
+    }
+  ]
+}
 ```
 
 `parent_id` is absent at the top level.
@@ -1668,16 +1708,16 @@ Every mutation carries one, and the counterparty or the item is **inside the sig
 that rewrites a body cannot redirect a share. See
 [signed-actions.md](../api-general/docs/auth/signed-actions.md).
 
-| Route                           | `action`              | Signed arguments, in order                                                                                    |
-| ------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `POST /connections`             | `connection-invite`   | `recipient_username` (normalised), `pqxdh_blob`, `sender_key_generation`, `recipient_key_generation`          |
-| `POST /connections/{id}/accept` | `connection-accept`   | `connection_id`                                                                                               |
-| `DELETE /connections/{id}`      | `connection-delete`   | `connection_id`                                                                                               |
-| `PUT /connections/{id}/keys`    | `connection-keys`     | `connection_id`, hex SHA-256 of the lines `scope:key_generation:wrapped_key` joined by `\n`, in request order |
-| `POST /shares`                  | `share-create`        | `connection_id`, `item_type`, `item_id`                                                                       |
-| `DELETE /shares/{id}`           | `share-delete`        | `share_id`                                                                                                    |
-| `PUT /sharing/address-book`     | `address-book-update` | `expected_revision`, hex SHA-256 of `ciphertext`                                                              |
-| `PUT /connections/{id}/folders` | `connection-folders-update` | `connection_id`, `expected_revision`, `recipient_key_generation`, hex SHA-256 of `ciphertext`           |
+| Route                           | `action`                    | Signed arguments, in order                                                                                    |
+| ------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `POST /connections`             | `connection-invite`         | `recipient_username` (normalised), `pqxdh_blob`, `sender_key_generation`, `recipient_key_generation`          |
+| `POST /connections/{id}/accept` | `connection-accept`         | `connection_id`                                                                                               |
+| `DELETE /connections/{id}`      | `connection-delete`         | `connection_id`                                                                                               |
+| `PUT /connections/{id}/keys`    | `connection-keys`           | `connection_id`, hex SHA-256 of the lines `scope:key_generation:wrapped_key` joined by `\n`, in request order |
+| `POST /shares`                  | `share-create`              | `connection_id`, `item_type`, `item_id`                                                                       |
+| `DELETE /shares/{id}`           | `share-delete`              | `share_id`                                                                                                    |
+| `PUT /sharing/address-book`     | `address-book-update`       | `expected_revision`, hex SHA-256 of `ciphertext`                                                              |
+| `PUT /connections/{id}/folders` | `connection-folders-update` | `connection_id`, `expected_revision`, `recipient_key_generation`, hex SHA-256 of `ciphertext`                 |
 
 Every one is signed by **the calling device's key**, with no PIN.
 
@@ -2197,7 +2237,13 @@ Every non-tombstone revision's wrap, **without its ciphertext**, so a client can
 {
   "message": "Credentials metadata retrieved successfully",
   "data": [
-    { "credential_id": "…", "revision_id": "…", "wrapped_dek": "…", "key_generation": 2, "created_at": "…" }
+    {
+      "credential_id": "…",
+      "revision_id": "…",
+      "wrapped_dek": "…",
+      "key_generation": 2,
+      "created_at": "…"
+    }
   ]
 }
 ```
@@ -2255,7 +2301,7 @@ The current revision of one credential: its highest `seq` that is not a tombston
 
 ### `GET /credentials/{id}/revisions` — history
 
-Every revision of one credential, **newest first, tombstones included**, each with its own `wrapped_dek` and `key_generation` (a tombstone's are empty). `404` when the caller has none. It serves *Previous passwords* and *Restore*.
+Every revision of one credential, **newest first, tombstones included**, each with its own `wrapped_dek` and `key_generation` (a tombstone's are empty). `404` when the caller has none. It serves _Previous passwords_ and _Restore_.
 
 ### `DELETE /credentials/{id}` · `DELETE /credentials` — batch
 
@@ -2285,7 +2331,7 @@ The same shape as the other stores' rekey routes, with one difference: it names 
 
 ## 22. Pairing Endpoints — linking the browser extension
 
-The Cryple password extension is linked to an account with a **temporary code**: the web app opens
+The Zekke password extension is linked to an account with a **temporary code**: the web app opens
 a pairing and shows the code, the user types it into the extension, both show a six-digit
 fingerprint, and the user confirms they match in the web app. Design:
 [software-design-document.md § 5](../password-manager/software-design-document.md#5-linking-the-extension-with-a-temporary-code).
@@ -2317,7 +2363,13 @@ Linking is an ordinary `POST /devices/batch`: a `device-add` with scopes **`pass
 Rate limited per address (**fails closed**), behind the response floor.
 
 ```json
-{ "code": "K7QM-9XP2", "device_id": "uuid", "signing_public_key": "SPKI base64", "x25519_public_key": "base64", "mlkem_public_key": "base64" }
+{
+  "code": "K7QM-9XP2",
+  "device_id": "uuid",
+  "signing_public_key": "SPKI base64",
+  "x25519_public_key": "base64",
+  "mlkem_public_key": "base64"
+}
 ```
 
 **`200 OK`:** `{ "claim_id": "uuid", "user_address", "root_public_key", "username"?, "expires_at" }`. The code is read case-insensitively, dashes and spaces ignored, `I`/`L` as `1` and `O` as `0`. **Every failure is `404 NOT_FOUND`** — wrong, used, expired or cancelled code, or a malformed key.

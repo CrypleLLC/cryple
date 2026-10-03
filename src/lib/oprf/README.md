@@ -13,11 +13,11 @@ ikm      = output ‖ argon
 leaf(l)  = HKDF-SHA256(ikm, salt = ∅, info = "Cryple-PIN-v1|" ‖ l, L = 32)
 ```
 
-| Leaf             | Salt                                      | Is                                                                                      |
-| ---------------- | ----------------------------------------- | --------------------------------------------------------------------------------------- |
-| `device-wrap`    | 32 random bytes kept in the device record | The AES key sealing the device's material                                               |
+| Leaf             | Salt                                      | Is                                                                                     |
+| ---------------- | ----------------------------------------- | -------------------------------------------------------------------------------------- |
+| `device-wrap`    | 32 random bytes kept in the device record | The AES key sealing the device's material                                              |
 | `device-confirm` | same                                      | An Ed25519 seed; signs `Cryple-PIN-v1\|device-confirm\|<registration_id>\|<attempt_id>` |
-| `account-proof`  | `utf8(user_address)`                      | An Ed25519 seed; signs the SHA-256 digest a root action's signature covers              |
+| `account-proof`  | `utf8(user_address)`                      | An Ed25519 seed; signs the SHA-256 digest a root action's signature covers             |
 
 **The tests check RFC 9497's own vectors first** (taken from `cloudflare/circl`'s copy, which the
 server uses), then every value of `pin_oprf`, including both Ed25519 signatures byte for byte.

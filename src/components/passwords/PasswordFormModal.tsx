@@ -10,7 +10,7 @@ import {
   type PasswordRow,
   type SiteMatch,
 } from '@/lib/app';
-import { useAuthedContext } from '@/components/session/CrypleProvider';
+import { useAuthedContext } from '@/components/session/ZekkeProvider';
 import { Button, CopyButton, Field, SecretField, Select } from '@/components/ui';
 import { FormModal } from '@/components/modal';
 

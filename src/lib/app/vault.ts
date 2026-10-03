@@ -1,4 +1,8 @@
-import { hashReceivedCiphertext, type SecretMetaRecord, type SecretRecord } from '@/lib/secrets';
+import {
+  hashReceivedCiphertext,
+  type SecretMetaRecord,
+  type SecretRecord,
+} from "@/lib/secrets";
 
 export interface VaultEntry {
   id: string;
@@ -8,7 +12,9 @@ export interface VaultEntry {
   reportedHash: string;
 }
 
-export function buildVaultIndex(meta: readonly SecretMetaRecord[]): VaultEntry[] {
+export function buildVaultIndex(
+  meta: readonly SecretMetaRecord[],
+): VaultEntry[] {
   return meta
     .map((record) => ({
       id: record.id,
@@ -42,8 +48,10 @@ export interface SecretPayload {
 
 export class MalformedSecretPayloadError extends Error {
   constructor() {
-    super('This item was not written by this vault UI and cannot be displayed.');
-    this.name = 'MalformedSecretPayloadError';
+    super(
+      "This item was not written by this vault UI and cannot be displayed.",
+    );
+    this.name = "MalformedSecretPayloadError";
   }
 }
 
@@ -61,16 +69,16 @@ export function decodeSecretPayload(plaintext: string): SecretPayload {
 
   const name = (parsed as Partial<SecretPayload> | null)?.name;
   const value = (parsed as Partial<SecretPayload> | null)?.value;
-  if (typeof name !== 'string' || typeof value !== 'string') {
+  if (typeof name !== "string" || typeof value !== "string") {
     throw new MalformedSecretPayloadError();
   }
 
   return { name, value };
 }
 
-export const UNREADABLE_SECRET_NAME = 'Unreadable item';
+export const UNREADABLE_SECRET_NAME = "Unreadable item";
 
-export const MASKED_VALUE = '••••••••';
+export const MASKED_VALUE = "••••••••";
 
 export interface VaultRow {
   id: string;
@@ -102,14 +110,14 @@ function toVaultRow({ record, plaintext }: OpenedSecret): VaultRow {
   };
 
   if (plaintext === undefined) {
-    return { ...row, name: UNREADABLE_SECRET_NAME, value: '', readable: false };
+    return { ...row, name: UNREADABLE_SECRET_NAME, value: "", readable: false };
   }
 
   try {
     const payload = decodeSecretPayload(plaintext);
     return { ...row, name: payload.name, value: payload.value, readable: true };
   } catch {
-    return { ...row, name: UNREADABLE_SECRET_NAME, value: '', readable: false };
+    return { ...row, name: UNREADABLE_SECRET_NAME, value: "", readable: false };
   }
 }
 
@@ -117,11 +125,11 @@ function receivedBytes(ciphertext: string): number {
   return new TextEncoder().encode(ciphertext).length;
 }
 
-const BYTE_UNITS = ['KiB', 'MiB', 'GiB', 'TiB'] as const;
+const BYTE_UNITS = ["KiB", "MiB", "GiB", "TiB"] as const;
 
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) {
-    return '—';
+    return "—";
   }
   if (bytes < 1024) {
     return `${Math.round(bytes)} B`;
@@ -138,15 +146,15 @@ export function formatBytes(bytes: number): string {
 }
 
 export const SECRET_DELETE_CONFIRMATION =
-  'It disappears from every device and moves to Recently deleted, where it can be restored ' +
-  'until you delete it permanently. Until then it stays stored, still encrypted.';
+  "It disappears from every device and moves to Recently deleted, where it can be restored " +
+  "until you delete it permanently. Until then it stays stored, still encrypted.";
 
 export const SECRET_PURGE_CONFIRMATION =
-  'Deleting permanently cannot be undone. Only this account holds the key, so nobody — ' +
-  'including Cryple — can bring it back.';
+  "Deleting permanently cannot be undone. Only this account holds the key, so nobody — " +
+  "including Zekke — can bring it back.";
 
 export const RECENTLY_DELETED_SUBTITLE =
-  'A deleted secret stays here until you delete it permanently, so it can be brought back.';
+  "A deleted secret stays here until you delete it permanently, so it can be brought back.";
 
 export interface DeletedVaultRow {
   id: string;
@@ -160,7 +168,9 @@ export interface OpenedDeletedSecret {
   plaintext?: string;
 }
 
-export function buildDeletedVaultRows(opened: readonly OpenedDeletedSecret[]): DeletedVaultRow[] {
+export function buildDeletedVaultRows(
+  opened: readonly OpenedDeletedSecret[],
+): DeletedVaultRow[] {
   return opened
     .map(({ record, plaintext }) => {
       const { name, readable } = toVaultRow({ record, plaintext });
@@ -170,5 +180,7 @@ export function buildDeletedVaultRows(opened: readonly OpenedDeletedSecret[]): D
 }
 
 export function purgeConfirmationTitle(count: number): string {
-  return count === 1 ? 'Delete this secret permanently?' : `Delete ${count} secrets permanently?`;
+  return count === 1
+    ? "Delete this secret permanently?"
+    : `Delete ${count} secrets permanently?`;
 }

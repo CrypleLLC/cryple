@@ -5,17 +5,17 @@ username, the date, the recovery phrase as a numbered grid, and a QR code that h
 the mobile app can sign in by scanning the page. Everything is built in the browser; nothing about
 it touches the network.
 
-| Export | What it does |
-| --- | --- |
-| `recoveryKitContent(input)` | Everything the page prints, as data — the single source the PDF draws from |
-| `recoveryKitPhrase(mnemonic)` | The checksum-validated, single-spaced phrase; throws on an invalid one |
-| `recoveryKitQrModules(payload)` | The QR matrix, quiet zone included |
-| `qrModulePath(modules)` | The matrix as one SVG path, one rectangle per horizontal run |
-| `recoveryKitGridCell(index, count)` | Where a word sits in the phrase grid |
-| `recoveryKitWordOutlines(word)` | A word as one glyph outline per letter, each with its advance; throws `RecoveryKitGlyphError` on a letter it has no outline for |
-| `recoveryKitFileName(username)` | `cryple-recovery-kit-<username>.pdf` |
-| `buildRecoveryKitPdf(input)` | The PDF bytes |
-| `RECOVERY_KIT_COPY` | Every string on the page |
+| Export                              | What it does                                                                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `recoveryKitContent(input)`         | Everything the page prints, as data — the single source the PDF draws from                                                      |
+| `recoveryKitPhrase(mnemonic)`       | The checksum-validated, single-spaced phrase; throws on an invalid one                                                          |
+| `recoveryKitQrModules(payload)`     | The QR matrix, quiet zone included                                                                                              |
+| `qrModulePath(modules)`             | The matrix as one SVG path, one rectangle per horizontal run                                                                    |
+| `recoveryKitGridCell(index, count)` | Where a word sits in the phrase grid                                                                                            |
+| `recoveryKitWordOutlines(word)`     | A word as one glyph outline per letter, each with its advance; throws `RecoveryKitGlyphError` on a letter it has no outline for |
+| `recoveryKitFileName(username)`     | `zekke-recovery-kit-<username>.pdf`                                                                                             |
+| `buildRecoveryKitPdf(input)`        | The PDF bytes                                                                                                                   |
+| `RECOVERY_KIT_COPY`                 | Every string on the page                                                                                                        |
 
 ## The phrase is drawn, not written
 
@@ -69,7 +69,7 @@ single ASCII spaces, UTF-8, no prefix, no URI scheme, no version byte. It is byt
 web sign-in accepts after trimming, so a scanner may hand the decoded text straight to the same
 mnemonic check. A test feeds an untidy phrase in and asserts the payload comes out canonical.
 
-Adding a scheme later (`cryple:…`) would break every kit already printed, so a reader should keep
+Adding a scheme later (`zekke:…`) would break every kit already printed, so a reader should keep
 accepting the bare phrase regardless.
 
 - **Error correction `M`** (15%). A 24-word phrase fits in a version 8 symbol at that level, which

@@ -12,7 +12,7 @@ import {
   lockExit,
   removeBrowserExit,
 } from '@/lib/app';
-import { useCryple } from '@/components/session/CrypleProvider';
+import { useZekke } from '@/components/session/ZekkeProvider';
 import NotesScreen from '@/components/notes/NotesScreen';
 import PasswordsScreen from '@/components/passwords/PasswordsScreen';
 import AccountMenu from './AccountMenu';
@@ -78,7 +78,7 @@ const NAV_ITEMS = [
   {
     id: 'home',
     label: 'Home',
-    description: 'Everything Cryple keeps for you, one tap away.',
+    description: 'Everything Zekke keeps for you, one tap away.',
     icon: HomeIcon,
     screen: HomeScreen,
   },
@@ -158,7 +158,7 @@ const EXIT_ICONS: Record<SessionExitId, ComponentType<IconProps>> = {
 };
 
 export default function AppShell() {
-  const { account, lock, removeBrowser, holds, chainProblem, notice, dismissNotice, reportError } = useCryple();
+  const { account, lock, removeBrowser, holds, chainProblem, notice, dismissNotice, reportError } = useZekke();
   const navItems: readonly NavItem[] = NAV_ITEMS.filter(
     (item: NavItem) => item.scope === undefined || holds(item.scope),
   );
@@ -390,9 +390,9 @@ function MobileMenu({ onClose, children }: { onClose: () => void; children: Reac
 function BrandMark() {
   return (
     <div className="flex items-center gap-2.5 px-2">
-      <Image src="/cryple-logo.png" alt="Cryple" width={30} height={30} priority />
+      <Image src="/zekke-logo.png" alt="Zekke" width={30} height={30} priority />
       <span className="flex flex-col leading-none">
-        <span className="text-headline text-ink">Cryple</span>
+        <span className="text-headline text-ink">Zekke</span>
         <span className="mt-1 text-caption text-ink-faint uppercase">Zero-knowledge</span>
       </span>
     </div>
